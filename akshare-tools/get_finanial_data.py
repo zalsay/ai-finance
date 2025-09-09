@@ -191,6 +191,77 @@ def get_index_data(symbol, start_date="19900101", end_date=None):
         logger.error(f"获取指数 {symbol} 数据失败: {str(e)}")
         return None
 
+def talib_tools(df, stock_code_list):
+    """
+    计算技术指标
+    
+    参数:
+        df (pandas.DataFrame): 包含股票数据的DataFrame
+        stock_code_list (list): 股票代码列表
+        
+    返回:
+        pandas.DataFrame: 添加了技术指标的DataFrame
+        list: 技术指标列名列表
+    """
+    try:
+        # 确保数据按日期排序，检查日期列名
+        date_col = 'ds' if 'ds' in df.columns else 'datetime'
+        df = df.sort_values(date_col).copy()
+        
+        # 计算移动平均线 (MA)
+        df['MA5'] = df['close'].rolling(window=5, min_periods=1).mean()
+        df['MA15'] = df['close'].rolling(window=15, min_periods=1).mean()
+        df['MA20'] = df['close'].rolling(window=20, min_periods=1).mean()
+        df['MA25'] = df['close'].rolling(window=25, min_periods=1).mean()
+        df['MA30'] = df['close'].rolling(window=30, min_periods=1).mean()
+        
+        # 计算指数移动平均线 (EMA)
+        df['EMA5'] = df['close'].ewm(span=5, adjust=False).mean()
+        df['EMA15'] = df['close'].ewm(span=15, adjust=False).mean()
+        df['EMA20'] = df['close'].ewm(span=20, adjust=False).mean()
+        df['EMA25'] = df['close'].ewm(span=25, adjust=False).mean()
+        df['EMA30'] = df['close'].ewm(span=30, adjust=False).mean()
+        
+        # 计算MACD指标中的DIF
+        # DIF = EMA12 - EMA26
+        ema12 = df['close'].ewm(span=12, adjust=False).mean()
+        ema26 = df['close'].ewm(span=26, adjust=False).mean()
+        df['DIF'] = ema12 - ema26
+        
+        # 可选：计算DEA和MACD柱状图
+        df['DEA'] = df['DIF'].ewm(span=9, adjust=False).mean()
+        df['MACD'] = 2 * (df['DIF'] - df['DEA'])
+        
+        # 技术指标列名列表
+        technical_indicators = [
+            'MA5', 'MA15', 'MA20', 'MA25', 'MA30',
+            'EMA5', 'EMA15', 'EMA20', 'EMA25', 'EMA30',
+            'DIF', 'DEA', 'MACD'
+        ]
+        
+        # 填充NaN值（使用前向填充）
+        for indicator in technical_indicators:
+            if indicator in df.columns:
+                df[indicator] = df[indicator].ffill()
+        
+        logger.info(f"成功计算技术指标: {technical_indicators}")
+        return df, technical_indicators
+        
+    except Exception as e:
+        logger.error(f"计算技术指标失败: {str(e)}")
+        return df, []
+
 if __name__ == "__main__":
     df = ak_stock_data("600398")
     print(df.head(10))
+    
+    # 测试技术指标计算
+    if df is not None:
+        df_with_indicators, indicators = talib_tools(df, ["600398"])
+        print("\n添加技术指标后的数据:")
+        # 检查日期列名
+        date_col = 'ds' if 'ds' in df_with_indicators.columns else 'datetime'
+        display_cols = [date_col, 'close', 'MA5', 'MA20', 'EMA5', 'EMA20', 'DIF']
+        # 只显示存在的列
+        available_cols = [col for col in display_cols if col in df_with_indicators.columns]
+        print(df_with_indicators[available_cols].head(10))
