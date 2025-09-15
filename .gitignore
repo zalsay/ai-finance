@@ -76,3 +76,6 @@ temp/
 tmp/
 *.safetensors
 *.ckpt
+
+*.png
+*.csv

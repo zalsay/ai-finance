@@ -1,0 +1,47 @@
+# 排除大文件和不必要的目录
+timesfm-2.0-500m-pytorch/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.zip
+*.tar.gz
+*.ckpt
+*.pth
+*.pt
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# 排除日志和临时文件
+*.log
+*.tmp
+*.temp
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 排除开发文件
+.git/
+.gitignore
+.vscode/
+.idea/
+*.ipynb
+.jupyter/
+
+# 排除结果文件
+forecast-results/
+logs/
+md/
+timesfm-2.0-500m-pytorch/
+# 排除其他不需要的文件
+*.md
+README*
+LICENSE*
+.DS_Store
+Thumbs.db

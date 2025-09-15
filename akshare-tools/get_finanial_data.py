@@ -191,7 +191,7 @@ def get_index_data(symbol, start_date="19900101", end_date=None):
         logger.error(f"获取指数 {symbol} 数据失败: {str(e)}")
         return None
 
-def talib_tools(df, stock_code_list):
+def talib_tools(df):
     """
     计算技术指标
     
