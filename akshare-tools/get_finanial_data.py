@@ -1,7 +1,12 @@
 import akshare as ak
 import pandas as pd
 import logging
+import time
+import random
+import requests
 from datetime import datetime
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # 配置日志记录
 logging.basicConfig(
@@ -10,7 +15,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def ak_stock_data(symbol, start_date="19900101", end_date=None, years=0, time_step=None, max_retries=3):
+def check_network_connectivity(test_urls=None, timeout=10):
+    """
+    检查网络连接状态
+    
+    Args:
+        test_urls: 测试URL列表，默认使用常见的可靠网站
+        timeout: 超时时间（秒）
+    
+    Returns:
+        bool: 网络是否可用
+    """
+    if test_urls is None:
+        test_urls = [
+            "https://www.baidu.com",
+            "https://www.google.com", 
+            "https://httpbin.org/get"
+        ]
+    
+    for url in test_urls:
+        try:
+            response = requests.get(url, timeout=timeout)
+            if response.status_code == 200:
+                logger.info(f"网络连接正常 (测试URL: {url})")
+                return True
+        except Exception as e:
+            logger.debug(f"测试URL {url} 连接失败: {str(e)}")
+            continue
+    
+    logger.warning("网络连接检测失败，所有测试URL都无法访问")
+    return False
+
+def setup_robust_session():
+    """设置一个具有重试机制的requests会话"""
+    session = requests.Session()
+    
+    # 配置重试策略
+    retry_strategy = Retry(
+        total=5,  # 总重试次数
+        status_forcelist=[429, 500, 502, 503, 504],  # 需要重试的HTTP状态码
+        allowed_methods=["HEAD", "GET", "OPTIONS"],  # 允许重试的HTTP方法
+        backoff_factor=1  # 退避因子
+    )
+    
+    # 配置HTTP适配器
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    # 设置超时
+    session.timeout = 30
+    
+    return session
+
+def ak_stock_data(symbol, start_date="19900101", end_date=None, years=0, time_step=None, max_retries=5):
     """
     从akshare获取单个股票的历史数据
     
@@ -35,8 +93,24 @@ def ak_stock_data(symbol, start_date="19900101", end_date=None, years=0, time_st
         start_date = (datetime.now() - pd.Timedelta(days=years*365)).strftime('%Y%m%d')
     logger.info(f"正在获取股票 {symbol} 的数据，时间范围: {start_date} 到 {end_date}")
     
+    # 检查网络连接
+    if not check_network_connectivity():
+        logger.error("网络连接不可用，无法获取股票数据")
+        return None
+    
+    # 设置健壮的会话
+    session = setup_robust_session()
+    
     for attempt in range(max_retries):
         try:
+            # 在重试之间添加指数退避延迟
+            if attempt > 0:
+                delay = min(2 ** attempt + random.uniform(0, 1), 30)  # 最大延迟30秒
+                logger.info(f"等待 {delay:.2f} 秒后进行第 {attempt + 1} 次尝试...")
+                time.sleep(delay)
+            
+            logger.info(f"尝试获取股票 {symbol} 数据 (第 {attempt + 1}/{max_retries} 次)")
+            
             # 使用akshare的stock_zh_a_hist接口获取A股历史数据
             # period="daily": 日频数据
             # start_date/end_date: 时间范围
@@ -48,6 +122,7 @@ def ak_stock_data(symbol, start_date="19900101", end_date=None, years=0, time_st
                 end_date=end_date,
                 adjust="qfq"  # 前复权
             )
+            logger.info(f"成功获取股票 {symbol} 数据，共 {len(stock_data)} 条记录")
             
             if stock_data is None or stock_data.empty:
                 logger.warning(f"股票 {symbol} 返回空数据")
@@ -112,11 +187,42 @@ def ak_stock_data(symbol, start_date="19900101", end_date=None, years=0, time_st
             logger.info(f"成功获取股票 {symbol} 数据，共 {len(stock_data)} 条记录")
             return stock_data
             
+        # except requests.exceptions.ConnectionError as e:
+        #     logger.error(f"网络连接错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+        #     if "RemoteDisconnected" in str(e):
+        #         logger.warning("远程服务器断开连接，可能是服务器负载过高")
+        # except requests.exceptions.Timeout as e:
+        #     logger.error(f"请求超时 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+        # except requests.exceptions.HTTPError as e:
+        #     logger.error(f"HTTP错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+        # except requests.exceptions.RequestException as e:
+        #     logger.error(f"请求异常 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+        # except ValueError as e:
+        #     logger.error(f"数据格式错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+        #     # 数据格式错误通常不需要重试
+        #     if "Invalid symbol" in str(e) or "股票代码" in str(e):
+        #         logger.error(f"股票代码 {symbol} 无效，停止重试")
+        #         return None
         except Exception as e:
-            logger.error(f"获取股票 {symbol} 数据失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
-            if attempt == max_retries - 1:
-                logger.error(f"股票 {symbol} 数据获取最终失败")
-                return None
+            error_msg = str(e)
+            logger.error(f"获取股票 {symbol} 数据失败 (尝试 {attempt + 1}/{max_retries}): {error_msg}")
+            
+            # 检查是否是网络相关错误
+            network_errors = [
+                "Connection aborted", "RemoteDisconnected", "Connection broken",
+                "Connection reset", "timeout", "Network is unreachable",
+                "Name or service not known", "Temporary failure in name resolution"
+            ]
+            
+            if any(err in error_msg for err in network_errors):
+                logger.warning("检测到网络相关错误，将进行重试")
+            else:
+                logger.warning(f"未知错误类型: {type(e).__name__}")
+        
+        # 如果是最后一次尝试，记录最终失败
+        if attempt == max_retries - 1:
+            logger.error(f"股票 {symbol} 数据获取最终失败，已尝试 {max_retries} 次")
+            return None
     
     return None
 
