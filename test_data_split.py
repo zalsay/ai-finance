@@ -19,7 +19,7 @@ def test_data_split():
     stock_code = "sh600439"  # 工商银行
     stock_type = "stock"
     time_step = 0
-    years = 2  # 使用较短时间以便快速测试
+    years = 10  # 使用较短时间以便快速测试
     horizon_len = 7
     
     print(f"📋 测试参数: stock_code={stock_code}, horizon_len={horizon_len}")
