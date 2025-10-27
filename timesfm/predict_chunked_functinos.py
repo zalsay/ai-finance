@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
+finance_dir = parent_dir
 pre_data_dir = os.path.join(parent_dir, 'preprocess_data')
 sys.path.append(pre_data_dir)
 
@@ -168,6 +169,7 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
         df_original, df_train, df_test = df_preprocess(
             request.stock_code, 
             request.stock_type, 
+            request.end_date,
             request.time_step, 
             years=request.years, 
             horizon_len=request.horizon_len
@@ -189,21 +191,21 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
                 },
                 processing_time=time.time() - start_time
             )
-        
+        print(f"✅ 股票 {request.stock_code} 数据预处理成功，test开始日期: {df_test['ds'].min().strftime('%Y-%m-%d')}")
         # 添加唯一标识符
         df_train["unique_id"] = df_train["stock_code"].astype(str)
         df_test["unique_id"] = df_test["stock_code"].astype(str)
         
         # 对测试数据进行分块
         chunks = create_chunks_from_test_data(df_test, request.horizon_len)
-        
+        active_chunks = chunks[:request.chunk_num]
         # 对每个分块进行预测
         chunk_results = []
         all_mse = []
         all_mae = []
         
-        for i, chunk in enumerate(chunks):
-            print(f"正在处理分块 {i+1}/{len(chunks)}...")
+        for i, chunk in enumerate(active_chunks):
+            print(f"正在处理分块 {i+1}/{len(active_chunks)}...")
             
             result = predict_single_chunk_mode1(
                 chunk=chunk,
@@ -280,3 +282,90 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
             overall_metrics={'avg_mse': float('inf'), 'avg_mae': float('inf'), 'error': str(e)},
             processing_time=processing_time
         )
+
+if __name__ == "__main__":
+    from timesfm_init import init_timesfm
+    test_request = ChunkedPredictionRequest(
+        stock_code="000002",
+        years=10,
+        horizon_len=7,
+        end_date="20250630",
+        context_len=2048,
+        time_step=0,
+        stock_type='stock',
+        chunk_num=1
+    )
+    tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
+    response = predict_chunked_mode1(test_request, tfm)
+    # print(response)
+    # 输出结果
+    print(f"\n=== 分块预测结果 ===")
+    print(f"股票代码: {response.stock_code}")
+    print(f"总分块数: {response.total_chunks}")
+    print(f"预测长度: {response.horizon_len}")
+    print(f"处理时间: {response.processing_time:.2f} 秒")
+    
+    # print(f"\n=== 总体指标 ===")
+    # for metric, value in response.overall_metrics.items():
+    #     if isinstance(value, float) and value != float('inf'):
+    #         print(f"{metric}: {value:.6f}")
+    #     else:
+    #         print(f"{metric}: {value}")
+    
+    print(f"\n=== 各分块详细结果 ===")
+    for i, chunk_result in enumerate(response.chunk_results):
+        print(f"\n分块 {i+1}:")
+        print(f"  索引: {chunk_result.chunk_index}")
+        print(f"  日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
+        print(f"  实际值数量: {len(chunk_result.actual_values)}")
+        print(f"  预测列数量: {len(chunk_result.predictions)}")
+        
+        # 显示指标
+        # for metric, value in chunk_result.metrics.items():
+        #     if isinstance(value, float) and value != float('inf'):
+        #         print(f"  {metric}: {value:.6f}")
+        #     else:
+        #         print(f"  {metric}: {value}")
+        
+        # 显示前几个预测值和实际值
+        if chunk_result.actual_values and chunk_result.predictions:
+            print(f"  前3个实际值: {chunk_result.actual_values[:3]}")
+            
+            # 显示中位数预测值
+            if 'timesfm-q-0.5' in chunk_result.predictions:
+                pred_values = chunk_result.predictions['timesfm-q-0.5']
+                print(f"  前3个预测值: {pred_values[:3]}")
+    
+    # 保存结果到文件
+    mode_suffix = "chunked"
+    results_filename = os.path.join(finance_dir, f"forecast-results/{test_request.stock_code}_{mode_suffix}_prediction_results.txt")
+    with open(results_filename, 'w', encoding='utf-8') as f:
+        f.write(f"结果 - 股票: {response.stock_code}\n")
+        f.write(f"总分块数: {response.total_chunks}\n")
+        f.write(f"预测长度: {response.horizon_len}\n")
+        f.write(f"处理时间: {response.processing_time:.2f} 秒\n\n")
+        
+        f.write("总体指标:\n")
+        for metric, value in response.overall_metrics.items():
+            f.write(f"  {metric}: {value}\n")
+        
+        f.write("\n各分块详细结果:\n")
+        for chunk_result in response.chunk_results:
+            f.write(f"\n分块 {chunk_result.chunk_index + 1}:\n")
+            f.write(f"  日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}\n")
+            f.write(f"  指标: {chunk_result.metrics}\n")
+            f.write(f"  实际值: {chunk_result.actual_values}\n")
+            f.write(f"  预测值: {chunk_result.predictions}\n")
+    
+    # 生成绘图
+    from plot_functions import plot_chunked_prediction_results
+    print(f"\n正在生成结果图表...")
+    plot_save_path = os.path.join(finance_dir, f"forecast-results/{test_request.stock_code}_{mode_suffix}_prediction_plot.png")
+    try:
+        plot_path = plot_chunked_prediction_results(response, plot_save_path)
+        print(f"图表已保存到: {plot_path}")
+    except Exception as plot_error:
+        print(f"⚠️ 绘图失败: {str(plot_error)}")
+    
+    print(f"详细结果已保存到: {results_filename}")
+    

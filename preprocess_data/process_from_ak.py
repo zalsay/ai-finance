@@ -17,13 +17,14 @@ akshare_dir = os.path.join(finance_dir, 'akshare-tools')
 sys.path.append(akshare_dir)
 from get_finanial_data import ak_stock_data, get_stock_list, get_index_data, talib_tools
 
-def df_preprocess(stock_code, stock_type, time_step, years=10, horizon_len=7):
+def df_preprocess(stock_code, stock_type, end_date=None, time_step=0, years=10, horizon_len=7):
     """
     预处理股票数据
     
     Args:
         stock_code: 股票代码
         stock_type: 股票类型
+        end_date: 结束日期
         time_step: 时间步长
         years: 获取多少年的数据
         horizon_len: 预测长度
@@ -33,7 +34,9 @@ def df_preprocess(stock_code, stock_type, time_step, years=10, horizon_len=7):
     """
     try:
         # 获取股票数据
-        df = ak_stock_data(stock_code, start_date="19900101", years=years, time_step=time_step)
+        if end_date is None:
+            end_date = "20250630"
+        df = ak_stock_data(stock_code, start_date="19900101", end_date=end_date, years=years, time_step=time_step)
         
         # 检查数据是否成功获取
         if df is None:
@@ -104,7 +107,8 @@ def df_preprocess(stock_code, stock_type, time_step, years=10, horizon_len=7):
         # 如果不是，则去掉最早的数据来调整
         train_size = (initial_train_size // horizon_len) * horizon_len
         test_size = (initial_test_size // horizon_len) * horizon_len
-        
+        # train_size = initial_train_size
+        # test_size = initial_test_size
         # 计算需要去掉的最早数据量
         total_usable_size = train_size + test_size
         data_to_remove = original_length - total_usable_size

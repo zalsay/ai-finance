@@ -9,14 +9,14 @@ import os
 preprocess_dir = os.path.join(os.path.dirname(__file__), 'preprocess_data')
 sys.path.append(preprocess_dir)
 
-from process_from_ak import df_preprocess
+from process_from_ak import df_preprocess, ak_stock_data
 
 def test_data_split():
     """测试数据切分功能"""
     print("🧪 开始测试数据切分逻辑...")
     
     # 测试参数
-    stock_code = "sh600439"  # 工商银行
+    stock_code = "600398"  # 工商银行
     stock_type = "stock"
     time_step = 0
     years = 10  # 使用较短时间以便快速测试
@@ -25,7 +25,8 @@ def test_data_split():
     print(f"📋 测试参数: stock_code={stock_code}, horizon_len={horizon_len}")
     
     try:
-        df_train, df_test, stock_info = df_preprocess(
+        # df_new = ak_stock_data(stock_code, start_date="19900101", end_date="20250630", years=years, time_step=0)
+        df, df_train, df_test = df_preprocess(
             stock_code=stock_code,
             stock_type=stock_type, 
             time_step=time_step,

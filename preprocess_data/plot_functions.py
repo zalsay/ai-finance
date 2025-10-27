@@ -1,4 +1,16 @@
 import plotly.graph_objects as go
+import os, sys
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import pandas as pd
+from datetime import datetime
+current_dir = os.path.dirname(os.path.abspath(__file__))
+finance_dir = os.path.dirname(current_dir)
+timesfm_dir = os.path.join(finance_dir, 'timesfm')
+sys.path.append(timesfm_dir)
+from req_res_types import ChunkedPredictionResponse
+pre_data_dir = os.path.join(finance_dir, 'preprocess_data')
+from math_functions import *
 
 def plot_forecast_vs_actual_simple(plot_df, stock_code):
     """
@@ -75,14 +87,14 @@ def plot_forecast_vs_actual_simple(plot_df, stock_code):
 
 def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_path: str = None) -> str:
     """
-    Plot chunked prediction results with best prediction values and English labels
+    绘制分块预测结果图表，显示最佳预测值和英文标签
     
     Args:
-        response: Chunked prediction response object
-        save_path: Image save path, auto-generated if None
+        response: 分块预测响应对象
+        save_path: 图片保存路径，如果为None则自动生成
         
     Returns:
-        str: Saved image path
+        str: 保存的图片路径
     """
     if not response.concatenated_predictions or not response.concatenated_actual:
         print("❌ No concatenated prediction results to plot")
@@ -165,10 +177,12 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
             plt.axvline(x=boundary, color='gray', linestyle='--', alpha=0.5, linewidth=1)
         
         # Set chart properties with English labels
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         plt.title(f'Stock {response.stock_code} Chunked Prediction Results\n'
                  f'Total Chunks: {response.total_chunks}, Horizon Length: {response.horizon_len} days\n'
                  f'Average MSE: {response.overall_metrics.get("avg_mse", 0):.6f}, '
-                 f'Average MAE: {response.overall_metrics.get("avg_mae", 0):.6f}', 
+                 f'Average MAE: {response.overall_metrics.get("avg_mae", 0):.6f}\n'
+                 f'Generated on: {current_time}', 
                  fontsize=14, pad=20)
         
         plt.xlabel('Date', fontsize=12)

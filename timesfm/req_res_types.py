@@ -9,9 +9,11 @@ class ChunkedPredictionRequest:
     stock_code: str
     years: int = 10
     horizon_len: int = 7
+    end_date: Optional[str] = "20250630"
     context_len: int = 2048
     time_step: int = 0
     stock_type: str = 'stock'
+    chunk_num: int = 1
 
 
 @dataclass
