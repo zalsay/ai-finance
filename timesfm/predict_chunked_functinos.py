@@ -113,9 +113,15 @@ def predict_single_chunk_mode1(
                 print(f"    {q}: MSE={metrics['mse']:.6f}, MAE={metrics['mae']:.6f}, 综合得分={metrics['combined_score']:.6f}")
             print(f"  🏆 最优分位数: {best_quantile} (综合得分: {best_score:.6f})")
         
-        # 获取分块的日期范围
-        chunk_start_date = chunk['ds'].min().strftime('%Y-%m-%d')
-        chunk_end_date = chunk['ds'].max().strftime('%Y-%m-%d')
+        # 获取实际值和预测值对应的日期范围
+        # 实际值和预测值对应的是分块中的最后horizon_len个日期
+        chunk_dates = chunk['ds'].tolist()
+        prediction_start_date = chunk_dates[-len(actual_values)].strftime('%Y-%m-%d') if len(actual_values) > 0 else chunk['ds'].min().strftime('%Y-%m-%d')
+        prediction_end_date = chunk_dates[-1].strftime('%Y-%m-%d')
+        
+        # 保持原有的分块日期范围作为备用
+        chunk_start_date = prediction_start_date
+        chunk_end_date = prediction_end_date
         
         return ChunkPredictionResult(
             chunk_index=chunk_index,
@@ -288,8 +294,8 @@ if __name__ == "__main__":
     test_request = ChunkedPredictionRequest(
         stock_code="000002",
         years=10,
-        horizon_len=7,
-        end_date="20250630",
+        horizon_len=15,
+        end_date="20250830",
         context_len=2048,
         time_step=0,
         stock_type='stock',
@@ -316,7 +322,8 @@ if __name__ == "__main__":
     for i, chunk_result in enumerate(response.chunk_results):
         print(f"\n分块 {i+1}:")
         print(f"  索引: {chunk_result.chunk_index}")
-        print(f"  日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
+        print(f"  预测日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
+        print(f"  实际值日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
         print(f"  实际值数量: {len(chunk_result.actual_values)}")
         print(f"  预测列数量: {len(chunk_result.predictions)}")
         
@@ -352,7 +359,8 @@ if __name__ == "__main__":
         f.write("\n各分块详细结果:\n")
         for chunk_result in response.chunk_results:
             f.write(f"\n分块 {chunk_result.chunk_index + 1}:\n")
-            f.write(f"  日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}\n")
+            f.write(f"  预测日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}\n")
+            f.write(f"  实际值日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}\n")
             f.write(f"  指标: {chunk_result.metrics}\n")
             f.write(f"  实际值: {chunk_result.actual_values}\n")
             f.write(f"  预测值: {chunk_result.predictions}\n")
