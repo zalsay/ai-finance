@@ -1,0 +1,11 @@
+结果 - 股票: 000002
+总分块数: 0
+预测长度: 7
+处理时间: 0.00 秒
+
+总体指标:
+  avg_mse: inf
+  avg_mae: inf
+  error: Data preprocessing failed
+
+各分块详细结果:

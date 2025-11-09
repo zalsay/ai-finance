@@ -1,0 +1,47 @@
+import os
+import sys
+import warnings
+import timesfm
+
+# 环境变量设置
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+os.environ['JAX_PMAP_USE_TENSORSTORE'] = 'false'
+
+# 忽略警告
+warnings.filterwarnings("ignore")
+
+# 模型路径设置
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# timesfm_dir = "/root/models/ai_tools/timesfm/senrajat_google_com/google_finetune"
+original_model = os.path.join(current_dir, "timesfm-2.0-500m-pytorch/torch_model.ckpt")
+
+
+tfm = {}
+def init_timesfm(horizon_len: int, context_len: int) -> timesfm.TimesFm:
+    """
+    初始化TimesFM模型
+    
+    Args:
+        horizon_len: 预测 horizon_len 天
+        context_len: 上下文长度
+        
+    Returns:
+        timesfm.TimesFm: 初始化后的TimesFM模型实例
+    """
+    global tfm
+    if f"{horizon_len}_{context_len}" not in tfm:
+        print("初始化TimesFM模型...")
+        tfm[f"{horizon_len}_{context_len}"] = timesfm.TimesFm(
+            hparams=timesfm.TimesFmHparams(
+                backend="gpu",
+                per_core_batch_size=32,  # 降低批次大小以支持并发
+                horizon_len=horizon_len,
+                num_layers=50,
+                use_positional_embedding=False,
+                context_len=context_len,
+            ),
+            checkpoint=timesfm.TimesFmCheckpoint(
+                path=original_model),
+        )
+        print(f"TimesFM模型 {horizon_len}_{context_len} 初始化完成")
+    return tfm[f"{horizon_len}_{context_len}"]

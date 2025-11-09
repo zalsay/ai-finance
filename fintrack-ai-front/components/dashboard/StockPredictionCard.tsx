@@ -1,14 +1,16 @@
 
 import React from 'react';
 import { StockData } from '../../types';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { getChangeColors, getChartColor } from '../../utils/colorUtils';
 
 interface StockPredictionCardProps {
   stock: StockData;
 }
 
-const Chart: React.FC<{ change: number }> = ({ change }) => {
+const Chart: React.FC<{ change: number; language: any }> = ({ change, language }) => {
     const isPositive = change >= 0;
-    const color = isPositive ? "#32F08C" : "#F05454";
+    const color = getChartColor(isPositive, language);
     // Static paths for visual representation
     const paths = {
       positive1: "M0 109C18.15 109 18.15 21 36.3 21C54.46 21 54.46 41 72.6 41C90.77 41 90.77 93 108.9 93C127.07 93 127.07 33 145.2 33C163.38 33 163.38 101 181.5 101C199.69 101 199.69 61 217.8 61C236 61 236 45 254.1 45C272.3 45 272.3 121 290.4 121C308.6 121 308.6 149 326.7 149C344.9 149 344.9 1 363 1C381.2 1 381.2 81 399.3 81C417.5 81 417.5 129 435.6 129C453.8 129 453.8 25 472 25",
@@ -33,7 +35,9 @@ const Chart: React.FC<{ change: number }> = ({ change }) => {
 
 
 const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
+    const { language } = useLanguage();
     const isPositive = stock.changePercent >= 0;
+    const { textClass } = getChangeColors(isPositive, language);
     const confidenceColor = stock.prediction?.confidence ?? 0 > 85 ? 'text-primary' : (stock.prediction?.confidence ?? 0) > 70 ? 'text-yellow-400' : 'text-red-400';
 
     return (
@@ -45,13 +49,13 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
                 </div>
                 <div>
                     <p className="text-white text-2xl font-bold leading-tight">${stock.currentPrice.toFixed(2)}</p>
-                    <p className={`text-sm font-medium leading-normal text-right ${isPositive ? 'text-primary' : 'text-red-400'}`}>
+                    <p className={`text-sm font-medium leading-normal text-right ${textClass}`}>
                         {isPositive ? '+' : ''}{stock.changePercent.toFixed(2)}%
                     </p>
                 </div>
             </div>
             <div className="flex min-h-[150px] md:min-h-[180px] flex-1 flex-col gap-4 py-4">
-                <Chart change={stock.changePercent} />
+                <Chart change={stock.changePercent} language={language} />
             </div>
             {stock.prediction ? (
                 <>
