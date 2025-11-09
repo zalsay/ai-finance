@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { StockData } from '../../types';
 import StockPredictionCard from './StockPredictionCard';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface DashboardProps {
   stocks: StockData[];
@@ -22,6 +23,7 @@ const FilterChip: React.FC<{ label: string; active?: boolean; onClick: () => voi
 
 
 const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error }) => {
+    const { t } = useLanguage();
     const [activeFilter, setActiveFilter] = useState('All');
     const filters = ['All', 'Highest Confidence', 'Potential Growth', 'Bullish', 'Bearish'];
 
@@ -45,8 +47,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error }) => {
         <div className="flex flex-col gap-6">
             <header className="flex flex-wrap justify-between gap-4 items-center">
                 <div className="flex flex-col gap-1">
-                    <h1 className="text-white text-4xl font-black leading-tight tracking-[-0.033em]">Predicted Trends</h1>
-                    <p className="text-white/60 text-base font-normal leading-normal">AI-powered forecasts for your favorite stocks.</p>
+                    <h1 className="text-white text-4xl font-black leading-tight tracking-[-0.033em]">{t('dashboard.title')}</h1>
+                    <p className="text-white/60 text-base font-normal leading-normal">{t('dashboard.subtitle')}</p>
                 </div>
             </header>
             <div className="flex flex-col gap-4">
@@ -61,19 +63,24 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error }) => {
                     </div>
                     <button className="flex items-center justify-center gap-2 px-4 h-10 rounded-lg bg-primary text-background-dark text-sm font-bold leading-normal tracking-[0.015em] hover:opacity-90 transition-opacity">
                         <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
-                        <span className="truncate">Add Stock</span>
+                        <span className="truncate">{t('dashboard.addStock')}</span>
                     </button>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
                     {filters.map(filter => (
-                        <FilterChip key={filter} label={filter} active={activeFilter === filter} onClick={() => setActiveFilter(filter)} />
+                        <FilterChip 
+                            key={filter} 
+                            label={t(`dashboard.filter${filter.replace(/\s+/g, '')}`)} 
+                            active={activeFilter === filter} 
+                            onClick={() => setActiveFilter(filter)} 
+                        />
                     ))}
                 </div>
             </div>
 
             {error && (
                 <div className="bg-red-900/50 border border-red-500/50 text-red-300 p-4 rounded-lg text-center">
-                    <p className="font-bold">An Error Occurred</p>
+                    <p className="font-bold">{t('dashboard.errorTitle')}</p>
                     <p className="text-sm">{error}</p>
                 </div>
             )}
@@ -106,7 +113,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error }) => {
             </div>
             {!isLoading && filteredStocks.length === 0 && (
                 <div className="text-center col-span-full py-12 bg-card-dark rounded-xl">
-                    <p className="text-white/80">No stocks match the current filter.</p>
+                    <p className="text-white/80">{t('dashboard.noStocks')}</p>
                 </div>
             )}
         </div>

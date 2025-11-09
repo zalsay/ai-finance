@@ -8,14 +8,32 @@ import Pricing from './components/pricing/Pricing';
 import { View, StockData } from './types';
 import { getStockPredictions } from './services/geminiService';
 import { INITIAL_STOCKS, NAVIGATION_ITEMS } from './constants';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+import LanguageSwitcher from './components/layout/LanguageSwitcher';
+import { authAPI } from './services/apiService';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+    const { t } = useLanguage();
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [currentView, setCurrentView] = useState<View>('dashboard');
     const [stocks, setStocks] = useState<StockData[]>(INITIAL_STOCKS);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
+
+    // 检查用户是否已登录
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            // 验证token是否有效
+            authAPI.getProfile()
+                .then(() => setIsAuthenticated(true))
+                .catch(() => {
+                    localStorage.removeItem('token');
+                    setIsAuthenticated(false);
+                });
+        }
+    }, []);
 
     const fetchPredictions = useCallback(async () => {
         setIsLoading(true);
@@ -45,9 +63,16 @@ const App: React.FC = () => {
         setIsAuthenticated(true);
     };
     
-    const handleLogout = () => {
-        setIsAuthenticated(false);
-        setCurrentView('dashboard');
+    const handleLogout = async () => {
+        try {
+            await authAPI.logout();
+        } catch (error) {
+            console.error('Logout error:', error);
+        } finally {
+            localStorage.removeItem('token');
+            setIsAuthenticated(false);
+            setCurrentView('dashboard');
+        }
     };
 
     const renderView = () => {
@@ -60,8 +85,8 @@ const App: React.FC = () => {
                 return <Pricing />;
             default:
                 return <div className="text-center p-8 bg-card-dark rounded-lg">
-                    <h2 className="text-2xl font-bold">Coming Soon</h2>
-                    <p className="text-white/60 mt-2">This feature is currently under development.</p>
+                    <h2 className="text-2xl font-bold">{t('common.comingSoon')}</h2>
+                    <p className="text-white/60 mt-2">{t('common.comingSoonDesc')}</p>
                 </div>;
         }
     };
@@ -75,29 +100,45 @@ const App: React.FC = () => {
             <Sidebar currentView={currentView} setCurrentView={setCurrentView} onLogout={handleLogout} />
             
             {/* Mobile Navigation */}
-             <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#11221a] border-t border-white/10 z-50">
-                <div className="flex justify-around">
-                    {NAVIGATION_ITEMS.slice(0, 5).map(item => (
+             <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#11221a] border-t border-white/10 z-50 safe-area-inset-bottom">
+                <div className="flex justify-around items-center h-16">
+                    {NAVIGATION_ITEMS.slice(0, 4).map(item => (
                          <button
                             key={item.id}
                             onClick={() => setCurrentView(item.id)}
-                            className={`flex flex-col items-center justify-center p-2 w-full transition-colors ${
+                            className={`flex flex-col items-center justify-center py-1 px-2 w-full h-full transition-colors ${
                                 currentView === item.id ? 'text-primary' : 'text-white/60 hover:text-white'
                             }`}
                          >
-                            <span className="material-symbols-outlined" style={{ fontVariationSettings: currentView === item.id ? "'FILL' 1" : "" }}>
+                            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: currentView === item.id ? "'FILL' 1" : "" }}>
                                 {item.icon}
                             </span>
-                             <span className="text-[10px] truncate">{item.label}</span>
+                             <span className="text-[9px] mt-0.5 truncate leading-tight">{t(`nav.${item.id}`)}</span>
                          </button>
                     ))}
+                    {/* Language Switcher for Mobile */}
+                    <div className="flex flex-col items-center justify-center py-1 px-2 w-full h-full">
+                        <div className="scale-[0.65] origin-center">
+                            <LanguageSwitcher />
+                        </div>
+                    </div>
                 </div>
              </div>
 
-            <main className="flex-1 p-4 sm:p-8 pb-20 lg:pb-8">
-                {renderView()}
+            <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 sm:pb-24 lg:pb-8 min-h-screen lg:min-h-0">
+                <div className="max-w-full overflow-x-auto">
+                    {renderView()}
+                </div>
             </main>
         </div>
+    );
+};
+
+const App: React.FC = () => {
+    return (
+        <LanguageProvider>
+            <AppContent />
+        </LanguageProvider>
     );
 };
 
