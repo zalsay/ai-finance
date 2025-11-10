@@ -16,8 +16,8 @@ PostgresHandler: 使用后端Go API读取PG历史数据、通过SCF拉取最新�
 4) 通过批量接口写入PG
 """
 
-import asyncio, os
-import httpx
+import asyncio, os, sys
+import httpx, time, random
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
@@ -27,13 +27,17 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 ai_functions_dir = os.path.dirname(current_dir)
 finance_dir = os.path.dirname(ai_functions_dir)
 akshare__server_dir = os.path.join(finance_dir, "akshare-server")
+
+pre_data_dir = os.path.join(ai_functions_dir, "preprocess_data")
+print(pre_data_dir)
 sys.path.append(akshare__server_dir)
-from ak_functions import main_handler
+from ak_functions import *
+
+sys.path.append(pre_data_dir)
+from trading_date_processor import *
 
 # 复用已经实现和验证过的数据获取与转换逻辑
 from get_finanial_data import (
-    finance_dir,
-    get_stock_data_from_scf,
     convert_dataframe_to_api_format,
 )
 
@@ -114,18 +118,12 @@ class PostgresHandler:
         try:
             payload = {"type": stock_type, "limit": limit, "offset": 0}
             resp = await self._post_json(f"/api/v1/stock-data/{symbol}", payload)
+            if resp.get("code") != 200:
+                logger.error(f"获取最新记录失败: {resp}")
+                return None
             data = resp.get("data") if isinstance(resp, dict) else resp
             if isinstance(data, list) and len(data) > 0:
                 return data[0]
-            # 兼容旧服务：尝试 GET 查询
-            if self.allow_get_fallback:
-                resp_get = await self._get(
-                    f"/api/v1/stock-data/{symbol}",
-                    params={"type": stock_type, "limit": limit, "offset": 0},
-                )
-                data_get = resp_get.get("data") if isinstance(resp_get, dict) else resp_get
-                if isinstance(data_get, list) and len(data_get) > 0:
-                    return data_get[0]
             return None
         except Exception as e:
             logger.error(f"获取最新记录失败: {e}")
@@ -498,8 +496,7 @@ class PostgresHandler:
             except Exception:
                 return None
 
-    async def sync_stock(self, symbol: str, stock_type: int = 1, batch_size: int = 1000,
-                         start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict:
+    async def sync_stock(self, symbol: str, stock_type: int = 1, batch_size: int = 1000) -> Dict:
         """
         增量同步该股票：读取PG最新日期 -> 使用SCF获取从下一交易日到end_date的数据 -> 转换 -> 批量写入PG
         返回执行统计信息
@@ -519,29 +516,29 @@ class PostgresHandler:
             return result
 
         # 计算增量开始日期
-        if not start_date:
-            latest = await self.get_latest(symbol, stock_type=stock_type, limit=1)
-            if latest and latest.get("datetime"):
-                latest_dt = self._parse_iso_datetime(latest["datetime"])  # 已存储的最新日期
-                if latest_dt:
-                    start_dt = latest_dt + timedelta(days=1)
-                    start_date = self._to_yyyymmdd(start_dt)
-                    logger.info(f"最新PG日期: {latest_dt}, 增量开始: {start_date}")
-                else:
-                    # 无法解析则回退到较早日期
-                    start_date = "19900101"
-            else:
-                # 数据库没有历史数据，从较早日期开始
-                start_date = "19900101"
+        start_date = "20100101"
+        latest = await self.get_latest(symbol, stock_type=stock_type, limit=1)
+        if latest and latest.get("datetime"):
+            latest_dt = self._parse_iso_datetime(latest["datetime"])  # 已存储的最新日期
+            if latest_dt:
+                start_dt = latest_dt + timedelta(days=1)
+                start_date = self._to_yyyymmdd(start_dt)
+                logger.info(f"最新PG日期: {latest_dt}, 增量开始: {start_date}")
+
 
         # 结束日期默认取昨天
-        if not end_date:
-            end_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-
+        end_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+        trading_days = get_trading_days(start_date, end_date, need_=False)
+        if not trading_days:
+            result["error"] = "未获取到交易日历"
+            return result
+        start_date = trading_days[0]
+        end_date = trading_days[-1]
         try:
             # 使用SCF获取该区间数据（同步函数放入线程，避免阻塞事件循环）
             logger.info(f"从SCF获取数据: symbol={symbol}, start_date={start_date}, end_date={end_date}")
-            df = await asyncio.to_thread(get_stock_data_from_scf, symbol, start_date, end_date)
+            sync_handler = SyncDataHanlder()
+            df = await asyncio.to_thread(sync_handler.get_stock_data_from_local, symbol, stock_type, start_date, end_date)
             if df is None or df.empty:
                 result["error"] = "SCF未返回数据"
                 return result
@@ -583,15 +580,151 @@ class PostgresHandler:
 
 class SyncDataHanlder:
     def __init__(self, base_url: str = "http://8.163.5.7:8000", api_token: str = "fintrack-dev-token"):
-        self.pg_handler = PostgresHandler(base_url=base_url, api_token=api_token)
+       pass
 
-    def update_stock(self, symbol: str, stock_type: int = 1, batch_size: int = 1000,
-                         start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict:
+    def get_from_local(self, symbol: str, stock_type: int = 1, start_date: Optional[str] = None, end_date: Optional[str] = None, adjust: str = "hfq") -> Dict:
+        """
+        从本地数据库获取该股票的最新记录
+        """
+        event = {}
+        if stock_type == 1:
+            event["type"] = "stock"
+        elif stock_type == 2:
+            event["type"] = "fund"
+        elif stock_type == 3:
+            event["type"] = "index"
+        else:
+            return {"error": "未知股票类型"}
+        trading_start_dates = get_trading_days(start_date, end_date, need_=False)
+        if len(trading_start_dates) == 0:
+            return {"error": "无交易日"}
+        event["code"] = symbol
+        event["start_date"] = trading_start_dates[0]
+        event["end_date"] = trading_start_dates[-1]
+        event["adjust"] = adjust
+        result = stock_zh_a_daily(event["code"], event["start_date"], event["end_date"], adjust)
+        print("stock_zh_a_daily: ", result)
+        if result is None or result.empty:
+            return 500, None
+        return 200, result
+
+    def get_stock_data_from_local(self, symbol: str, stock_type: int = 1, start_date=None, end_date=None, years=0, adjust: str = "hfq", max_retries=3):
+        """
+        使用SCF云函数获取股票数据
+        
+        Args:
+            symbol (str): 股票代码，如'600000'
+            stock_type (int): 股票类型，1为股票，2为基金，3为指数，默认1
+            start_date (str): 开始日期，格式'YYYYMMDD'
+            end_date (str): 结束日期，格式'YYYYMMDD'，None表示当前日期
+            years (int): 时间范围，单位年，默认10年
+            max_retries (int): 最大重试次数
+            
+        Returns:
+            pd.DataFrame: 股票数据DataFrame，包含日期、开盘价、最高价、最低价、收盘价、成交量等
+        """
+        logger.info(f"使用本地函数获取股票数据: {symbol}, stock_type={stock_type}, start_date={start_date}, end_date={end_date}, years={years}, adjust={adjust}")
+        
+        # 处理股票代码格式，确保符合SCF函数要求
+        if stock_type == 1 or stock_type == 2:
+            scf_symbol = symbol
+        elif stock_type == 3:
+            scf_symbol = f"index_{symbol}"
+        else:
+            return {"error": "未知股票类型"}
+        
+        if end_date is None:
+            end_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+        if start_date is None and years > 0:
+            start_date = (datetime.now() - timedelta(days=365*years)).strftime("%Y%m%d")
+        else:
+            return {"error": "未知时间范围"}
+        retry_count = 0
+        while retry_count < max_retries:
+            try:    
+                logger.info(f"第 {retry_count + 1} 次尝试调用本地函数")
+                code, response_data = self.get_from_local(symbol, stock_type, start_date, end_date, adjust)
+                
+                # 检查响应状态
+                if code == 200 :
+                    df = response_data
+                    if not df.empty:
+                        # 处理日期转换 - 从Unix时间戳(毫秒)转换为datetime
+                        if 'date' in df.columns:
+                            # 正确处理Unix时间戳转换
+                            df['datetime'] = pd.to_datetime(df['date'], unit='ms', utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+                            df = df.drop('date', axis=1)
+                        elif 'datetime' in df.columns:
+                            df['datetime'] = pd.to_datetime(df['datetime'])
+                        
+                        # 计算缺失的字段
+                        if 'close' in df.columns and 'open' in df.columns:
+                            # 计算涨跌幅 (percentage_change)
+                            df['percentage_change'] = ((df['close'] - df['close'].shift(1)) / df['close'].shift(1) * 100).fillna(0.0)
+                            
+                            # 计算涨跌额 (amount_change)
+                            df['amount_change'] = (df['close'] - df['close'].shift(1)).fillna(0.0)
+                            
+                            # 计算振幅 (amplitude)
+                            if 'high' in df.columns and 'low' in df.columns:
+                                df['amplitude'] = ((df['high'] - df['low']) / df['close'].shift(1) * 100).fillna(0.0)
+                            else:
+                                df['amplitude'] = 0.0
+                        
+                        # 计算成交额 (amount) - 如果没有提供，使用成交量*收盘价估算
+                        if 'amount' not in df.columns:
+                            if 'volume' in df.columns and 'close' in df.columns:
+                                df['amount'] = df['volume'] * df['close']
+                            else:
+                                df['amount'] = 0.0
+                        
+                        # 计算换手率 (turnover_rate) - 如果没有提供，使用现有的turnover字段或设为0
+                        if 'turnover_rate' not in df.columns:
+                            if 'turnover' in df.columns:
+                                df['turnover_rate'] = df['turnover'] * 100  # 转换为百分比
+                            else:
+                                df['turnover_rate'] = 0.0
+                        
+                        # 确保所有数值字段都是float类型
+                        numeric_columns = ['open', 'high', 'low', 'close', 'volume', 'amount', 
+                                        'amplitude', 'percentage_change', 'amount_change', 'turnover_rate']
+                        for col in numeric_columns:
+                            if col in df.columns:
+                                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                        
+                        # 清理数据
+                        df = df.fillna(0)
+                        df = df.dropna()
+                        
+                        logger.info(f"成功获取股票 {symbol} 数据，共 {len(df)} 条记录")
+                        logger.info(f"数据处理完成，最终DataFrame形状: {df.shape}")
+                        logger.info(f"列名: {list(df.columns)}")
+                        return df
+                    else:
+                        logger.warning(f"SCF返回的数据为空: {symbol}")
+                        
+                else:
+                    logger.error(f"SCF云函数返回错误")
+                    
+            except Exception as e:
+                retry_count += 1
+                logger.error(f"第 {retry_count} 次获取数据失败: {str(e)}")
+                
+                if retry_count < max_retries:
+                    wait_time = random.uniform(1, 3) * retry_count
+                    logger.info(f"等待 {wait_time:.2f} 秒后重试...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"达到最大重试次数 {max_retries}，获取数据失败")
+                    return None
+        
+        return None
+    def update_stock(self, symbol: str, stock_type: int = 1, batch_size: int = 1000) -> Dict:
         """
         增量同步该股票：读取PG最新日期 -> 使用SCF获取从下一交易日到end_date的数据 -> 转换 -> 批量写入PG
         返回执行统计信息
         """
-        return self.pg_handler.sync_stock(symbol, stock_type, batch_size, start_date, end_date)
+        return self.pg_handler.sync_stock(symbol, stock_type, batch_size)
 
 
 async def _demo():
@@ -599,28 +732,33 @@ async def _demo():
     async with PostgresHandler(base_url="http://8.163.5.7:8000", api_token="fintrack-dev-token") as handler:
         ok = await handler.health_check()
         print("健康检查:", ok)
+        sync_result = await handler.sync_stock("sh600398", stock_type=1)
+        print("同步结果:", sync_result)
+        # latest = await handler.get_latest("600398", stock_type=1, limit=1)
+        # print("最新记录:", latest)
 
-        latest = await handler.get_latest("600398", stock_type=1, limit=1)
-        print("最新记录:", latest)
+        # # 设置一个有效的日期区间（最近 30 天）
+        # end_date = datetime.now().strftime("%Y-%m-%d")
+        # start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        # print(f"测试日期区间: {start_date} 到 {end_date}")
+        # # 自动检查区间数据是否覆盖到 end_date，若未覆盖则触发增量同步并重试读取
+        # df = await handler.ensure_date_range_df(
+        #     symbol="600398",
+        #     start_date=start_date,
+        #     end_date=end_date,
+        #     stock_type=1,
+        #     batch_size=1000,
+        #     requery=True,
+        # )
 
-        # 设置一个有效的日期区间（最近 30 天）
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        print(f"测试日期区间: {start_date} 到 {end_date}")
-        # 自动检查区间数据是否覆盖到 end_date，若未覆盖则触发增量同步并重试读取
-        df = await handler.ensure_date_range_df(
-            symbol="600398",
-            start_date=start_date,
-            end_date=end_date,
-            stock_type=1,
-            batch_size=1000,
-            requery=True,
-        )
+        # print("区间记录数:", len(df))
+        # if not df.empty:
+        #     print("区间最新日期:", df["datetime"].max())
 
-        print("区间记录数:", len(df))
-        if not df.empty:
-            print("区间最新日期:", df["datetime"].max())
-
-
+def test():
+    handler = SyncDataHanlder()
+    handler.get_stock_data_from_local("sh600398", stock_type=1, start_date="20240101", end_date="20240605")
 if __name__ == "__main__":
     asyncio.run(_demo())
+    # test()
+

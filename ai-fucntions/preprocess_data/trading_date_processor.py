@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 
-def get_trading_days(start_date, end_date):
+def get_trading_days(start_date, end_date, need_: bool = True):
     """
     使用exchange_calendars获取中国股市的交易日
     
@@ -23,15 +23,23 @@ def get_trading_days(start_date, end_date):
             start_date = pd.to_datetime(start_date)
         if isinstance(end_date, str):
             end_date = pd.to_datetime(end_date)
-        
+        if start_date.year < 2005:
+            start_date = pd.to_datetime('20050101')
+            if need_:
+                return [start_date.date(), end_date.date()]
+            else:
+                return [start_date.strftime('%Y%m%d'), end_date.strftime('%Y%m%d')]
         # 获取交易日
         trading_days = china_calendar.sessions_in_range(
             start_date.strftime('%Y-%m-%d'),
             end_date.strftime('%Y-%m-%d')
         )
-        
+
         # 转换为日期列表
-        trading_dates = [date.date() for date in trading_days]
+        if need_:
+            trading_dates = [date.date() for date in trading_days]
+        else:
+            trading_dates = [date.strftime('%Y%m%d') for date in trading_days]
         
         print(f"交易日历: {start_date.date()} 到 {end_date.date()}")
         print(f"总交易日数量: {len(trading_dates)}")
