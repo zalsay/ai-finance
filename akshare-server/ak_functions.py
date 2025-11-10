@@ -16,6 +16,9 @@ from cons import (
     zh_sina_a_stock_qfq_url,
     zh_sina_a_stock_amount_url,
 )
+def hello():
+    return "hello world"
+
 def fund_open_fund_daily_em() -> pd.DataFrame:
     """
     东方财富网-天天基金网-基金数据-开放式基金净值
@@ -360,11 +363,11 @@ def fund_open_fund_info_em(fund, indicator,return_type):
             return temp_df
 
 def stock_zh_a_daily(
-    symbol: str = "sh603843",
-    start_date: str = "19900101",
-    end_date: str = "21000118",
-    adjust: str = "",
-) -> pd.DataFrame:
+        symbol: str = "sh603843",
+        start_date: str = "19900101",
+        end_date: str = "21000118",
+        adjust: str = "",
+    ) -> pd.DataFrame:
     """
     新浪财经-A 股-个股的历史行情数据, 大量抓取容易封 IP
     https://finance.sina.com.cn/realstock/company/sh603843/nc.shtml
@@ -429,7 +432,8 @@ def stock_zh_a_daily(
     temp_df = pd.merge(
         data_df, amount_data_df, left_index=True, right_index=True, how="outer"
     )
-    temp_df.fillna(method="ffill", inplace=True)
+    # 使用 ffill 替代 fillna(method="ffill") 以避免未来弃用警告
+    temp_df.ffill(inplace=True)
     temp_df = temp_df.astype(float)
     temp_df["amount"] = temp_df["amount"] * 10000
     temp_df["turnover"] = temp_df["volume"] / temp_df["amount"]
@@ -470,7 +474,8 @@ def stock_zh_a_daily(
             right_index=True,
             how="outer",
         )
-        temp_df.fillna(method="ffill", inplace=True)
+        # 使用 ffill 替代 fillna(method="ffill") 以避免未来弃用警告
+        temp_df.ffill(inplace=True)
         temp_df = temp_df.astype(float)
         temp_df.dropna(inplace=True)
         temp_df.drop_duplicates(
@@ -506,7 +511,8 @@ def stock_zh_a_daily(
             right_index=True,
             how="outer",
         )
-        temp_df.fillna(method="ffill", inplace=True)
+        # 使用 ffill 替代 fillna(method="ffill") 以避免未来弃用警告
+        temp_df.ffill(inplace=True)
         temp_df = temp_df.astype(float)
         temp_df.dropna(inplace=True)
         temp_df.drop_duplicates(
@@ -525,6 +531,7 @@ def stock_zh_a_daily(
         temp_df.dropna(inplace=True)
         temp_df.reset_index(inplace=True)
         return temp_df
+
 def index_code_id_map_em() -> dict:
     """
     东方财富-股票和市场代码
@@ -777,13 +784,14 @@ def main_handler(event,context):
             adjust = ''
         try:
             result = stock_zh_a_daily(event["code"],start_date,end_date,adjust)
+            print(result)
             # result = index_zh_a_hist(event["code"],start_date,end_date,adjust)
             # print(result.head())
             json_data = result.to_json(orient='records')
             json_object = json.loads(json_data)
             return {'code':200,"data":json_object}
-        except:
-            print('scf invoke error')
+        except Exception as e:
+            print('scf invoke error',str(e))
             return {'code':0,'msg':'scf invoke error'}   
     elif event["type"] == 'index':
         if "start_date" in event:
