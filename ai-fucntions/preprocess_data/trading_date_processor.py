@@ -1,6 +1,11 @@
 import exchange_calendars as xcals
 import pandas as pd
 from datetime import datetime, timedelta
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
 
 
 def get_trading_days(start_date, end_date, need_: bool = True):
@@ -41,14 +46,14 @@ def get_trading_days(start_date, end_date, need_: bool = True):
         else:
             trading_dates = [date.strftime('%Y%m%d') for date in trading_days]
         
-        print(f"交易日历: {start_date.date()} 到 {end_date.date()}")
-        print(f"总交易日数量: {len(trading_dates)}")
+        logger.info(f"交易日历: {start_date.date()} 到 {end_date.date()}")
+        logger.info(f"总交易日数量: {len(trading_dates)}")
         
         return trading_dates
         
     except Exception as e:
-        print(f"获取交易日历失败: {e}")
-        print("回退到简单的工作日过滤")
+        logger.error(f"获取交易日历失败: {e}")
+        logger.info("回退到简单的工作日过滤")
         
         # 回退方案：简单的工作日过滤
         date_range = pd.date_range(start=start_date, end=end_date, freq='D')
@@ -84,9 +89,9 @@ def filter_trading_days_data(df, date_column='ds'):
     # 过滤数据，只保留交易日
     df_filtered = df[df[date_column].dt.date.isin(trading_days)]
     
-    print(f"原始数据: {len(df)} 行")
-    print(f"过滤后数据: {len(df_filtered)} 行")
-    print(f"过滤掉的非交易日: {len(df) - len(df_filtered)} 行")
+    logger.info(f"原始数据: {len(df)} 行")
+    logger.info(f"过滤后数据: {len(df_filtered)} 行")
+    logger.info(f"过滤掉的非交易日: {len(df) - len(df_filtered)} 行")
     
     return df_filtered
 
@@ -135,15 +140,15 @@ def get_previous_trading_days(reference_date=None, days=1):
         # 返回前n天的交易日
         result = trading_dates[:days]
         
-        print(f"参考日期: {reference_date_only}")
-        print(f"请求前 {days} 个交易日")
-        print(f"找到的交易日: {result[0]}")
+        logger.info(f"参考日期: {reference_date_only}")
+        logger.info(f"请求前 {days} 个交易日")
+        logger.info(f"找到的交易日: {result[0]}")
         
         return result[0]
         
     except Exception as e:
-        print(f"获取前n天交易日失败: {e}")
-        print("回退到简单的工作日计算")
+        logger.error(f"获取前n天交易日失败: {e}")
+        logger.info("回退到简单的工作日计算")
         
         # 回退方案：简单的工作日计算
         if reference_date is None:
@@ -164,7 +169,7 @@ def get_previous_trading_days(reference_date=None, days=1):
                 days_found += 1
             days_back += 1
         
-        print(f"回退方案找到的工作日: {result}")
+        logger.info(f"回退方案找到的工作日: {result}")
         return result
 
 
@@ -203,15 +208,15 @@ def get_trading_date_range(start_date, days):
         # 返回前n天的交易日
         result = trading_dates[:days]
         
-        print(f"开始日期: {start_date.date()}")
-        print(f"请求连续 {days} 个交易日")
-        print(f"找到的交易日范围: {result[0] if result else 'None'} 到 {result[-1] if result else 'None'}")
+        logger.info(f"开始日期: {start_date.date()}")
+        logger.info(f"请求连续 {days} 个交易日")
+        logger.info(f"找到的交易日范围: {result[0] if result else 'None'} 到 {result[-1] if result else 'None'}")
         
         return result
         
     except Exception as e:
-        print(f"获取连续交易日失败: {e}")
-        print("回退到简单的工作日计算")
+        logger.error(f"获取连续交易日失败: {e}")
+        logger.info("回退到简单的工作日计算")
         
         # 回退方案：简单的工作日计算
         if isinstance(start_date, str):
@@ -230,5 +235,5 @@ def get_trading_date_range(start_date, days):
                 days_found += 1
             days_forward += 1
         
-        print(f"回退方案找到的工作日: {result}")
+        logger.info(f"回退方案找到的工作日: {result}")
         return result
