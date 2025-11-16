@@ -11,14 +11,13 @@ pre_data_dir = os.path.join(parent_dir, 'preprocess_data')
 sys.path.append(pre_data_dir)
 
 from chunks_functions import create_chunks_from_test_data
-from process_from_ak import df_preprocess
+from processor import df_preprocess
 from math_functions import mean_squared_error, mean_absolute_error
 
 def predict_single_chunk_mode1(
         df_train: pd.DataFrame,
         chunk: pd.DataFrame, 
         tfm, 
-        stock_code: str,
         chunk_index: int
     ) -> ChunkPredictionResult:
     """
@@ -50,7 +49,7 @@ def predict_single_chunk_mode1(
         # 调试信息：打印预测结果的列名
         print(f"  预测结果列名: {list(forecast_df.columns)}")
         print(f"  预测结果形状: {forecast_df.shape}")
-        
+        print(f"  预测结果前7行: {forecast_df.head(7)}")
         # 提取预测值和实际值
         actual_values = chunk['close'].tolist()
         
@@ -217,6 +216,7 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
             print(f"正在处理分块 {i+1}/{len(active_chunks)}...")
             
             result = predict_single_chunk_mode1(
+                df_train=df_train,
                 chunk=chunk,
                 tfm=tfm,
                 chunk_index=i
@@ -295,14 +295,14 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
 if __name__ == "__main__":
     from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
-        stock_code="000002",
+        stock_code="sh600398",
         years=10,
         horizon_len=7,
-        start_date="2023-06-30",
-        end_date="2025-08-30",
+        start_date="20100101",
+        end_date="20251114",
         context_len=2048,
         time_step=0,
-        stock_type='stock',
+        stock_type=1,
         chunk_num=1
     )
     tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)

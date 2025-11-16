@@ -327,19 +327,24 @@ class PostgresHandler:
         """
         try:
             payload = {"type": stock_type, "start_date": start_date, "end_date": end_date}
-            resp = await self._post_json(f"/api/v1/stock-data/{symbol}/range", payload)
-            data = resp.get("data") if isinstance(resp, dict) else resp
-            if isinstance(data, list):
-                return self._records_to_df(data)
-            # GET 兼容回退
+            try:
+                resp = await self._post_json(f"/api/v1/stock-data/{symbol}/range", payload)
+                data = resp.get("data") if isinstance(resp, dict) else resp
+                if isinstance(data, list):
+                    return self._records_to_df(data)
+            except Exception:
+                pass
             if self.allow_get_fallback:
-                resp_get = await self._get(
-                    f"/api/v1/stock-data/{symbol}/range",
-                    params={"type": stock_type, "start_date": start_date, "end_date": end_date},
-                )
-                data_get = resp_get.get("data") if isinstance(resp_get, dict) else resp_get
-                if isinstance(data_get, list):
-                    return self._records_to_df(data_get)
+                try:
+                    resp_get = await self._get(
+                        f"/api/v1/stock-data/{symbol}/range",
+                        params={"type": stock_type, "start_date": start_date, "end_date": end_date},
+                    )
+                    data_get = resp_get.get("data") if isinstance(resp_get, dict) else resp_get
+                    if isinstance(data_get, list):
+                        return self._records_to_df(data_get)
+                except Exception:
+                    pass
             return self._records_to_df([])
         except Exception as e:
             logger.error(f"按日期范围查询DF失败: {e}")
@@ -437,7 +442,7 @@ class PostgresHandler:
             # 若为空或无 datetime 列，则直接同步并重读
             if df is None or df.empty or ("datetime" not in df.columns):
                 logger.info(f"区间数据为空或缺少datetime列，触发增量同步: {symbol} {start_compact}~{end_compact}")
-                await self.sync_stock(symbol, stock_type=stock_type, batch_size=batch_size, start_date=start_compact, end_date=end_compact)
+                await self.sync_stock(symbol, stock_type=stock_type, batch_size=batch_size)
                 if requery:
                     return await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
                 return self._records_to_df([])
@@ -445,8 +450,11 @@ class PostgresHandler:
             # 检查最新日期是否覆盖到 end_date
             # 统一为 tz-naive，避免比较时报错
             latest_dt = pd.to_datetime(df["datetime"], errors="coerce", utc=True).dt.tz_localize(None).max()
-            target_end = pd.Timestamp(end_dash).tz_localize(None) if hasattr(pd.Timestamp(end_dash), 'tz_localize') else pd.Timestamp(end_dash)
-            if pd.isna(latest_dt) or latest_dt.normalize() < target_end.normalize():
+            trading_days = get_trading_days(start_compact, end_compact, need_=False)
+            if not trading_days:
+                return df
+            target_end_trading = pd.Timestamp(trading_days[-1]) + pd.Timedelta(hours=8)
+            if pd.isna(latest_dt) or latest_dt < target_end_trading:
                 # 计算增量开始日期：已经存在最新日期 + 1 天，与 start_date 取较晚者
                 if pd.isna(latest_dt):
                     incr_start_compact = start_compact
@@ -457,8 +465,8 @@ class PostgresHandler:
                     if pd.Timestamp(given_start_compact) > pd.Timestamp(incr_start_compact):
                         incr_start_compact = given_start_compact
 
-                logger.info(f"最新日期 {latest_dt} 未覆盖到 {target_end}，增量同步: {symbol} {incr_start_compact}~{end_compact}")
-                await self.sync_stock(symbol, stock_type=stock_type, batch_size=batch_size, start_date=incr_start_compact, end_date=end_compact)
+                logger.info(f"最新日期 {latest_dt} 未覆盖到 {target_end_trading}，增量同步: {symbol} {incr_start_compact}~{end_compact}")
+                await self.sync_stock(symbol, stock_type=stock_type, batch_size=batch_size)
                 if requery:
                     return await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
 
@@ -756,6 +764,6 @@ def test():
     handler = SyncDataHanlder()
     return handler.get_stock_data_from_local("sh600398", stock_type=1, start_date="20100101", end_date="20251101")
 if __name__ == "__main__":
-    # asyncio.run(_demo())
-    result = test()
-    print(result)
+    asyncio.run(_demo())
+    # result = test()
+    # print(result)
