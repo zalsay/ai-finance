@@ -603,6 +603,7 @@ class SyncDataHanlder:
         event["end_date"] = trading_start_dates[-1]
         event["adjust"] = adjust
         result = stock_zh_a_daily(event["code"], event["start_date"], event["end_date"], adjust)
+        
         print("stock_zh_a_daily: ", result)
         if result is None or result.empty:
             return 500, None
@@ -633,11 +634,7 @@ class SyncDataHanlder:
         else:
             return {"error": "未知股票类型"}
         
-        if end_date is None:
-            end_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-        if start_date is None and years > 0:
-            start_date = (datetime.now() - timedelta(days=365*years)).strftime("%Y%m%d")
-        else:
+        if start_date is None or end_date is None:
             return {"error": "未知时间范围"}
         retry_count = 0
         while retry_count < max_retries:
@@ -757,8 +754,8 @@ async def _demo():
 
 def test():
     handler = SyncDataHanlder()
-    handler.get_stock_data_from_local("sh600398", stock_type=1, start_date="20240101", end_date="20240605")
+    return handler.get_stock_data_from_local("sh600398", stock_type=1, start_date="20100101", end_date="20251101")
 if __name__ == "__main__":
-    asyncio.run(_demo())
-    # test()
-
+    # asyncio.run(_demo())
+    result = test()
+    print(result)

@@ -16,10 +16,10 @@ sys.path.append(pre_data_dir)
 from trading_date_processor import get_previous_trading_days
 
 # SCF云函数相关导入
-from tencentserverless import scf 
-from tencentserverless.scf import Client
-from tencentserverless.exception import TencentServerlessSDKException
-from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
+# from tencentserverless import scf 
+# from tencentserverless.scf import Client
+# from tencentserverless.exception import TencentServerlessSDKException
+# from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
 import numpy as np
 # 配置日志记录
 logging.basicConfig(
