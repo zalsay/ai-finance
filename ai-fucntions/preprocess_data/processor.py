@@ -3,9 +3,14 @@ import sys
 import numpy as np
 import pandas as pd
 import warnings
+import asyncio
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
 
@@ -17,9 +22,20 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 finance_dir = os.path.dirname(current_dir)  # 上级目录
 akshare_dir = os.path.join(finance_dir, 'akshare-tools')
 sys.path.append(akshare_dir)
-from get_finanial_data import ak_stock_data
+
 from postgres import PostgresHandler
 pg_client = PostgresHandler()
+
+def to_symbol(stock_code: str, stock_type: int = 1) -> str:
+    s = str(stock_code).lower()
+    if s.startswith("sh") or s.startswith("sz"):
+        return s
+    if stock_type in (1, 2):
+        if s.startswith("6") or s.startswith("5"):
+            return f"sh{stock_code}"
+        if s[0] in ("0", "1", "2", "3"):
+            return f"sz{stock_code}"
+    return stock_code
 
 def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_step=0, years=10, horizon_len=7):
     """
@@ -43,11 +59,13 @@ def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_s
         if end_date is None:
             end_date = yesterday
             if years > 0:
-                start_date = (datetime.now() - timedelta(days=years*365)).strftime("%Y-%m-%d")
+                start_date = (datetime.now() - timedelta(days=years*365)).strftime("%Y%m%d")
             else:
-                start_date = "1990-01-01"
+                start_date = "20100101"
         
-        df = pg_client.get_by_date_range_df(stock_code, start_date=start_date, end_date=end_date, stock_type=stock_type)
+        symbol = to_symbol(stock_code, stock_type)
+        logger.info(f"获取股票{symbol} 数据，时间范围：{start_date} 到 {end_date} ，股票类型：{stock_type}")
+        df = asyncio.run(pg_client.ensure_date_range_df(symbol=symbol, start_date=start_date, end_date=end_date, stock_type=stock_type))
         
         # 检查数据是否成功获取
         if df is None:
