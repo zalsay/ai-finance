@@ -13,19 +13,21 @@ def create_chunks_from_test_data(df_test: pd.DataFrame, horizon_len: int) -> Lis
         horizon_len: 每个分块的长度
         
     Returns:
-        List[pd.DataFrame]: 分块后的数据列表
+        List[pd.DataFrame]: 分块后的数据列表（仅包含完整分块，残缺分块舍弃）
     """
     chunks = []
     total_length = len(df_test)
-    
-    for i in range(0, total_length, horizon_len):
-        end_idx = min(i + horizon_len, total_length)
-        chunk = df_test.iloc[i:end_idx].copy()
-        
-        if len(chunk) > 0:  # 确保分块不为空
-            chunks.append(chunk)
-    
-    print(f"测试数据分块完成: 总长度 {total_length}, 分块数量 {len(chunks)}, 每块长度 {horizon_len}")
+    if horizon_len <= 0:
+        print("horizon_len 必须为正数")
+        return chunks
+    full_chunks = total_length // horizon_len
+    for idx in range(full_chunks):
+        start_idx = idx * horizon_len
+        end_idx = start_idx + horizon_len
+        chunk = df_test.iloc[start_idx:end_idx].copy()
+        chunks.append(chunk)
+    remainder = total_length % horizon_len
+    print(f"测试数据分块完成: 总长度 {total_length}, 分块数量 {len(chunks)}, 每块长度 {horizon_len}, 舍弃残缺长度 {remainder}")
     return chunks
 
 # 分块推理函数
