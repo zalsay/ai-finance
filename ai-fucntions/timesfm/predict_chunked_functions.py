@@ -16,7 +16,7 @@ from math_functions import mean_squared_error, mean_absolute_error
 
 def predict_single_chunk_mode1(
         df_train: pd.DataFrame,
-        chunk: pd.DataFrame, 
+        df_test: pd.DataFrame, 
         tfm, 
         chunk_index: int
     ) -> ChunkPredictionResult:
@@ -43,7 +43,7 @@ def predict_single_chunk_mode1(
         )
         
         # 获取预测结果的前horizon_len条记录
-        horizon_len = len(chunk)
+        horizon_len = len(df_test)
         forecast_chunk = forecast_df.head(horizon_len)
         
         # 调试信息：打印预测结果的列名
@@ -51,13 +51,13 @@ def predict_single_chunk_mode1(
         print(f"  预测结果形状: {forecast_df.shape}")
         print(f"  预测结果前7行: {forecast_df.head(7)}")
         # 提取预测值和实际值
-        actual_values = chunk['close'].tolist()
+        actual_values = df_test['close'].tolist()
         
         # 获取所有预测分位数
         predictions = {}
         forecast_columns = [col for col in forecast_chunk.columns if col.startswith('timesfm-q-')]
         
-        print(f"  找到的预测列: {forecast_columns}")
+        print(f"找到的预测列: {forecast_columns}")
         
         for col in forecast_columns:
             predictions[col] = forecast_chunk[col].tolist()
@@ -65,8 +65,9 @@ def predict_single_chunk_mode1(
         # 计算所有分位数的评估指标
         quantile_metrics = {}
         best_quantile = None
+        best_quantile_pct = None
         best_score = float('inf')
-        
+        best_pct = float('inf')
         # 定义要评估的分位数范围 (0.1 到 0.9)
         target_quantiles = [f'timesfm-q-0.{i}' for i in range(1, 10)]
         
@@ -82,7 +83,9 @@ def predict_single_chunk_mode1(
                 # 计算MSE和MAE
                 mse_q = mean_squared_error(np.array(pred_values_trimmed), np.array(actual_values_trimmed))
                 mae_q = mean_absolute_error(np.array(pred_values_trimmed), np.array(actual_values_trimmed))
-                
+                pct_q = (pred_values_trimmed[-1] / actual_values_trimmed[0] - 1) * 100
+                actual_pct = (actual_values_trimmed[-1] / actual_values_trimmed[0] - 1) * 100
+                diff_pct = abs(pct_q - actual_pct)
                 # 计算综合得分 (MSE和MAE各占50%权重)
                 # 为了统一量纲，对MSE和MAE进行标准化处理
                 combined_score = 0.5 * mse_q + 0.5 * mae_q
@@ -90,14 +93,19 @@ def predict_single_chunk_mode1(
                 quantile_metrics[quantile] = {
                     'mse': mse_q,
                     'mae': mae_q,
-                    'combined_score': combined_score
+                    'combined_score': combined_score,
+                    'pred_pct': pct_q,
+                    'actual_pct': actual_pct,
+                    'diff_pct': diff_pct
                 }
                 
                 # 找到最优分位数
                 if combined_score < best_score:
                     best_score = combined_score
                     best_quantile = quantile
-        
+                if diff_pct < best_pct:
+                    best_pct = diff_pct
+                    best_quantile_pct = quantile
         # 如果没有找到任何有效的分位数预测，使用默认值
         if not quantile_metrics:
             print(f"  ⚠️ 警告: 未找到有效的分位数预测，使用默认值")
@@ -111,12 +119,13 @@ def predict_single_chunk_mode1(
             
             print(f"  📊 分位数评估结果:")
             for q, metrics in quantile_metrics.items():
-                print(f"    {q}: MSE={metrics['mse']:.6f}, MAE={metrics['mae']:.6f}, 综合得分={metrics['combined_score']:.6f}")
+                print(f"    {q}: MSE={metrics['mse']:.2f}, MAE={metrics['mae']:.2f}, 综合得分={metrics['combined_score']:.2f}, 预测涨跌幅={metrics['pred_pct']:.2f}, 实际涨跌幅={metrics['actual_pct']:.2f}, 百分比差={metrics['diff_pct']:.2f}")
             print(f"  🏆 最优分位数: {best_quantile} (综合得分: {best_score:.6f})")
+            print(f"  🏆 最优分位数(涨跌幅): {best_quantile_pct} (百分比差: {best_pct:.6f})")
         
         # 获取实际值和预测值对应的日期范围
         # 实际值和预测值对应的是分块中的最后horizon_len个日期
-        chunk_dates = chunk['ds'].tolist()
+        chunk_dates = df_test['ds'].tolist()
         prediction_start_date = chunk_dates[-len(actual_values)].strftime('%Y-%m-%d') if len(actual_values) > 0 else chunk['ds'].min().strftime('%Y-%m-%d')
         prediction_end_date = chunk_dates[-1].strftime('%Y-%m-%d')
         
@@ -134,7 +143,9 @@ def predict_single_chunk_mode1(
                 'mse': mse, 
                 'mae': mae,
                 'best_quantile': best_quantile,
+                'best_quantile_pct': best_quantile_pct,
                 'best_combined_score': best_score,
+                'best_pct': best_pct,
                 'all_quantile_metrics': quantile_metrics
             }
         )
@@ -152,6 +163,7 @@ def predict_single_chunk_mode1(
                 'mse': float('inf'), 
                 'mae': float('inf'),
                 'best_quantile': 'timesfm-q-0.5',
+                'best_quantile_pct': 'timesfm-q-0.5',
                 'best_combined_score': float('inf'),
                 'all_quantile_metrics': {}
             }
@@ -206,18 +218,22 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
         
         # 对测试数据进行分块
         chunks = create_chunks_from_test_data(df_test, request.horizon_len)
-        active_chunks = chunks[:request.chunk_num]
+        active_chunks = chunks[:request.chunk_num] if request.chunk_num and request.chunk_num > 0 else chunks
         # 对每个分块进行预测
         chunk_results = []
         all_mse = []
         all_mae = []
-        
+        print(f"分块数量: {len(active_chunks)}")
         for i, chunk in enumerate(active_chunks):
             print(f"正在处理分块 {i+1}/{len(active_chunks)}...")
-            
+            history_len = i * request.horizon_len
+            if history_len > 0:
+                df_train_current = pd.concat([df_train, df_test.iloc[:history_len, :]], axis=0)
+            else:
+                df_train_current = df_train
             result = predict_single_chunk_mode1(
-                df_train=df_train,
-                chunk=chunk,
+                df_train=df_train_current,
+                df_test=chunk,
                 tfm=tfm,
                 chunk_index=i
             )
@@ -295,7 +311,7 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
 if __name__ == "__main__":
     from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
-        stock_code="sh600398",
+        stock_code="sz000001",
         years=10,
         horizon_len=7,
         start_date="20100101",
@@ -303,7 +319,7 @@ if __name__ == "__main__":
         context_len=2048,
         time_step=0,
         stock_type=1,
-        chunk_num=1
+        chunk_num=10
     )
     tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
     response = predict_chunked_mode1(test_request, tfm)
@@ -329,8 +345,8 @@ if __name__ == "__main__":
         print(f"  预测日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
         print(f"  实际值日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
         print(f"  实际值数量: {len(chunk_result.actual_values)}")
-        print(f"  预测列数量: {len(chunk_result.predictions)}")
-        
+        print(f"  最佳预测结果: {chunk_result.metrics['best_quantile']} 最佳分数: {chunk_result.metrics['best_combined_score']:.6f}")        
+        print(f"  最佳预测结果(涨跌幅): {chunk_result.metrics['best_quantile_pct']} 百分比差: {chunk_result.metrics['best_pct']:.6f}")
         # 显示指标
         # for metric, value in chunk_result.metrics.items():
         #     if isinstance(value, float) and value != float('inf'):
@@ -338,14 +354,6 @@ if __name__ == "__main__":
         #     else:
         #         print(f"  {metric}: {value}")
         
-        # 显示前几个预测值和实际值
-        if chunk_result.actual_values and chunk_result.predictions:
-            print(f"  前3个实际值: {chunk_result.actual_values[:3]}")
-            
-            # 显示中位数预测值
-            if 'timesfm-q-0.5' in chunk_result.predictions:
-                pred_values = chunk_result.predictions['timesfm-q-0.5']
-                print(f"  前3个预测值: {pred_values[:3]}")
     
     # 保存结果到文件
     mode_suffix = "chunked"
@@ -366,9 +374,41 @@ if __name__ == "__main__":
             f.write(f"  预测日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}\n")
             f.write(f"  实际值日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}\n")
             f.write(f"  指标: {chunk_result.metrics}\n")
+            quant_metrics = chunk_result.metrics.get('all_quantile_metrics', {})
+            f.write("  分位数评估结果:\n")
+            if quant_metrics:
+                for q in sorted(quant_metrics.keys()):
+                    m = quant_metrics[q]
+                    try:
+                        f.write(f"    {q}: MSE={m['mse']:.2f}, MAE={m['mae']:.2f}, 综合得分={m['combined_score']:.2f}, 预测涨跌幅={m['pred_pct']:.2f}, 实际涨跌幅={m['actual_pct']:.2f}, 百分比差={m['diff_pct']:.2f}\n")
+                    except Exception:
+                        f.write(f"    {q}: {m}\n")
+                best_q = chunk_result.metrics.get('best_quantile', '')
+                best_score = chunk_result.metrics.get('best_combined_score', '')
+                f.write(f"    最优分位数(综合得分): {best_q}, 综合得分: {best_score}\n")
+            else:
+                f.write("    无\n")
+            if chunk_result.actual_values:
+                start_actual = chunk_result.actual_values[0]
+                actual_pct = [((v / start_actual) - 1) * 100 if start_actual != 0 else 0 for v in chunk_result.actual_values]
+                best_mae = float('inf')
+                best_key_pct = None
+                for qi in range(1, 10):
+                    key = f"timesfm-q-0.{qi}"
+                    if key in chunk_result.predictions:
+                        pred_values = chunk_result.predictions[key]
+                        if len(pred_values) != len(actual_pct):
+                            continue
+                        pred_pct = [((v / start_actual) - 1) * 100 if start_actual != 0 else 0 for v in pred_values]
+                        mae_val = np.mean(np.abs(np.array(pred_pct) - np.array(actual_pct)))
+                        if mae_val < best_mae:
+                            best_mae = mae_val
+                            best_key_pct = key
+                if best_key_pct:
+                    f.write(f"    最优分位数(涨跌幅): {best_key_pct}\n")
             f.write(f"  实际值: {chunk_result.actual_values}\n")
             f.write(f"  预测值: {chunk_result.predictions}\n")
-    
+
     # 生成绘图
     from plot_functions import plot_chunked_prediction_results
     print(f"\n正在生成结果图表...")

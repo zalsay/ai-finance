@@ -3,6 +3,7 @@ import os, sys
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd
+import numpy as np
 from datetime import datetime
 current_dir = os.path.dirname(os.path.abspath(__file__))
 finance_dir = os.path.dirname(current_dir)
@@ -154,8 +155,15 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
         # Plot best predictions
         plt.plot(dates, best_predictions, 'r-', linewidth=2, label='Best Predictions', alpha=0.8)
         
-        # Add confidence intervals if available
+        # Plot all quantile predictions
         predictions = response.concatenated_predictions
+        quantile_keys = [f"timesfm-q-0.{i}" for i in range(1, 10) if f"timesfm-q-0.{i}" in predictions]
+        if quantile_keys:
+            colors = plt.cm.Reds(np.linspace(0.2, 0.8, len(quantile_keys)))
+            for color, key in zip(colors, quantile_keys):
+                plt.plot(dates, predictions[key], linewidth=1, color=color, alpha=0.6, label=key)
+        
+        # Add confidence intervals if available
         if 'timesfm-q-0.1' in predictions and 'timesfm-q-0.9' in predictions:
             lower_bound = predictions['timesfm-q-0.1']
             upper_bound = predictions['timesfm-q-0.9']
@@ -164,6 +172,30 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
             lower_bound = predictions['timesfm-q-0.25']
             upper_bound = predictions['timesfm-q-0.75']
             plt.fill_between(dates, lower_bound, upper_bound, alpha=0.2, color='red', label='50% Confidence Interval')
+
+        # Compute and plot closest quantile prediction (timesfm-q-0.1~0.9) based on percent change closeness
+        closest_quantile_series = []
+        for chunk_result in response.chunk_results:
+            chunk_size = len(chunk_result.actual_values)
+            if chunk_size == 0:
+                continue
+            start_actual = chunk_result.actual_values[0]
+            actual_pct = [0] * chunk_size if start_actual == 0 else [((v / start_actual) - 1) * 100 for v in chunk_result.actual_values]
+            best_mae = float('inf')
+            best_values = [0] * chunk_size
+            for i in range(1, 10):
+                key = f"timesfm-q-0.{i}"
+                if key in chunk_result.predictions:
+                    pred_values = chunk_result.predictions[key]
+                    if len(pred_values) != chunk_size:
+                        continue
+                    pred_pct = [0] * chunk_size if start_actual == 0 else [((v / start_actual) - 1) * 100 for v in pred_values]
+                    mae_val = mean_absolute_error(np.array(pred_pct), np.array(actual_pct))
+                    if mae_val < best_mae:
+                        best_mae = mae_val
+                        best_values = pred_values
+            closest_quantile_series.extend(best_values)
+        plt.plot(dates, closest_quantile_series, color='orange', linewidth=2, label='Closest Quantile Prediction')
         
         # Add chunk boundary lines
         chunk_boundaries = []
@@ -187,7 +219,7 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
         
         plt.xlabel('Date', fontsize=12)
         plt.ylabel('Stock Price', fontsize=12)
-        plt.legend(fontsize=10)
+        plt.legend(fontsize=10, ncol=2)
         plt.grid(True, alpha=0.3)
         
         # Set date format
