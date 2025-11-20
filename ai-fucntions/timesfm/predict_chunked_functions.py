@@ -41,6 +41,9 @@ def predict_single_chunk_mode1(
             value_name="close",
             num_jobs=1,
         )
+        rename_dict = {c: f"tsf-{c.split('timesfm-q-')[1]}" for c in forecast_df.columns if c.startswith('timesfm-q-')}
+        if rename_dict:
+            forecast_df = forecast_df.rename(columns=rename_dict)
         
         # 获取预测结果的前horizon_len条记录
         horizon_len = len(df_test)
@@ -55,7 +58,7 @@ def predict_single_chunk_mode1(
         
         # 获取所有预测分位数
         predictions = {}
-        forecast_columns = [col for col in forecast_chunk.columns if col.startswith('timesfm-q-')]
+        forecast_columns = [col for col in forecast_chunk.columns if col.startswith('tsf-')]
         
         print(f"找到的预测列: {forecast_columns}")
         
@@ -69,7 +72,7 @@ def predict_single_chunk_mode1(
         best_score = float('inf')
         best_pct = float('inf')
         # 定义要评估的分位数范围 (0.1 到 0.9)
-        target_quantiles = [f'timesfm-q-0.{i}' for i in range(1, 10)]
+        target_quantiles = [f'tsf-0.{i}' for i in range(1, 10)]
         
         for quantile in target_quantiles:
             if quantile in predictions:
@@ -111,7 +114,7 @@ def predict_single_chunk_mode1(
             print(f"  ⚠️ 警告: 未找到有效的分位数预测，使用默认值")
             mse = 0.0
             mae = 0.0
-            best_quantile = 'timesfm-q-0.5'
+            best_quantile = 'tsf-0.5'
         else:
             # 使用最优分位数的指标
             mse = quantile_metrics[best_quantile]['mse']
@@ -162,8 +165,8 @@ def predict_single_chunk_mode1(
             metrics={
                 'mse': float('inf'), 
                 'mae': float('inf'),
-                'best_quantile': 'timesfm-q-0.5',
-                'best_quantile_pct': 'timesfm-q-0.5',
+                'best_quantile': 'tsf-0.5',
+                'best_quantile_pct': 'tsf-0.5',
                 'best_combined_score': float('inf'),
                 'all_quantile_metrics': {}
             }
@@ -394,7 +397,7 @@ if __name__ == "__main__":
                 best_mae = float('inf')
                 best_key_pct = None
                 for qi in range(1, 10):
-                    key = f"timesfm-q-0.{qi}"
+                    key = f"tsf-0.{qi}"
                     if key in chunk_result.predictions:
                         pred_values = chunk_result.predictions[key]
                         if len(pred_values) != len(actual_pct):

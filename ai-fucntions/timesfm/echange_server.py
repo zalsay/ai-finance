@@ -31,7 +31,7 @@ def _select_closest_pct_quantile(chunk_result: ChunkPredictionResult) -> Optiona
     best_mae = float('inf')
     best_key = None
     for i in range(1, 10):
-        key = f"timesfm-q-0.{i}"
+        key = f"tsf-0.{i}"
         if key in chunk_result.predictions:
             pred_values = chunk_result.predictions[key]
             if len(pred_values) != len(actual_pct):
