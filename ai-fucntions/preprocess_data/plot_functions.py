@@ -117,85 +117,44 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
         dates = pd.to_datetime(response.concatenated_dates)
         actual_values = response.concatenated_actual
         
-        # Create best prediction values by selecting the best performing prediction for each chunk
-        best_predictions = []
-        chunk_start_idx = 0
-        
+        best_score_predictions = []
+        best_pct_predictions = []
         for chunk_result in response.chunk_results:
             chunk_size = len(chunk_result.actual_values)
-            
-            # Find the best prediction column for this chunk based on MSE
-            best_pred_key = None
-            best_mse = float('inf')
-            
-            for pred_key, pred_values in chunk_result.predictions.items():
-                if len(pred_values) == chunk_size:
-                    # Calculate MSE for this prediction column
-                    chunk_mse = mean_squared_error(np.array(pred_values), np.array(chunk_result.actual_values))
-                    if chunk_mse < best_mse:
-                        best_mse = chunk_mse
-                        best_pred_key = pred_key
-            
-            # Use the best prediction for this chunk, fallback to median or first available
-            if best_pred_key and best_pred_key in chunk_result.predictions:
-                chunk_best_pred = chunk_result.predictions[best_pred_key]
-            elif 'timesfm-q-0.5' in chunk_result.predictions:
-                chunk_best_pred = chunk_result.predictions['timesfm-q-0.5']
+            key_score = chunk_result.metrics.get('best_quantile')
+            key_pct = chunk_result.metrics.get('best_quantile_pct')
+            if key_score in chunk_result.predictions and len(chunk_result.predictions[key_score]) == chunk_size:
+                best_score_predictions.extend(chunk_result.predictions[key_score])
+            elif 'tsf-0.5' in chunk_result.predictions:
+                best_score_predictions.extend(chunk_result.predictions['tsf-0.5'][:chunk_size])
             elif chunk_result.predictions:
-                chunk_best_pred = list(chunk_result.predictions.values())[0]
+                best_score_predictions.extend(list(chunk_result.predictions.values())[0][:chunk_size])
             else:
-                chunk_best_pred = [0] * chunk_size
-            
-            best_predictions.extend(chunk_best_pred)
-            chunk_start_idx += chunk_size
+                best_score_predictions.extend([0] * chunk_size)
+            if key_pct in chunk_result.predictions and len(chunk_result.predictions[key_pct]) == chunk_size:
+                best_pct_predictions.extend(chunk_result.predictions[key_pct])
+            elif 'tsf-0.5' in chunk_result.predictions:
+                best_pct_predictions.extend(chunk_result.predictions['tsf-0.5'][:chunk_size])
+            elif chunk_result.predictions:
+                best_pct_predictions.extend(list(chunk_result.predictions.values())[0][:chunk_size])
+            else:
+                best_pct_predictions.extend([0] * chunk_size)
         
         # Plot actual values
         plt.plot(dates, actual_values, 'b-', linewidth=2, label='Actual Values', alpha=0.8)
         
-        # Plot best predictions
-        plt.plot(dates, best_predictions, 'r-', linewidth=2, label='Best Predictions', alpha=0.8)
+        plt.plot(dates, best_score_predictions, 'r-', linewidth=2, label='Best Quantile (Score)', alpha=0.8)
+        plt.plot(dates, best_pct_predictions, color='orange', linewidth=2, label='Best Quantile (Pct)')
         
-        # Plot all quantile predictions
-        predictions = response.concatenated_predictions
-        quantile_keys = [f"timesfm-q-0.{i}" for i in range(1, 10) if f"timesfm-q-0.{i}" in predictions]
-        if quantile_keys:
-            colors = plt.cm.Reds(np.linspace(0.2, 0.8, len(quantile_keys)))
-            for color, key in zip(colors, quantile_keys):
-                plt.plot(dates, predictions[key], linewidth=1, color=color, alpha=0.6, label=key)
-        
-        # Add confidence intervals if available
-        if 'timesfm-q-0.1' in predictions and 'timesfm-q-0.9' in predictions:
-            lower_bound = predictions['timesfm-q-0.1']
-            upper_bound = predictions['timesfm-q-0.9']
-            plt.fill_between(dates, lower_bound, upper_bound, alpha=0.2, color='red', label='80% Confidence Interval')
-        elif 'timesfm-q-0.25' in predictions and 'timesfm-q-0.75' in predictions:
-            lower_bound = predictions['timesfm-q-0.25']
-            upper_bound = predictions['timesfm-q-0.75']
-            plt.fill_between(dates, lower_bound, upper_bound, alpha=0.2, color='red', label='50% Confidence Interval')
+        # Confidence interval fill using tsf-0.1 and tsf-0.9 if available
+        predictions = response.concatenated_predictions or {}
+        if 'tsf-0.1' in predictions and 'tsf-0.9' in predictions:
+            lower_bound = predictions['tsf-0.1']
+            upper_bound = predictions['tsf-0.9']
+            plt.fill_between(dates, lower_bound, upper_bound, alpha=0.15, color='red', label='80% Confidence Interval')
 
-        # Compute and plot closest quantile prediction (timesfm-q-0.1~0.9) based on percent change closeness
-        closest_quantile_series = []
-        for chunk_result in response.chunk_results:
-            chunk_size = len(chunk_result.actual_values)
-            if chunk_size == 0:
-                continue
-            start_actual = chunk_result.actual_values[0]
-            actual_pct = [0] * chunk_size if start_actual == 0 else [((v / start_actual) - 1) * 100 for v in chunk_result.actual_values]
-            best_mae = float('inf')
-            best_values = [0] * chunk_size
-            for i in range(1, 10):
-                key = f"timesfm-q-0.{i}"
-                if key in chunk_result.predictions:
-                    pred_values = chunk_result.predictions[key]
-                    if len(pred_values) != chunk_size:
-                        continue
-                    pred_pct = [0] * chunk_size if start_actual == 0 else [((v / start_actual) - 1) * 100 for v in pred_values]
-                    mae_val = mean_absolute_error(np.array(pred_pct), np.array(actual_pct))
-                    if mae_val < best_mae:
-                        best_mae = mae_val
-                        best_values = pred_values
-            closest_quantile_series.extend(best_values)
-        plt.plot(dates, closest_quantile_series, color='orange', linewidth=2, label='Closest Quantile Prediction')
+
+        
         
         # Add chunk boundary lines
         chunk_boundaries = []

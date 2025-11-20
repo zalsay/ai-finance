@@ -250,7 +250,7 @@ def predict_single_stock(request: StockPredictionRequest) -> Dict[str, Any]:
             forecast_df['ds_plot'] = pd.to_datetime(forecast_df['ds']).dt.strftime('%Y-%m-%d')
         
         # 计算预测指标
-        prediction_columns = [col for col in forecast_df.columns if col.startswith('timesfm-q-')]
+        prediction_columns = [col for col in forecast_df.columns if col.startswith('tsf-')]
         
         # 获取实际值和预测值进行比较
         actual_values = df_test['close'].values[:request.horizon_len]
