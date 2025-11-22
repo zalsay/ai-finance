@@ -28,7 +28,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 
 	// 初始化服务
 	authService := services.NewAuthService(db)
-	watchlistService := services.NewWatchlistService(db)
+	watchlistService := services.NewWatchlistService(db, cfg)
 
 	// 初始化处理器
 	authHandler := handlers.NewAuthHandler(authService)

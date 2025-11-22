@@ -143,7 +143,7 @@ func (s *AuthService) ValidateSession(token string) (*models.User, error) {
 	err = s.db.Conn.QueryRow(`
 		SELECT EXISTS(
 			SELECT 1 FROM user_sessions 
-			WHERE user_id = $1 AND session_token = $2 AND expires_at > NOW()
+			WHERE user_id = $1 AND token_hash = $2 AND expires_at > NOW()
 		)
 	`, claims.UserID, tokenHash).Scan(&sessionExists)
 	if err != nil {
@@ -174,7 +174,7 @@ func (s *AuthService) Logout(userID int, token string) error {
 	tokenHash := s.hashToken(token)
 	_, err := s.db.Conn.Exec(`
 		DELETE FROM user_sessions 
-		WHERE user_id = $1 AND session_token = $2
+		WHERE user_id = $1 AND token_hash = $2
 	`, userID, tokenHash)
 	return err
 }
@@ -183,10 +183,18 @@ func (s *AuthService) storeSession(userID int, token string) error {
 	tokenHash := s.hashToken(token)
 	expiresAt := time.Now().Add(24 * time.Hour) // 24 hours from now
 
+	// Use UPSERT to update existing session or insert new one
+	// This ensures each user has only one active session
 	_, err := s.db.Conn.Exec(`
-		INSERT INTO user_sessions (user_id, session_token, expires_at)
+		INSERT INTO user_sessions (user_id, token_hash, expires_at)
 		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id) 
+		DO UPDATE SET 
+			token_hash = EXCLUDED.token_hash,
+			expires_at = EXCLUDED.expires_at,
+			created_at = CURRENT_TIMESTAMP
 	`, userID, tokenHash, expiresAt)
+
 	return err
 }
 
