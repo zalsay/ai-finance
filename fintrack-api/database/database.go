@@ -14,9 +14,10 @@ import (
 type DB struct {
 	Conn *sql.DB
 }
+
 func NewConnection(cfg *config.Config) (*DB, error) {
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port, cfg.Database.User, 
+		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
 		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode)
 
 	db, err := sql.Open("postgres", connStr)
@@ -41,22 +42,19 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) InitializeSchema() error {
-	// First run migration to handle table structure changes
-	migrationSQL, err := ioutil.ReadFile("database/migration.sql")
-	if err == nil {
-		_, err = db.Conn.Exec(string(migrationSQL))
-		if err != nil {
-			log.Printf("Warning: Migration failed: %v", err)
-		} else {
-			log.Println("Database migration completed successfully")
-		}
-	}
-
+	// Read schema.sql file
 	schemaSQL, err := ioutil.ReadFile("database/schema.sql")
 	if err != nil {
-		log.Printf("Warning: Could not read schema.sql file: %v", err)
-		log.Println("Continuing without schema initialization...")
-		return nil
+		// Try reading from current directory if running from root
+		schemaSQL, err = ioutil.ReadFile("fintrack-api/database/schema.sql")
+		if err != nil {
+			// Try absolute path as fallback (for development)
+			schemaSQL, err = ioutil.ReadFile("/Users/sisu/Documents/code/ai-finance/fintrack-api/database/schema.sql")
+			if err != nil {
+				log.Printf("Warning: Could not read schema.sql file: %v", err)
+				return nil
+			}
+		}
 	}
 
 	_, err = db.Conn.Exec(string(schemaSQL))
