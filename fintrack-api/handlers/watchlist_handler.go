@@ -37,6 +37,9 @@ func (h *WatchlistHandler) AddToWatchlist(c *gin.Context) {
 		return
 	}
 
+	// Trigger stock data sync asynchronously (non-blocking)
+	go h.watchlistService.SyncStockData(req.Symbol)
+
 	c.JSON(http.StatusCreated, gin.H{"message": "Stock added to watchlist successfully"})
 }
 

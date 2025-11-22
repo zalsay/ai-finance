@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
-	Database DatabaseConfig
-	Server   ServerConfig
-	JWT      JWTConfig
-	CORS     CORSConfig
-	External ExternalAPIConfig
-	Redis    RedisConfig
+	Database      DatabaseConfig
+	Server        ServerConfig
+	JWT           JWTConfig
+	CORS          CORSConfig
+	External      ExternalAPIConfig
+	Redis         RedisConfig
+	PythonService PythonServiceConfig
 }
 
 type DatabaseConfig struct {
@@ -55,16 +56,21 @@ type RedisConfig struct {
 	DB       int
 }
 
+type PythonServiceConfig struct {
+	BaseURL string
+	Timeout int // seconds
+}
+
 func LoadConfig() (*Config, error) {
 	// 尝试加载.env文件
 	godotenv.Load()
 
 	config := &Config{
 		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
+			Host:     getEnv("DB_HOST", "8.163.5.7"),
 			Port:     getEnv("DB_PORT", "5432"),
-			User:     getEnv("DB_USER", "postgres"),
-			Password: getEnv("DB_PASSWORD", ""),
+			User:     getEnv("DB_USER", "user_THtJYy"),
+			Password: getEnv("DB_PASSWORD", "password_CnKYP8"),
 			DBName:   getEnv("DB_NAME", "fintrack"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
@@ -92,12 +98,14 @@ func LoadConfig() (*Config, error) {
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
+		PythonService: PythonServiceConfig{
+			BaseURL: getEnv("PYTHON_SERVICE_URL", "http://localhost:8001"),
+			Timeout: getEnvAsInt("PYTHON_SERVICE_TIMEOUT", 30),
+		},
 	}
 
 	return config, nil
 }
-
-
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
