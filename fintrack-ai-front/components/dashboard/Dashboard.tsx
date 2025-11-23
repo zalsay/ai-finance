@@ -2,30 +2,41 @@
 import React, { useState } from 'react';
 import { StockData } from '../../types';
 import StockPredictionCard from './StockPredictionCard';
+import AddStockModal from './AddStockModal';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { watchlistAPI } from '../../services/apiService';
 
 interface DashboardProps {
-  stocks: StockData[];
-  isLoading: boolean;
-  error: string | null;
+    stocks: StockData[];
+    isLoading: boolean;
+    error: string | null;
+    onRefresh?: () => void;
 }
 
 const FilterChip: React.FC<{ label: string; active?: boolean; onClick: () => void; }> = ({ label, active, onClick }) => (
     <div
         onClick={onClick}
-        className={`flex h-8 shrink-0 items-center justify-center gap-x-2 rounded-full px-4 cursor-pointer transition-colors ${
-            active ? 'bg-primary/20 text-primary' : 'bg-white/10 text-white/80 hover:bg-white/20'
-        }`}
+        className={`flex h-8 shrink-0 items-center justify-center gap-x-2 rounded-full px-4 cursor-pointer transition-colors ${active ? 'bg-primary/20 text-primary' : 'bg-white/10 text-white/80 hover:bg-white/20'
+            }`}
     >
         <p className="text-sm font-medium leading-normal">{label}</p>
     </div>
 );
 
 
-const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error }) => {
+const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error, onRefresh }) => {
     const { t } = useLanguage();
     const [activeFilter, setActiveFilter] = useState('All');
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const filters = ['All', 'Highest Confidence', 'Potential Growth', 'Bullish', 'Bearish'];
+
+    const handleAddStock = async (symbol: string) => {
+        await watchlistAPI.addToWatchlist(symbol);
+        // Refresh dashboard after adding stock
+        if (onRefresh) {
+            onRefresh();
+        }
+    };
 
     const filteredStocks = stocks.filter(stock => {
         if (!stock.prediction) return activeFilter === 'All';
@@ -61,18 +72,21 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error }) => {
                             <span className="material-symbols-outlined text-xl">sort</span>
                         </button>
                     </div>
-                    <button className="flex items-center justify-center gap-2 px-4 h-10 rounded-lg bg-primary text-background-dark text-sm font-bold leading-normal tracking-[0.015em] hover:opacity-90 transition-opacity">
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="flex items-center justify-center gap-2 px-4 h-10 rounded-lg bg-primary text-background-dark text-sm font-bold leading-normal tracking-[0.015em] hover:opacity-90 transition-opacity"
+                    >
                         <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
                         <span className="truncate">{t('dashboard.addStock')}</span>
                     </button>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
                     {filters.map(filter => (
-                        <FilterChip 
-                            key={filter} 
-                            label={t(`dashboard.filter${filter.replace(/\s+/g, '')}`)} 
-                            active={activeFilter === filter} 
-                            onClick={() => setActiveFilter(filter)} 
+                        <FilterChip
+                            key={filter}
+                            label={t(`dashboard.filter${filter.replace(/\s+/g, '')}`)}
+                            active={activeFilter === filter}
+                            onClick={() => setActiveFilter(filter)}
                         />
                     ))}
                 </div>
@@ -84,12 +98,12 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error }) => {
                     <p className="text-sm">{error}</p>
                 </div>
             )}
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-               {isLoading && !stocks.some(s => s.prediction) ? (
+                {isLoading && !stocks.some(s => s.prediction) ? (
                     Array.from({ length: 6 }).map((_, index) => (
                         <div key={index} className="flex flex-col gap-4 rounded-xl border border-white/10 bg-card-dark p-6 min-h-[350px] animate-pulse">
-                           <div className="flex justify-between items-start">
+                            <div className="flex justify-between items-start">
                                 <div>
                                     <div className="h-6 w-16 bg-white/10 rounded"></div>
                                     <div className="h-4 w-24 bg-white/10 rounded mt-2"></div>
@@ -98,24 +112,30 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error }) => {
                                     <div className="h-8 w-20 bg-white/10 rounded"></div>
                                     <div className="h-4 w-12 bg-white/10 rounded mt-2 ml-auto"></div>
                                 </div>
-                           </div>
-                           <div className="flex-1 bg-white/5 rounded-lg"></div>
-                           <div className="h-4 w-full bg-white/10 rounded"></div>
-                           <div className="flex justify-between items-center">
+                            </div>
+                            <div className="flex-1 bg-white/5 rounded-lg"></div>
+                            <div className="h-4 w-full bg-white/10 rounded"></div>
+                            <div className="flex justify-between items-center">
                                 <div className="h-4 w-1/3 bg-white/10 rounded"></div>
                                 <div className="h-4 w-1/4 bg-white/10 rounded"></div>
-                           </div>
+                            </div>
                         </div>
                     ))
-               ) : (
+                ) : (
                     filteredStocks.map(stock => <StockPredictionCard key={stock.symbol} stock={stock} />)
-               )}
+                )}
             </div>
             {!isLoading && filteredStocks.length === 0 && (
                 <div className="text-center col-span-full py-12 bg-card-dark rounded-xl">
                     <p className="text-white/80">{t('dashboard.noStocks')}</p>
                 </div>
             )}
+
+            <AddStockModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onAdd={handleAddStock}
+            />
         </div>
     );
 };

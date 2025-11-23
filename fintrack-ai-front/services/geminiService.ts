@@ -6,7 +6,7 @@ if (!process.env.API_KEY) {
     console.warn("API_KEY environment variable not set. Using mock data.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || 'dummy-key' });
 
 const stockPredictionSchema = {
     type: Type.OBJECT,
@@ -88,10 +88,10 @@ export const getStockPredictions = async (stockSymbols: string[]): Promise<Recor
 
         const jsonString = response.text;
         const parsedResponse = JSON.parse(jsonString);
-        
+
         const predictions: Record<string, StockPrediction> = {};
         if (parsedResponse.predictions && Array.isArray(parsedResponse.predictions)) {
-             parsedResponse.predictions.forEach((p: any) => {
+            parsedResponse.predictions.forEach((p: any) => {
                 predictions[p.symbol] = {
                     predicted_high: p.predicted_high,
                     predicted_low: p.predicted_low,
