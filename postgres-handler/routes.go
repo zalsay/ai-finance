@@ -1,0 +1,65 @@
+package main
+
+import (
+	"log"
+	"net/http"
+
+	"github.com/gin-contrib/gzip"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterRoutes(r *gin.Engine, handler *DatabaseHandler, apiToken string) {
+	r.Use(gzip.Gzip(gzip.DefaultCompression))
+	r.Use(TokenAuthMiddleware(apiToken))
+
+	api := r.Group("/api/v1")
+	{
+		api.POST("/stock-data", handler.insertStockDataHandler)
+		api.POST("/stock-data/batch", handler.batchInsertStockDataHandler)
+		api.POST("/stock-data/:symbol", handler.getStockDataHandler)
+		api.POST("/stock-data/:symbol/range", handler.getStockDataByDateRangeHandler)
+
+		api.POST("/etf/daily", handler.insertEtfDailyHandler)
+		api.POST("/etf/daily/batch", handler.batchInsertEtfDailyHandler)
+
+		api.POST("/etf/daily/:code", handler.getEtfDailyHandler)
+		api.POST("/etf/daily/:code/range", handler.getEtfDailyByDateRangeHandler)
+
+		api.POST("/index/info", handler.insertIndexInfoHandler)
+		api.POST("/index/info/batch", handler.batchInsertIndexInfoHandler)
+		api.POST("/index/daily", handler.insertIndexDailyHandler)
+		api.POST("/index/daily/batch", handler.batchInsertIndexDailyHandler)
+		api.POST("/index/daily/:code", handler.getIndexDailyHandler)
+		api.POST("/index/daily/:code/range", handler.getIndexDailyByDateRangeHandler)
+
+		api.POST("/timesfm/forecast/batch", handler.batchInsertTimesfmForecastHandler)
+		api.POST("/timesfm/forecast/query", handler.getTimesfmForecastBySymbolVersionHorizon)
+
+		api.POST("/stock/comment/daily/batch", handler.batchInsertAStockCommentDailyHandler)
+		api.POST("/stock/comment/daily/search", handler.getAStockCommentDailyByNameHandler)
+	}
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	log.Printf("API endpoints:")
+	log.Printf("  POST /api/v1/stock-data - Insert single stock data")
+	log.Printf("  POST /api/v1/stock-data/batch - Batch insert stock data")
+	log.Printf("  POST /api/v1/stock-data/:symbol - Get stock data (JSON body: {type, limit, offset})")
+	log.Printf("  POST /api/v1/stock-data/:symbol/range - Get stock data by date range (JSON body: {type, start_date, end_date})")
+	log.Printf("  POST /api/v1/etf/daily - Upsert single ETF daily data")
+	log.Printf("  POST /api/v1/etf/daily/batch - Batch upsert ETF daily data")
+	log.Printf("  POST /api/v1/etf/daily/:code - Query ETF daily data (JSON body: {limit, offset})")
+	log.Printf("  POST /api/v1/etf/daily/:code/range - Query ETF daily data by date range (JSON body: {start_date, end_date})")
+	log.Printf("  POST /api/v1/index/info - Upsert single index info")
+	log.Printf("  POST /api/v1/index/info/batch - Batch upsert index info")
+	log.Printf("  POST /api/v1/index/daily - Upsert single index daily data")
+	log.Printf("  POST /api/v1/index/daily/batch - Batch upsert index daily data")
+	log.Printf("  POST /api/v1/index/daily/:code - Query index daily data (JSON body: {limit, offset})")
+	log.Printf("  POST /api/v1/index/daily/:code/range - Query index daily data by date range (JSON body: {start_date, end_date})")
+	log.Printf("  POST /api/v1/stock/comment/daily/batch - Batch upsert A-stock comment daily metrics")
+	log.Printf("  POST /api/v1/stock/comment/daily/search - Query A-stock comment daily by name (JSON body: {name, limit, offset})")
+	log.Printf("  POST /api/v1/timesfm/forecast/batch - Batch insert TimesFM forecast")
+	log.Printf("  GET  /health - Health check")
+}

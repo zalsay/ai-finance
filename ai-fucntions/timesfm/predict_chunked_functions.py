@@ -25,7 +25,7 @@ def predict_single_chunk_mode1(
     
     Args:
         df_train: 固定的训练数据
-        chunk: 当前分块的测试数据
+        df_test: 当前分块的测试数据
         tfm: TimesFM模型实例
         stock_code: 股票代码
         chunk_index: 分块索引
@@ -42,6 +42,7 @@ def predict_single_chunk_mode1(
             num_jobs=1,
         )
         rename_dict = {c: f"tsf-{c.split('timesfm-q-')[1]}" for c in forecast_df.columns if c.startswith('timesfm-q-')}
+        rename_dict["timesfm"] = "tsf"
         if rename_dict:
             forecast_df = forecast_df.rename(columns=rename_dict)
         
@@ -52,25 +53,30 @@ def predict_single_chunk_mode1(
         # 调试信息：打印预测结果的列名
         print(f"  预测结果列名: {list(forecast_df.columns)}")
         print(f"  预测结果形状: {forecast_df.shape}")
-        print(f"  预测结果前7行: {forecast_df.head(7)}")
+        print(f"  预测结果前{horizon_len}行: ")
+        print(forecast_chunk.head(horizon_len))
+        print(f"  测试数据前{horizon_len}行: ")
+        print(df_test.head(horizon_len))
+
         # 提取预测值和实际值
         actual_values = df_test['close'].tolist()
-        
+        actual_dates = df_test['ds'].tolist()
+        print(f"  实际日期前7行: {actual_dates[:7]}")
         # 获取所有预测分位数
         predictions = {}
         forecast_columns = [col for col in forecast_chunk.columns if col.startswith('tsf-')]
         
-        print(f"找到的预测列: {forecast_columns}")
+        # print(f"找到的预测列: {forecast_columns}")
         
         for col in forecast_columns:
             predictions[col] = forecast_chunk[col].tolist()
         
         # 计算所有分位数的评估指标
         quantile_metrics = {}
-        best_quantile = None
-        best_quantile_pct = None
+        best_quantile_colname = None
+        best_quantile_colname_pct = None
         best_score = float('inf')
-        best_pct = float('inf')
+        best_diff_pct = float('inf') # 最优涨跌幅百分比差
         # 定义要评估的分位数范围 (0.1 到 0.9)
         target_quantiles = [f'tsf-0.{i}' for i in range(1, 10)]
         
@@ -88,7 +94,7 @@ def predict_single_chunk_mode1(
                 mae_q = mean_absolute_error(np.array(pred_values_trimmed), np.array(actual_values_trimmed))
                 pct_q = (pred_values_trimmed[-1] / actual_values_trimmed[0] - 1) * 100
                 actual_pct = (actual_values_trimmed[-1] / actual_values_trimmed[0] - 1) * 100
-                diff_pct = abs(pct_q - actual_pct)
+                diff_pct = (1 - abs(pct_q - actual_pct) / actual_pct) # 预测涨跌幅与实际涨跌幅的百分比差
                 # 计算综合得分 (MSE和MAE各占50%权重)
                 # 为了统一量纲，对MSE和MAE进行标准化处理
                 combined_score = 0.5 * mse_q + 0.5 * mae_q
@@ -107,29 +113,79 @@ def predict_single_chunk_mode1(
                 # 找到最优分位数
                 if combined_score < best_score:
                     best_score = combined_score
-                    best_quantile = quantile
-                if diff_pct < best_pct:
-                    best_pct = diff_pct
-                    best_quantile_pct = quantile
+                    best_quantile_colname = quantile
+                if diff_pct < best_diff_pct:
+                    best_diff_pct = diff_pct
+                    best_quantile_colname_pct = quantile
         # 如果没有找到任何有效的分位数预测，使用默认值
         if not quantile_metrics:
             print(f"  ⚠️ 警告: 未找到有效的分位数预测，使用默认值")
             mse = 0.0
             mae = 0.0
-            best_quantile = 'tsf-0.5'
+            best_quantile_colname = 'tsf-0.5'
         else:
             # 使用最优分位数的指标
-            mse = quantile_metrics[best_quantile]['mse']
-            mae = quantile_metrics[best_quantile]['mae']
+            mse = quantile_metrics[best_quantile_colname]['mse']
+            mae = quantile_metrics[best_quantile_colname]['mae']
             
             print(f"  📊 分位数评估结果:")
             for q, metrics in quantile_metrics.items():
                 print(f"    {q}: MSE={metrics['mse']:.2f}, MAE={metrics['mae']:.2f}, 综合得分={metrics['combined_score']:.2f}, 预测涨跌幅={metrics['pred_pct']:.2f}, 实际涨跌幅={metrics['actual_pct']:.2f}, 百分比差={metrics['diff_pct']:.2f}")
-            print(f"  🏆 最优分位数: {best_quantile} (综合得分: {best_score:.6f})")
-            print(f"  🏆 最优分位数(涨跌幅): {best_quantile_pct} (百分比差: {best_pct:.6f})")
-            print(f"  最优分位数预测值: {quantile_metrics[best_quantile_pct]['pred_values']}")
-            print(f"  最优分位数实际值: {quantile_metrics[best_quantile_pct]['actual_values']}")
-        
+            print(f"  🏆 最优分位数: {best_quantile_colname} (综合得分: {best_score:.6f})")
+            print(f"  🏆 最优分位数(涨跌幅): {best_quantile_colname_pct} (百分比差: {best_diff_pct:.2f})")
+            print(f"  最优(涨跌幅)预测值: {quantile_metrics[best_quantile_colname_pct]['pred_values']}")
+            print(f"  最优(涨跌幅)实际值: {quantile_metrics[best_quantile_colname_pct]['actual_values']}")
+            forecast_chunk["best_quantile_colname_pct"] = best_quantile_colname_pct
+            forecast_chunk["best_quantile_colname"] = best_quantile_colname
+            forecast_chunk["best_diff_pct"] = best_diff_pct
+            forecast_chunk["best_score"] = best_score
+            forecast_chunk["best_pred_pct"] = quantile_metrics[best_quantile_colname_pct]['pred_pct']
+            forecast_chunk["actual_pct"] = quantile_metrics[best_quantile_colname_pct]['actual_pct']
+            forecast_chunk["diff_pct"] = quantile_metrics[best_quantile_colname_pct]['diff_pct']
+            forecast_chunk["mse"] = quantile_metrics[best_quantile_colname_pct]['mse']
+            forecast_chunk["mae"] = quantile_metrics[best_quantile_colname_pct]['mae']
+            forecast_chunk["combined_score"] = quantile_metrics[best_quantile_colname_pct]['combined_score']
+            forecast_chunk["symbol"] = forecast_chunk["unique_id"]
+            try:
+                payload = []
+                for _, row in forecast_chunk.iterrows():
+                    item = {
+                        "symbol": row.get("symbol"),
+                        "ds": str(row.get("ds")),
+                        "tsf": float(row.get("tsf")) if row.get("tsf") is not None else 0.0,
+                        "tsf_01": float(row.get("tsf-0.1")) if row.get("tsf-0.1") is not None else 0.0,
+                        "tsf_02": float(row.get("tsf-0.2")) if row.get("tsf-0.2") is not None else 0.0,
+                        "tsf_03": float(row.get("tsf-0.3")) if row.get("tsf-0.3") is not None else 0.0,
+                        "tsf_04": float(row.get("tsf-0.4")) if row.get("tsf-0.4") is not None else 0.0,
+                        "tsf_05": float(row.get("tsf-0.5")) if row.get("tsf-0.5") is not None else 0.0,
+                        "tsf_06": float(row.get("tsf-0.6")) if row.get("tsf-0.6") is not None else 0.0,
+                        "tsf_07": float(row.get("tsf-0.7")) if row.get("tsf-0.7") is not None else 0.0,
+                        "tsf_08": float(row.get("tsf-0.8")) if row.get("tsf-0.8") is not None else 0.0,
+                        "tsf_09": float(row.get("tsf-0.9")) if row.get("tsf-0.9") is not None else 0.0,
+                        "chunk_index": chunk_index,
+                        "best_quantile": str(best_quantile_colname),
+                        "best_quantile_pct": str(best_quantile_colname_pct),
+                        "best_pred_pct": float(quantile_metrics[best_quantile_colname_pct]['pred_pct']),
+                        "actual_pct": float(quantile_metrics[best_quantile_colname_pct]['actual_pct']),
+                        "diff_pct": float(quantile_metrics[best_quantile_colname_pct]['diff_pct']),
+                        "mse": float(quantile_metrics[best_quantile_colname_pct]['mse']),
+                        "mae": float(quantile_metrics[best_quantile_colname_pct]['mae']),
+                        "combined_score": float(quantile_metrics[best_quantile_colname_pct]['combined_score']),
+                    }
+                    payload.append(item)
+
+                import requests
+                base_url = os.environ.get("GO_API_BASE_URL", "http://localhost:8080")
+                token = os.environ.get("API_TOKEN", "fintrack-dev-token")
+                url = f"{base_url.rstrip('/')}/api/v1/timesfm/forecast/batch"
+                headers = {"Content-Type": "application/json", "X-Token": token}
+                resp = requests.post(url, json=payload, headers=headers, timeout=30)
+                if resp.status_code != 200:
+                    print(f"⚠️ 写入PG失败: HTTP {resp.status_code} {resp.text[:256]}")
+                else:
+                    print(f"✅ 已写入PG预测结果: {len(payload)} 条, chunk={chunk_index}")
+            except Exception as e:
+                print(f"⚠️ 写入PG异常: {e}")
         # 获取实际值和预测值对应的日期范围
         # 实际值和预测值对应的是分块中的最后horizon_len个日期
         chunk_dates = df_test['ds'].tolist()
@@ -149,10 +205,10 @@ def predict_single_chunk_mode1(
             metrics={
                 'mse': mse, 
                 'mae': mae,
-                'best_quantile': best_quantile,
-                'best_quantile_pct': best_quantile_pct,
+                'best_quantile_colname': best_quantile_colname,
+                'best_quantile_colname_pct': best_quantile_colname_pct,
                 'best_combined_score': best_score,
-                'best_pct': best_pct,
+                'best_diff_pct': best_diff_pct,
                 'all_quantile_metrics': quantile_metrics
             }
         )
@@ -169,8 +225,8 @@ def predict_single_chunk_mode1(
             metrics={
                 'mse': float('inf'), 
                 'mae': float('inf'),
-                'best_quantile': 'tsf-0.5',
-                'best_quantile_pct': 'tsf-0.5',
+                'best_quantile_colname': 'tsf',
+                'best_quantile_colname_pct': 'tsf',
                 'best_combined_score': float('inf'),
                 'all_quantile_metrics': {}
             }
@@ -318,7 +374,7 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
 if __name__ == "__main__":
     from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
-        stock_code="sz000001",
+        stock_code="sh600398",
         years=10,
         horizon_len=7,
         start_date="20100101",
@@ -326,7 +382,7 @@ if __name__ == "__main__":
         context_len=2048,
         time_step=0,
         stock_type=1,
-        chunk_num=10
+        chunk_num=1
     )
     tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
     response = predict_chunked_mode1(test_request, tfm)
@@ -352,8 +408,8 @@ if __name__ == "__main__":
         print(f"  预测日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
         print(f"  实际值日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
         print(f"  实际值数量: {len(chunk_result.actual_values)}")
-        print(f"  最佳预测结果: {chunk_result.metrics['best_quantile']} 最佳分数: {chunk_result.metrics['best_combined_score']:.6f}")        
-        print(f"  最佳预测结果(涨跌幅): {chunk_result.metrics['best_quantile_pct']} 百分比差: {chunk_result.metrics['best_pct']:.6f}")
+        print(f"  最佳预测结果: {chunk_result.metrics['best_quantile_colname']} 最佳分数: {chunk_result.metrics['best_combined_score']:.6f}")        
+        print(f"  最佳预测结果(涨跌幅): {chunk_result.metrics['best_quantile_colname_pct']} 百分比差: {chunk_result.metrics['best_diff_pct']*100:.2f}%")
         # 显示指标
         # for metric, value in chunk_result.metrics.items():
         #     if isinstance(value, float) and value != float('inf'):
@@ -390,7 +446,7 @@ if __name__ == "__main__":
                         f.write(f"    {q}: MSE={m['mse']:.2f}, MAE={m['mae']:.2f}, 综合得分={m['combined_score']:.2f}, 预测涨跌幅={m['pred_pct']:.2f}, 实际涨跌幅={m['actual_pct']:.2f}, 百分比差={m['diff_pct']:.2f}\n")
                     except Exception:
                         f.write(f"    {q}: {m}\n")
-                best_q = chunk_result.metrics.get('best_quantile', '')
+                best_q = chunk_result.metrics.get('best_quantile_colname', '')
                 best_score = chunk_result.metrics.get('best_combined_score', '')
                 f.write(f"    最优分位数(综合得分): {best_q}, 综合得分: {best_score}\n")
             else:

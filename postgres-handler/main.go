@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 )
@@ -73,21 +72,48 @@ type IndexDailyData struct {
 	ChangePercent float64   `json:"change_percent" db:"change_percent"`
 }
 
+type TimesfmForecast struct {
+	Symbol          string    `json:"symbol" db:"symbol"`
+	Ds              time.Time `json:"ds" db:"ds"`
+	Tsf             float64   `json:"tsf" db:"tsf"`
+	Tsf01           float64   `json:"tsf_01" db:"tsf_01"`
+	Tsf02           float64   `json:"tsf_02" db:"tsf_02"`
+	Tsf03           float64   `json:"tsf_03" db:"tsf_03"`
+	Tsf04           float64   `json:"tsf_04" db:"tsf_04"`
+	Tsf05           float64   `json:"tsf_05" db:"tsf_05"`
+	Tsf06           float64   `json:"tsf_06" db:"tsf_06"`
+	Tsf07           float64   `json:"tsf_07" db:"tsf_07"`
+	Tsf08           float64   `json:"tsf_08" db:"tsf_08"`
+	Tsf09           float64   `json:"tsf_09" db:"tsf_09"`
+	ChunkIndex      int       `json:"chunk_index" db:"chunk_index"`
+	BestQuantile    string    `json:"best_quantile" db:"best_quantile"`
+	BestQuantilePct string    `json:"best_quantile_pct" db:"best_quantile_pct"`
+	BestPredPct     float64   `json:"best_pred_pct" db:"best_pred_pct"`
+	ActualPct       float64   `json:"actual_pct" db:"actual_pct"`
+	DiffPct         float64   `json:"diff_pct" db:"diff_pct"`
+	MSE             float64   `json:"mse" db:"mse"`
+	MAE             float64   `json:"mae" db:"mae"`
+	CombinedScore   float64   `json:"combined_score" db:"combined_score"`
+	UserID          int       `json:"user_id" db:"user_id"`
+	Version         float64   `json:"version" db:"version"`
+	HorizonLen      int       `json:"horizon_len" db:"horizon_len"`
+}
+
 // StockCommentDaily A股每日评论/指标数据（来源：akshare stock_comment_em）
 type StockCommentDaily struct {
-    Code                 string    `json:"code" db:"code"`
-    TradingDate          time.Time `json:"trading_date" db:"trading_date"`
-    Name                 string    `json:"name" db:"name"`
-    LatestPrice          float64   `json:"latest_price" db:"latest_price"`
-    ChangePercent        float64   `json:"change_percent" db:"change_percent"`
-    TurnoverRate         float64   `json:"turnover_rate" db:"turnover_rate"`
-    PeRatio              float64   `json:"pe_ratio" db:"pe_ratio"`
-    MainCost             float64   `json:"main_cost" db:"main_cost"`
-    InstitutionParticipation float64 `json:"institution_participation" db:"institution_participation"`
-    CompositeScore       float64   `json:"composite_score" db:"composite_score"`
-    Rise                 int64     `json:"rise" db:"rise"`
-    CurrentRank          int64     `json:"current_rank" db:"current_rank"`
-    AttentionIndex       float64   `json:"attention_index" db:"attention_index"`
+	Code                     string    `json:"code" db:"code"`
+	TradingDate              time.Time `json:"trading_date" db:"trading_date"`
+	Name                     string    `json:"name" db:"name"`
+	LatestPrice              float64   `json:"latest_price" db:"latest_price"`
+	ChangePercent            float64   `json:"change_percent" db:"change_percent"`
+	TurnoverRate             float64   `json:"turnover_rate" db:"turnover_rate"`
+	PeRatio                  float64   `json:"pe_ratio" db:"pe_ratio"`
+	MainCost                 float64   `json:"main_cost" db:"main_cost"`
+	InstitutionParticipation float64   `json:"institution_participation" db:"institution_participation"`
+	CompositeScore           float64   `json:"composite_score" db:"composite_score"`
+	Rise                     int64     `json:"rise" db:"rise"`
+	CurrentRank              int64     `json:"current_rank" db:"current_rank"`
+	AttentionIndex           float64   `json:"attention_index" db:"attention_index"`
 }
 
 // DatabaseHandler 数据库处理器
@@ -264,10 +290,10 @@ func (h *DatabaseHandler) initializeDatabase() error {
 	if _, err := h.db.Exec(createIndexDailySQL); err != nil {
 		return fmt.Errorf("failed to create index_daily table: %v", err)
 	}
-    log.Println("Table index_daily ensured successfully")
+	log.Println("Table index_daily ensured successfully")
 
-    // A股每日评论/指标数据表（stock_comment_em）
-    createAStockCommentDailySQL := `
+	// A股每日评论/指标数据表（stock_comment_em）
+	createAStockCommentDailySQL := `
     CREATE TABLE IF NOT EXISTS a_stock_comment_daily (
         code TEXT NOT NULL,
         trading_date DATE NOT NULL,
@@ -289,10 +315,44 @@ func (h *DatabaseHandler) initializeDatabase() error {
     CREATE INDEX IF NOT EXISTS idx_a_stock_comment_daily_trading_date ON a_stock_comment_daily (trading_date);
     CREATE INDEX IF NOT EXISTS idx_a_stock_comment_daily_name ON a_stock_comment_daily (name);
     `
-    if _, err := h.db.Exec(createAStockCommentDailySQL); err != nil {
-        return fmt.Errorf("failed to create a_stock_comment_daily table: %v", err)
-    }
-    log.Println("Table a_stock_comment_daily ensured successfully")
+	if _, err := h.db.Exec(createAStockCommentDailySQL); err != nil {
+		return fmt.Errorf("failed to create a_stock_comment_daily table: %v", err)
+	}
+	log.Println("Table a_stock_comment_daily ensured successfully")
+	createForecastTableSQL := `
+    CREATE TABLE IF NOT EXISTS timesfm_forecast (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        ds TIMESTAMP NOT NULL,
+        tsf DECIMAL(10,4) NOT NULL,
+        tsf_01 DECIMAL(10,4) NOT NULL,
+        tsf_02 DECIMAL(10,4) NOT NULL,
+        tsf_03 DECIMAL(10,4) NOT NULL,
+        tsf_04 DECIMAL(10,4) NOT NULL,
+        tsf_05 DECIMAL(10,4) NOT NULL,
+        tsf_06 DECIMAL(10,4) NOT NULL,
+        tsf_07 DECIMAL(10,4) NOT NULL,
+        tsf_08 DECIMAL(10,4) NOT NULL,
+        tsf_09 DECIMAL(10,4) NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        best_quantile VARCHAR(20) NOT NULL,
+        best_quantile_pct VARCHAR(20) NOT NULL,
+        best_pred_pct DECIMAL(10,6) NOT NULL,
+        actual_pct DECIMAL(10,6) NOT NULL,
+        diff_pct DECIMAL(10,6) NOT NULL,
+        mse DECIMAL(12,6) NOT NULL,
+        mae DECIMAL(12,6) NOT NULL,
+        combined_score DECIMAL(12,6) NOT NULL,
+        version FLOAT8 NOT NULL,
+        horizon_len INTEGER NOT NULL,
+        user_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );`
+	if _, err := h.db.Exec(createForecastTableSQL); err != nil {
+		return fmt.Errorf("failed to create timesfm_forecast table: %v", err)
+	}
+	_, _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_symbol_ds ON timesfm_forecast (symbol, ds);`)
+	_, _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_svhl_ds ON timesfm_forecast (symbol, version, horizon_len, ds);`)
 
 	return nil
 }
@@ -385,7 +445,189 @@ func (h *DatabaseHandler) UpsertEtfDaily(data *EtfDailyData) error {
 	if err != nil {
 		return fmt.Errorf("failed to upsert etf daily: %v", err)
 	}
+
 	return nil
+}
+
+func (h *DatabaseHandler) BatchInsertTimesfmForecast(list []TimesfmForecast) error {
+	if len(list) == 0 {
+		return fmt.Errorf("empty list")
+	}
+	tx, err := h.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`
+        INSERT INTO timesfm_forecast (
+            symbol, ds, tsf, tsf_01, tsf_02, tsf_03, tsf_04, tsf_05, tsf_06, tsf_07, tsf_08, tsf_09,
+            chunk_index, best_quantile, best_quantile_pct, best_pred_pct, actual_pct, diff_pct, mse, mae, combined_score,
+            version, horizon_len
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13, $14, $15, $16, $17, $18, $19, $20, $21,
+            $22, $23
+        )
+    `)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, v := range list {
+		if _, err := stmt.Exec(
+			v.Symbol, v.Ds, v.Tsf, v.Tsf01, v.Tsf02, v.Tsf03, v.Tsf04, v.Tsf05, v.Tsf06, v.Tsf07, v.Tsf08, v.Tsf09,
+			v.ChunkIndex, v.BestQuantile, v.BestQuantilePct, v.BestPredPct, v.ActualPct, v.DiffPct, v.MSE, v.MAE, v.CombinedScore,
+			v.Version, v.HorizonLen,
+		); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (h *DatabaseHandler) batchInsertTimesfmForecastHandler(c *gin.Context) {
+	var req []struct {
+		Symbol          string  `json:"symbol"`
+		Ds              string  `json:"ds"`
+		Tsf             float64 `json:"tsf"`
+		Tsf01           float64 `json:"tsf_01"`
+		Tsf02           float64 `json:"tsf_02"`
+		Tsf03           float64 `json:"tsf_03"`
+		Tsf04           float64 `json:"tsf_04"`
+		Tsf05           float64 `json:"tsf_05"`
+		Tsf06           float64 `json:"tsf_06"`
+		Tsf07           float64 `json:"tsf_07"`
+		Tsf08           float64 `json:"tsf_08"`
+		Tsf09           float64 `json:"tsf_09"`
+		ChunkIndex      int     `json:"chunk_index"`
+		BestQuantile    string  `json:"best_quantile"`
+		BestQuantilePct string  `json:"best_quantile_pct"`
+		BestPredPct     float64 `json:"best_pred_pct"`
+		ActualPct       float64 `json:"actual_pct"`
+		DiffPct         float64 `json:"diff_pct"`
+		MSE             float64 `json:"mse"`
+		MAE             float64 `json:"mae"`
+		CombinedScore   float64 `json:"combined_score"`
+		UserID          int     `json:"user_id"`
+		Version         float64 `json:"version"`
+		HorizonLen      int     `json:"horizon_len"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	if len(req) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "empty list"})
+		return
+	}
+	list := make([]TimesfmForecast, 0, len(req))
+	for i, v := range req {
+		if v.Symbol == "" || v.Ds == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("item %d missing symbol or ds", i)})
+			return
+		}
+		// 解析时间，支持 YYYY-MM-DD HH:MM:SS 或 RFC3339
+		var t time.Time
+		var err error
+		layouts := []string{"2006-01-02 15:04:05", time.RFC3339, "2006-01-02"}
+		for _, layout := range layouts {
+			t, err = time.Parse(layout, v.Ds)
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid ds format: %s", v.Ds)})
+			return
+		}
+		list = append(list, TimesfmForecast{
+			Symbol:          v.Symbol,
+			Ds:              t,
+			Tsf:             v.Tsf,
+			Tsf01:           v.Tsf01,
+			Tsf02:           v.Tsf02,
+			Tsf03:           v.Tsf03,
+			Tsf04:           v.Tsf04,
+			Tsf05:           v.Tsf05,
+			Tsf06:           v.Tsf06,
+			Tsf07:           v.Tsf07,
+			Tsf08:           v.Tsf08,
+			Tsf09:           v.Tsf09,
+			ChunkIndex:      v.ChunkIndex,
+			BestQuantile:    v.BestQuantile,
+			BestQuantilePct: v.BestQuantilePct,
+			BestPredPct:     v.BestPredPct,
+			ActualPct:       v.ActualPct,
+			DiffPct:         v.DiffPct,
+			MSE:             v.MSE,
+			MAE:             v.MAE,
+			CombinedScore:   v.CombinedScore,
+			UserID:          v.UserID,
+			Version:         v.Version,
+			HorizonLen:      v.HorizonLen,
+		})
+	}
+	if err := h.BatchInsertTimesfmForecast(list); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success"})
+}
+
+// getTimesfmForecastBySymbolVersionHorizon 联合查询: symbol + version + horizon_len
+func (h *DatabaseHandler) getTimesfmForecastBySymbolVersionHorizon(c *gin.Context) {
+	var req struct {
+		Symbol     string  `json:"symbol"`
+		Version    float64 `json:"version"`
+		HorizonLen int     `json:"horizon_len"`
+		Limit      *int    `json:"limit"`
+		Offset     *int    `json:"offset"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	if strings.TrimSpace(req.Symbol) == "" || req.HorizonLen <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "symbol and horizon_len are required"})
+		return
+	}
+	limit := 200
+	offset := 0
+	if req.Limit != nil && *req.Limit > 0 {
+		limit = *req.Limit
+	}
+	if req.Offset != nil && *req.Offset >= 0 {
+		offset = *req.Offset
+	}
+	rows, err := h.db.Query(`
+        SELECT symbol, ds, tsf, tsf_01, tsf_02, tsf_03, tsf_04, tsf_05, tsf_06, tsf_07, tsf_08, tsf_09,
+               chunk_index, best_quantile, best_quantile_pct, best_pred_pct, actual_pct, diff_pct, mse, mae, combined_score,
+               version, horizon_len
+        FROM timesfm_forecast
+        WHERE symbol = $1 AND version = $2 AND horizon_len = $3
+        ORDER BY ds ASC
+        LIMIT $4 OFFSET $5`, req.Symbol, req.Version, req.HorizonLen, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	list := []TimesfmForecast{}
+	for rows.Next() {
+		var v TimesfmForecast
+		if err := rows.Scan(
+			&v.Symbol, &v.Ds, &v.Tsf, &v.Tsf01, &v.Tsf02, &v.Tsf03, &v.Tsf04, &v.Tsf05, &v.Tsf06, &v.Tsf07, &v.Tsf08, &v.Tsf09,
+			&v.ChunkIndex, &v.BestQuantile, &v.BestQuantilePct, &v.BestPredPct, &v.ActualPct, &v.DiffPct, &v.MSE, &v.MAE, &v.CombinedScore,
+			&v.Version, &v.HorizonLen,
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		list = append(list, v)
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: list})
 }
 
 // BatchUpsertEtfDaily 批量 upsert ETF每日数据（独立表）
@@ -400,8 +642,7 @@ func (h *DatabaseHandler) BatchUpsertEtfDaily(dataList []EtfDailyData) error {
     INSERT INTO etf_daily (
         code, trading_date, name, latest_price, change_amount, change_percent,
         buy, sell, prev_close, open, high, low, volume, turnover
-    ) VALUES ($1, $2, $3, $4, $5, $6,
-              $7, $8, $9, $10, $11, $12, $13, $14)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     ON CONFLICT (code, trading_date) DO UPDATE SET
         name = EXCLUDED.name,
         latest_price = EXCLUDED.latest_price,
@@ -550,17 +791,17 @@ func (h *DatabaseHandler) BatchUpsertIndexDaily(list []IndexDailyData) error {
 
 // BatchUpsertAStockCommentDaily 批量插入或更新 A股每日评论/指标数据
 func (h *DatabaseHandler) BatchUpsertAStockCommentDaily(list []StockCommentDaily) error {
-    tx, err := h.db.Begin()
-    if err != nil {
-        return err
-    }
-    defer func() {
-        if err != nil {
-            tx.Rollback()
-        }
-    }()
+	tx, err := h.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
 
-    stmt, err := tx.Prepare(`
+	stmt, err := tx.Prepare(`
         INSERT INTO a_stock_comment_daily (
             code, trading_date, name, latest_price, change_percent, turnover_rate,
             pe_ratio, main_cost, institution_participation, composite_score,
@@ -578,29 +819,29 @@ func (h *DatabaseHandler) BatchUpsertAStockCommentDaily(list []StockCommentDaily
             rise = EXCLUDED.rise,
             current_rank = EXCLUDED.current_rank,
             attention_index = EXCLUDED.attention_index`)
-    if err != nil {
-        return err
-    }
-    defer stmt.Close()
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
 
-    for _, v := range list {
-        if _, err = stmt.Exec(
-            v.Code, v.TradingDate, v.Name, v.LatestPrice, v.ChangePercent, v.TurnoverRate,
-            v.PeRatio, v.MainCost, v.InstitutionParticipation, v.CompositeScore,
-            v.Rise, v.CurrentRank, v.AttentionIndex,
-        ); err != nil {
-            return fmt.Errorf("batch upsert a_stock_comment_daily failed: %v", err)
-        }
-    }
+	for _, v := range list {
+		if _, err = stmt.Exec(
+			v.Code, v.TradingDate, v.Name, v.LatestPrice, v.ChangePercent, v.TurnoverRate,
+			v.PeRatio, v.MainCost, v.InstitutionParticipation, v.CompositeScore,
+			v.Rise, v.CurrentRank, v.AttentionIndex,
+		); err != nil {
+			return fmt.Errorf("batch upsert a_stock_comment_daily failed: %v", err)
+		}
+	}
 
-    if err = tx.Commit(); err != nil {
-        return err
-    }
-    return nil
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *DatabaseHandler) GetAStockCommentDailyByName(name string, limit int, offset int) ([]StockCommentDaily, error) {
-    query := `
+	query := `
     SELECT 
         code,
         trading_date,
@@ -620,29 +861,29 @@ func (h *DatabaseHandler) GetAStockCommentDailyByName(name string, limit int, of
     ORDER BY trading_date DESC
     LIMIT $2 OFFSET $3`
 
-    rows, err := h.db.Query(query, "%"+name+"%", limit, offset)
-    if err != nil {
-        return nil, fmt.Errorf("failed to query a_stock_comment_daily by name: %v", err)
-    }
-    defer rows.Close()
+	rows, err := h.db.Query(query, "%"+name+"%", limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query a_stock_comment_daily by name: %v", err)
+	}
+	defer rows.Close()
 
-    var result []StockCommentDaily
-    for rows.Next() {
-        var item StockCommentDaily
-        if err := rows.Scan(
-            &item.Code, &item.TradingDate, &item.Name, &item.LatestPrice,
-            &item.ChangePercent, &item.TurnoverRate, &item.PeRatio, &item.MainCost,
-            &item.InstitutionParticipation, &item.CompositeScore, &item.Rise,
-            &item.CurrentRank, &item.AttentionIndex,
-        ); err != nil {
-            return nil, fmt.Errorf("failed to scan a_stock_comment_daily row: %v", err)
-        }
-        result = append(result, item)
-    }
-    if len(result) == 0 {
-        return nil, nil
-    }
-    return result, nil
+	var result []StockCommentDaily
+	for rows.Next() {
+		var item StockCommentDaily
+		if err := rows.Scan(
+			&item.Code, &item.TradingDate, &item.Name, &item.LatestPrice,
+			&item.ChangePercent, &item.TurnoverRate, &item.PeRatio, &item.MainCost,
+			&item.InstitutionParticipation, &item.CompositeScore, &item.Rise,
+			&item.CurrentRank, &item.AttentionIndex,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan a_stock_comment_daily row: %v", err)
+		}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
 }
 
 // GetStockData 获取股票数据
@@ -1286,92 +1527,92 @@ func (h *DatabaseHandler) batchInsertIndexDailyHandler(c *gin.Context) {
 
 // batchInsertAStockCommentDailyHandler 批量插入/更新 A股每日评论/指标数据
 func (h *DatabaseHandler) batchInsertAStockCommentDailyHandler(c *gin.Context) {
-    var req []struct {
-        Code                   string  `json:"code"`
-        TradingDate            string  `json:"trading_date"`
-        Name                   string  `json:"name"`
-        LatestPrice            float64 `json:"latest_price"`
-        ChangePercent          float64 `json:"change_percent"`
-        TurnoverRate           float64 `json:"turnover_rate"`
-        PeRatio                float64 `json:"pe_ratio"`
-        MainCost               float64 `json:"main_cost"`
-        InstitutionParticipation float64 `json:"institution_participation"`
-        CompositeScore         float64 `json:"composite_score"`
-        Rise                   int64   `json:"rise"`
-        CurrentRank            int64   `json:"current_rank"`
-        AttentionIndex         float64 `json:"attention_index"`
-    }
-    if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
-        return
-    }
-    if len(req) == 0 {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "empty list"})
-        return
-    }
-    list := make([]StockCommentDaily, 0, len(req))
-    for i, v := range req {
-        if v.Code == "" || v.TradingDate == "" {
-            c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("item %d missing code or trading_date", i)})
-            return
-        }
-        tDate, err := time.Parse("2006-01-02", v.TradingDate)
-        if err != nil {
-            c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("item %d invalid trading_date format", i)})
-            return
-        }
-        list = append(list, StockCommentDaily{
-            Code:                   v.Code,
-            TradingDate:            tDate,
-            Name:                   v.Name,
-            LatestPrice:            v.LatestPrice,
-            ChangePercent:          v.ChangePercent,
-            TurnoverRate:           v.TurnoverRate,
-            PeRatio:                v.PeRatio,
-            MainCost:               v.MainCost,
-            InstitutionParticipation: v.InstitutionParticipation,
-            CompositeScore:         v.CompositeScore,
-            Rise:                   v.Rise,
-            CurrentRank:            v.CurrentRank,
-            AttentionIndex:         v.AttentionIndex,
-        })
-    }
-    if err := h.BatchUpsertAStockCommentDaily(list); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{"affected": len(list)}})
+	var req []struct {
+		Code                     string  `json:"code"`
+		TradingDate              string  `json:"trading_date"`
+		Name                     string  `json:"name"`
+		LatestPrice              float64 `json:"latest_price"`
+		ChangePercent            float64 `json:"change_percent"`
+		TurnoverRate             float64 `json:"turnover_rate"`
+		PeRatio                  float64 `json:"pe_ratio"`
+		MainCost                 float64 `json:"main_cost"`
+		InstitutionParticipation float64 `json:"institution_participation"`
+		CompositeScore           float64 `json:"composite_score"`
+		Rise                     int64   `json:"rise"`
+		CurrentRank              int64   `json:"current_rank"`
+		AttentionIndex           float64 `json:"attention_index"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	if len(req) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "empty list"})
+		return
+	}
+	list := make([]StockCommentDaily, 0, len(req))
+	for i, v := range req {
+		if v.Code == "" || v.TradingDate == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("item %d missing code or trading_date", i)})
+			return
+		}
+		tDate, err := time.Parse("2006-01-02", v.TradingDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("item %d invalid trading_date format", i)})
+			return
+		}
+		list = append(list, StockCommentDaily{
+			Code:                     v.Code,
+			TradingDate:              tDate,
+			Name:                     v.Name,
+			LatestPrice:              v.LatestPrice,
+			ChangePercent:            v.ChangePercent,
+			TurnoverRate:             v.TurnoverRate,
+			PeRatio:                  v.PeRatio,
+			MainCost:                 v.MainCost,
+			InstitutionParticipation: v.InstitutionParticipation,
+			CompositeScore:           v.CompositeScore,
+			Rise:                     v.Rise,
+			CurrentRank:              v.CurrentRank,
+			AttentionIndex:           v.AttentionIndex,
+		})
+	}
+	if err := h.BatchUpsertAStockCommentDaily(list); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{"affected": len(list)}})
 }
 
 func (h *DatabaseHandler) getAStockCommentDailyByNameHandler(c *gin.Context) {
-    var req struct {
-        Name   string `json:"name"`
-        Limit  *int   `json:"limit"`
-        Offset *int   `json:"offset"`
-    }
-    if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
-        return
-    }
-    if strings.TrimSpace(req.Name) == "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
-        return
-    }
-    limit := 20
-    if req.Limit != nil && *req.Limit > 0 {
-        limit = *req.Limit
-    }
-    offset := 0
-    if req.Offset != nil && *req.Offset >= 0 {
-        offset = *req.Offset
-    }
+	var req struct {
+		Name   string `json:"name"`
+		Limit  *int   `json:"limit"`
+		Offset *int   `json:"offset"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+		return
+	}
+	limit := 20
+	if req.Limit != nil && *req.Limit > 0 {
+		limit = *req.Limit
+	}
+	offset := 0
+	if req.Offset != nil && *req.Offset >= 0 {
+		offset = *req.Offset
+	}
 
-    data, err := h.GetAStockCommentDailyByName(req.Name, limit, offset)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
+	data, err := h.GetAStockCommentDailyByName(req.Name, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
 }
 
 // getIndexDailyHandler 分页查询指数每日数据（日期倒序）
@@ -1458,45 +1699,8 @@ func main() {
 
 	// 创建 Gin 引擎
 	r := gin.Default()
-	// 启用 gzip 中间件（根据客户端 Accept-Encoding 自动压缩响应）
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
-
-	// 简单鉴权：固定token（从环境变量API_TOKEN读取，未设置则使用默认值）
 	apiToken := getEnv("API_TOKEN", "fintrack-dev-token")
-	r.Use(TokenAuthMiddleware(apiToken))
-
-	// API 路由组
-	api := r.Group("/api/v1")
-	{
-		api.POST("/stock-data", handler.insertStockDataHandler)
-		api.POST("/stock-data/batch", handler.batchInsertStockDataHandler)
-		api.POST("/stock-data/:symbol", handler.getStockDataHandler)
-		api.POST("/stock-data/:symbol/range", handler.getStockDataByDateRangeHandler)
-
-		// ETF每日数据（独立表）写入
-		api.POST("/etf/daily", handler.insertEtfDailyHandler)
-		api.POST("/etf/daily/batch", handler.batchInsertEtfDailyHandler)
-
-		// ETF每日数据（独立表）查询
-		api.POST("/etf/daily/:code", handler.getEtfDailyHandler)
-		api.POST("/etf/daily/:code/range", handler.getEtfDailyByDateRangeHandler)
-
-		// 指数基本信息与每日数据
-		api.POST("/index/info", handler.insertIndexInfoHandler)
-		api.POST("/index/info/batch", handler.batchInsertIndexInfoHandler)
-		api.POST("/index/daily", handler.insertIndexDailyHandler)
-		api.POST("/index/daily/batch", handler.batchInsertIndexDailyHandler)
-		api.POST("/index/daily/:code", handler.getIndexDailyHandler)
-        api.POST("/index/daily/:code/range", handler.getIndexDailyByDateRangeHandler)
-        // A股每日评论/指标数据（stock_comment_em）批量写入
-        api.POST("/stock/comment/daily/batch", handler.batchInsertAStockCommentDailyHandler)
-        api.POST("/stock/comment/daily/search", handler.getAStockCommentDailyByNameHandler)
-    }
-
-	// 健康检查
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	RegisterRoutes(r, handler, apiToken)
 
 	port := getEnv("PORT", "8080")
 	log.Printf("Server starting on port %s", port)
@@ -1513,11 +1717,11 @@ func main() {
 	log.Printf("  POST /api/v1/index/info/batch - Batch upsert index info")
 	log.Printf("  POST /api/v1/index/daily - Upsert single index daily data")
 	log.Printf("  POST /api/v1/index/daily/batch - Batch upsert index daily data")
-    log.Printf("  POST /api/v1/index/daily/:code - Query index daily data (JSON body: {limit, offset})")
-    log.Printf("  POST /api/v1/index/daily/:code/range - Query index daily data by date range (JSON body: {start_date, end_date})")
-    log.Printf("  POST /api/v1/stock/comment/daily/batch - Batch upsert A-stock comment daily metrics")
-    log.Printf("  POST /api/v1/stock/comment/daily/search - Query A-stock comment daily by name (JSON body: {name, limit, offset})")
-    log.Printf("  GET  /health - Health check")
+	log.Printf("  POST /api/v1/index/daily/:code - Query index daily data (JSON body: {limit, offset})")
+	log.Printf("  POST /api/v1/index/daily/:code/range - Query index daily data by date range (JSON body: {start_date, end_date})")
+	log.Printf("  POST /api/v1/stock/comment/daily/batch - Batch upsert A-stock comment daily metrics")
+	log.Printf("  POST /api/v1/stock/comment/daily/search - Query A-stock comment daily by name (JSON body: {name, limit, offset})")
+	log.Printf("  GET  /health - Health check")
 
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal("Server failed to start:", err)

@@ -80,7 +80,7 @@ def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_s
         if len(df) < horizon_len * 2:
             print(f"❌ 股票 {stock_code} 数据量不足 (仅有 {len(df)} 条记录，需要至少 {horizon_len * 2} 条)")
             return None, None, None
-        
+        df.drop(columns=['type', 'created_at', 'updated_at', "id"], inplace=True)
         # 检查必要的列是否存在
         required_columns = ['close']
         missing_columns = [col for col in required_columns if col not in df.columns]
@@ -88,7 +88,7 @@ def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_s
             print(f"❌ 股票 {stock_code} 数据缺少必要列: {missing_columns}")
             return None, None, None
         
-        df["stock_code"] = stock_code
+        df.rename(columns={'symbol': 'stock_code'}, inplace=True)
     
         # 确保datetime列是正确的日期格式
         try:
@@ -162,7 +162,9 @@ def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_s
         df_test = df.iloc[start_idx + train_size:start_idx + train_size + test_size, :]
         
         print(f"📊 训练集: {len(df_train)} 条记录, 测试集: {len(df_test)} 条记录")
-        
+        print(f"训练集列名: {df_train.columns.tolist()}")
+        print(f"测试集列名: {df_test.columns.tolist()}")
+
         return df, df_train, df_test
         
     except Exception as e:
