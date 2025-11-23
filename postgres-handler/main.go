@@ -1697,10 +1697,10 @@ func main() {
 	}
 	defer handler.Close()
 
-	// 创建 Gin 引擎
-	r := gin.Default()
-	apiToken := getEnv("API_TOKEN", "fintrack-dev-token")
-	RegisterRoutes(r, handler, apiToken)
+    // 创建 Gin 引擎
+    r := gin.Default()
+    apiToken := getEnv("API_TOKEN", "fintrack-dev-token")
+    RegisterRoutes(r, handler, apiToken)
 
 	port := getEnv("PORT", "8080")
 	log.Printf("Server starting on port %s", port)
@@ -1727,6 +1727,7 @@ func main() {
 		log.Fatal("Server failed to start:", err)
 	}
 }
+
 
 // TokenAuthMiddleware 使用固定token进行简单鉴权
 // 客户端需要在请求头中携带：
