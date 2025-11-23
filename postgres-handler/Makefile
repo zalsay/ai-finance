@@ -8,7 +8,7 @@ all: build
 # 构建可执行文件
 build:
 	@echo "构建 PostgreSQL 股票数据处理服务..."
-	go build -o postgres-handler main.go
+	go build -o postgres-handler .
 	@echo "构建完成！"
 
 # 安装依赖
