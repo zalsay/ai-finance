@@ -99,7 +99,9 @@ def predict_single_chunk_mode1(
                     'combined_score': combined_score,
                     'pred_pct': pct_q,
                     'actual_pct': actual_pct,
-                    'diff_pct': diff_pct
+                    'diff_pct': diff_pct,
+                    'pred_values': pred_values_trimmed,
+                    'actual_values': actual_values_trimmed
                 }
                 
                 # 找到最优分位数
@@ -125,6 +127,8 @@ def predict_single_chunk_mode1(
                 print(f"    {q}: MSE={metrics['mse']:.2f}, MAE={metrics['mae']:.2f}, 综合得分={metrics['combined_score']:.2f}, 预测涨跌幅={metrics['pred_pct']:.2f}, 实际涨跌幅={metrics['actual_pct']:.2f}, 百分比差={metrics['diff_pct']:.2f}")
             print(f"  🏆 最优分位数: {best_quantile} (综合得分: {best_score:.6f})")
             print(f"  🏆 最优分位数(涨跌幅): {best_quantile_pct} (百分比差: {best_pct:.6f})")
+            print(f"  最优分位数预测值: {quantile_metrics[best_quantile_pct]['pred_values']}")
+            print(f"  最优分位数实际值: {quantile_metrics[best_quantile_pct]['actual_values']}")
         
         # 获取实际值和预测值对应的日期范围
         # 实际值和预测值对应的是分块中的最后horizon_len个日期
