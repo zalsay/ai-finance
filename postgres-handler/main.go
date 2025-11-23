@@ -73,6 +73,23 @@ type IndexDailyData struct {
 	ChangePercent float64   `json:"change_percent" db:"change_percent"`
 }
 
+// StockCommentDaily A股每日评论/指标数据（来源：akshare stock_comment_em）
+type StockCommentDaily struct {
+    Code                 string    `json:"code" db:"code"`
+    TradingDate          time.Time `json:"trading_date" db:"trading_date"`
+    Name                 string    `json:"name" db:"name"`
+    LatestPrice          float64   `json:"latest_price" db:"latest_price"`
+    ChangePercent        float64   `json:"change_percent" db:"change_percent"`
+    TurnoverRate         float64   `json:"turnover_rate" db:"turnover_rate"`
+    PeRatio              float64   `json:"pe_ratio" db:"pe_ratio"`
+    MainCost             float64   `json:"main_cost" db:"main_cost"`
+    InstitutionParticipation float64 `json:"institution_participation" db:"institution_participation"`
+    CompositeScore       float64   `json:"composite_score" db:"composite_score"`
+    Rise                 int64     `json:"rise" db:"rise"`
+    CurrentRank          int64     `json:"current_rank" db:"current_rank"`
+    AttentionIndex       float64   `json:"attention_index" db:"attention_index"`
+}
+
 // DatabaseHandler 数据库处理器
 type DatabaseHandler struct {
 	db *sql.DB
@@ -247,7 +264,35 @@ func (h *DatabaseHandler) initializeDatabase() error {
 	if _, err := h.db.Exec(createIndexDailySQL); err != nil {
 		return fmt.Errorf("failed to create index_daily table: %v", err)
 	}
-	log.Println("Table index_daily ensured successfully")
+    log.Println("Table index_daily ensured successfully")
+
+    // A股每日评论/指标数据表（stock_comment_em）
+    createAStockCommentDailySQL := `
+    CREATE TABLE IF NOT EXISTS a_stock_comment_daily (
+        code TEXT NOT NULL,
+        trading_date DATE NOT NULL,
+        name TEXT,
+        latest_price NUMERIC(12,4),
+        change_percent NUMERIC(12,4),
+        turnover_rate NUMERIC(12,4),
+        pe_ratio NUMERIC(12,4),
+        main_cost NUMERIC(12,4),
+        institution_participation NUMERIC(12,4),
+        composite_score NUMERIC(12,4),
+        rise BIGINT,
+        current_rank BIGINT,
+        attention_index NUMERIC(12,4),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        PRIMARY KEY (code, trading_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_a_stock_comment_daily_code ON a_stock_comment_daily (code);
+    CREATE INDEX IF NOT EXISTS idx_a_stock_comment_daily_trading_date ON a_stock_comment_daily (trading_date);
+    CREATE INDEX IF NOT EXISTS idx_a_stock_comment_daily_name ON a_stock_comment_daily (name);
+    `
+    if _, err := h.db.Exec(createAStockCommentDailySQL); err != nil {
+        return fmt.Errorf("failed to create a_stock_comment_daily table: %v", err)
+    }
+    log.Println("Table a_stock_comment_daily ensured successfully")
 
 	return nil
 }
@@ -501,6 +546,103 @@ func (h *DatabaseHandler) BatchUpsertIndexDaily(list []IndexDailyData) error {
 		return err
 	}
 	return nil
+}
+
+// BatchUpsertAStockCommentDaily 批量插入或更新 A股每日评论/指标数据
+func (h *DatabaseHandler) BatchUpsertAStockCommentDaily(list []StockCommentDaily) error {
+    tx, err := h.db.Begin()
+    if err != nil {
+        return err
+    }
+    defer func() {
+        if err != nil {
+            tx.Rollback()
+        }
+    }()
+
+    stmt, err := tx.Prepare(`
+        INSERT INTO a_stock_comment_daily (
+            code, trading_date, name, latest_price, change_percent, turnover_rate,
+            pe_ratio, main_cost, institution_participation, composite_score,
+            rise, current_rank, attention_index
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ON CONFLICT (code, trading_date) DO UPDATE SET
+            name = EXCLUDED.name,
+            latest_price = EXCLUDED.latest_price,
+            change_percent = EXCLUDED.change_percent,
+            turnover_rate = EXCLUDED.turnover_rate,
+            pe_ratio = EXCLUDED.pe_ratio,
+            main_cost = EXCLUDED.main_cost,
+            institution_participation = EXCLUDED.institution_participation,
+            composite_score = EXCLUDED.composite_score,
+            rise = EXCLUDED.rise,
+            current_rank = EXCLUDED.current_rank,
+            attention_index = EXCLUDED.attention_index`)
+    if err != nil {
+        return err
+    }
+    defer stmt.Close()
+
+    for _, v := range list {
+        if _, err = stmt.Exec(
+            v.Code, v.TradingDate, v.Name, v.LatestPrice, v.ChangePercent, v.TurnoverRate,
+            v.PeRatio, v.MainCost, v.InstitutionParticipation, v.CompositeScore,
+            v.Rise, v.CurrentRank, v.AttentionIndex,
+        ); err != nil {
+            return fmt.Errorf("batch upsert a_stock_comment_daily failed: %v", err)
+        }
+    }
+
+    if err = tx.Commit(); err != nil {
+        return err
+    }
+    return nil
+}
+
+func (h *DatabaseHandler) GetAStockCommentDailyByName(name string, limit int, offset int) ([]StockCommentDaily, error) {
+    query := `
+    SELECT 
+        code,
+        trading_date,
+        COALESCE(name, ''),
+        COALESCE(latest_price, 0),
+        COALESCE(change_percent, 0),
+        COALESCE(turnover_rate, 0),
+        COALESCE(pe_ratio, 0),
+        COALESCE(main_cost, 0),
+        COALESCE(institution_participation, 0),
+        COALESCE(composite_score, 0),
+        COALESCE(rise, 0),
+        COALESCE(current_rank, 0),
+        COALESCE(attention_index, 0)
+    FROM a_stock_comment_daily
+    WHERE name ILIKE $1
+    ORDER BY trading_date DESC
+    LIMIT $2 OFFSET $3`
+
+    rows, err := h.db.Query(query, "%"+name+"%", limit, offset)
+    if err != nil {
+        return nil, fmt.Errorf("failed to query a_stock_comment_daily by name: %v", err)
+    }
+    defer rows.Close()
+
+    var result []StockCommentDaily
+    for rows.Next() {
+        var item StockCommentDaily
+        if err := rows.Scan(
+            &item.Code, &item.TradingDate, &item.Name, &item.LatestPrice,
+            &item.ChangePercent, &item.TurnoverRate, &item.PeRatio, &item.MainCost,
+            &item.InstitutionParticipation, &item.CompositeScore, &item.Rise,
+            &item.CurrentRank, &item.AttentionIndex,
+        ); err != nil {
+            return nil, fmt.Errorf("failed to scan a_stock_comment_daily row: %v", err)
+        }
+        result = append(result, item)
+    }
+    if len(result) == 0 {
+        return nil, nil
+    }
+    return result, nil
 }
 
 // GetStockData 获取股票数据
@@ -1142,6 +1284,96 @@ func (h *DatabaseHandler) batchInsertIndexDailyHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{"affected": len(list)}})
 }
 
+// batchInsertAStockCommentDailyHandler 批量插入/更新 A股每日评论/指标数据
+func (h *DatabaseHandler) batchInsertAStockCommentDailyHandler(c *gin.Context) {
+    var req []struct {
+        Code                   string  `json:"code"`
+        TradingDate            string  `json:"trading_date"`
+        Name                   string  `json:"name"`
+        LatestPrice            float64 `json:"latest_price"`
+        ChangePercent          float64 `json:"change_percent"`
+        TurnoverRate           float64 `json:"turnover_rate"`
+        PeRatio                float64 `json:"pe_ratio"`
+        MainCost               float64 `json:"main_cost"`
+        InstitutionParticipation float64 `json:"institution_participation"`
+        CompositeScore         float64 `json:"composite_score"`
+        Rise                   int64   `json:"rise"`
+        CurrentRank            int64   `json:"current_rank"`
+        AttentionIndex         float64 `json:"attention_index"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+        return
+    }
+    if len(req) == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "empty list"})
+        return
+    }
+    list := make([]StockCommentDaily, 0, len(req))
+    for i, v := range req {
+        if v.Code == "" || v.TradingDate == "" {
+            c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("item %d missing code or trading_date", i)})
+            return
+        }
+        tDate, err := time.Parse("2006-01-02", v.TradingDate)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("item %d invalid trading_date format", i)})
+            return
+        }
+        list = append(list, StockCommentDaily{
+            Code:                   v.Code,
+            TradingDate:            tDate,
+            Name:                   v.Name,
+            LatestPrice:            v.LatestPrice,
+            ChangePercent:          v.ChangePercent,
+            TurnoverRate:           v.TurnoverRate,
+            PeRatio:                v.PeRatio,
+            MainCost:               v.MainCost,
+            InstitutionParticipation: v.InstitutionParticipation,
+            CompositeScore:         v.CompositeScore,
+            Rise:                   v.Rise,
+            CurrentRank:            v.CurrentRank,
+            AttentionIndex:         v.AttentionIndex,
+        })
+    }
+    if err := h.BatchUpsertAStockCommentDaily(list); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{"affected": len(list)}})
+}
+
+func (h *DatabaseHandler) getAStockCommentDailyByNameHandler(c *gin.Context) {
+    var req struct {
+        Name   string `json:"name"`
+        Limit  *int   `json:"limit"`
+        Offset *int   `json:"offset"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+        return
+    }
+    if strings.TrimSpace(req.Name) == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+        return
+    }
+    limit := 20
+    if req.Limit != nil && *req.Limit > 0 {
+        limit = *req.Limit
+    }
+    offset := 0
+    if req.Offset != nil && *req.Offset >= 0 {
+        offset = *req.Offset
+    }
+
+    data, err := h.GetAStockCommentDailyByName(req.Name, limit, offset)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
+}
+
 // getIndexDailyHandler 分页查询指数每日数据（日期倒序）
 func (h *DatabaseHandler) getIndexDailyHandler(c *gin.Context) {
 	code := c.Param("code")
@@ -1255,8 +1487,11 @@ func main() {
 		api.POST("/index/daily", handler.insertIndexDailyHandler)
 		api.POST("/index/daily/batch", handler.batchInsertIndexDailyHandler)
 		api.POST("/index/daily/:code", handler.getIndexDailyHandler)
-		api.POST("/index/daily/:code/range", handler.getIndexDailyByDateRangeHandler)
-	}
+        api.POST("/index/daily/:code/range", handler.getIndexDailyByDateRangeHandler)
+        // A股每日评论/指标数据（stock_comment_em）批量写入
+        api.POST("/stock/comment/daily/batch", handler.batchInsertAStockCommentDailyHandler)
+        api.POST("/stock/comment/daily/search", handler.getAStockCommentDailyByNameHandler)
+    }
 
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
@@ -1278,9 +1513,11 @@ func main() {
 	log.Printf("  POST /api/v1/index/info/batch - Batch upsert index info")
 	log.Printf("  POST /api/v1/index/daily - Upsert single index daily data")
 	log.Printf("  POST /api/v1/index/daily/batch - Batch upsert index daily data")
-	log.Printf("  POST /api/v1/index/daily/:code - Query index daily data (JSON body: {limit, offset})")
-	log.Printf("  POST /api/v1/index/daily/:code/range - Query index daily data by date range (JSON body: {start_date, end_date})")
-	log.Printf("  GET  /health - Health check")
+    log.Printf("  POST /api/v1/index/daily/:code - Query index daily data (JSON body: {limit, offset})")
+    log.Printf("  POST /api/v1/index/daily/:code/range - Query index daily data by date range (JSON body: {start_date, end_date})")
+    log.Printf("  POST /api/v1/stock/comment/daily/batch - Batch upsert A-stock comment daily metrics")
+    log.Printf("  POST /api/v1/stock/comment/daily/search - Query A-stock comment daily by name (JSON body: {name, limit, offset})")
+    log.Printf("  GET  /health - Health check")
 
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal("Server failed to start:", err)
