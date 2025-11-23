@@ -185,11 +185,83 @@ def upsert_index_daily(code: str, start_date: Optional[str] = None, end_date: Op
     return affected
 
 
+def upsert_a_stock_comment_daily(codes: List[str] = None, batch_size: int = 500) -> int:
+    """同步 A股每日评论/指标数据（ak.stock_comment_em）到 Go API
+    列映射：序号(seq)忽略，代码(code), 名称(name), 最新价(latest_price), 涨跌幅(change_percent),
+    换手率(turnover_rate), 市盈率(pe_ratio), 主力成本(main_cost), 机构参与度(institution_participation),
+    综合得分(composite_score), 上升(rise), 目前排名(current_rank), 关注指数(attention_index), 交易日(trading_date)
+    """
+    try:
+        df = ak.stock_comment_em()
+    except Exception as e:
+        print(f"ak.stock_comment_em error: {e}")
+        return 0
+    if df is None or df.empty:
+        print("stock_comment_em: empty")
+        return 0
+
+    cols = set(df.columns)
+    code_col = "代码" if "代码" in cols else ("code" if "code" in cols else None)
+    name_col = "名称" if "名称" in cols else ("name" if "name" in cols else None)
+    lp_col = "最新价" if "最新价" in cols else ("latest_price" if "latest_price" in cols else None)
+    cp_col = "涨跌幅" if "涨跌幅" in cols else ("change_percent" if "change_percent" in cols else None)
+    tr_col = "换手率" if "换手率" in cols else ("turnover_rate" if "turnover_rate" in cols else None)
+    pe_col = "市盈率" if "市盈率" in cols else ("pe_ratio" if "pe_ratio" in cols else None)
+    mc_col = "主力成本" if "主力成本" in cols else ("main_cost" if "main_cost" in cols else None)
+    ip_col = "机构参与度" if "机构参与度" in cols else ("institution_participation" if "institution_participation" in cols else None)
+    cs_col = "综合得分" if "综合得分" in cols else ("composite_score" if "composite_score" in cols else None)
+    rise_col = "上升" if "上升" in cols else ("rise" if "rise" in cols else None)
+    rank_col = "目前排名" if "目前排名" in cols else ("current_rank" if "current_rank" in cols else None)
+    ai_col = "关注指数" if "关注指数" in cols else ("attention_index" if "attention_index" in cols else None)
+    date_col = "交易日" if "交易日" in cols else ("date" if "date" in cols else None)
+    if not all([code_col, name_col, lp_col, cp_col, tr_col, pe_col, mc_col, ip_col, cs_col, rise_col, rank_col, ai_col, date_col]):
+        raise RuntimeError(f"Unexpected columns in stock_comment_em: {df.columns.tolist()}")
+
+    df = df[[code_col, name_col, lp_col, cp_col, tr_col, pe_col, mc_col, ip_col, cs_col, rise_col, rank_col, ai_col, date_col]].copy()
+    df[date_col] = df[date_col].apply(normalize_date_str)
+
+    if codes:
+        codes_str = [str(c) for c in codes]
+        df = df[df[code_col].astype(str).isin(codes_str)]
+    if df.empty:
+        print("Filtered A股评论数据为空")
+        return 0
+
+    rows = []
+    for _, row in df.iterrows():
+        rows.append({
+            "code": str(row[code_col]),
+            "trading_date": row[date_col],
+            "name": str(row[name_col]) if row[name_col] is not None else None,
+            "latest_price": float(row[lp_col]) if row[lp_col] is not None else None,
+            "change_percent": float(row[cp_col]) if row[cp_col] is not None else None,
+            "turnover_rate": float(row[tr_col]) if row[tr_col] is not None else None,
+            "pe_ratio": float(row[pe_col]) if row[pe_col] is not None else None,
+            "main_cost": float(row[mc_col]) if row[mc_col] is not None else None,
+            "institution_participation": float(row[ip_col]) if row[ip_col] is not None else None,
+            "composite_score": float(row[cs_col]) if row[cs_col] is not None else None,
+            "rise": int(float(row[rise_col])) if row[rise_col] is not None else None,
+            "current_rank": int(float(row[rank_col])) if row[rank_col] is not None else None,
+            "attention_index": float(row[ai_col]) if row[ai_col] is not None else None,
+        })
+
+    affected = 0
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i:i+batch_size]
+        res = _post("/api/v1/stock/comment/daily/batch", batch)
+        n = int(res.get("data", {}).get("affected", 0)) if isinstance(res, dict) else 0
+        affected += n
+        time.sleep(0.2)
+    print(f"A股每日评论数据批量写入 affected={affected}")
+    return affected
+
+
 def main(argv: List[str]):
     import argparse
-    parser = argparse.ArgumentParser(description="Sync index info & daily to Go API")
+    parser = argparse.ArgumentParser(description="Sync index info & daily & A-stock comment to Go API")
     parser.add_argument("--sync-info", action="store_true", help="Sync index basic info")
     parser.add_argument("--sync-daily", action="store_true", help="Sync index daily data for codes")
+    parser.add_argument("--sync-a-stock-comment", action="store_true", help="Sync A-stock comment daily metrics")
     parser.add_argument("--codes", type=str, default="", help="Comma separated index codes, e.g. 000001,399001")
     parser.add_argument("--start-date", type=str, default=None, help="Start date YYYY-MM-DD for daily")
     parser.add_argument("--end-date", type=str, default=None, help="End date YYYY-MM-DD for daily")
@@ -205,8 +277,9 @@ def main(argv: List[str]):
             return
         for code in codes:
             upsert_index_daily(code, start_date=args.start_date, end_date=args.end_date, batch_size=args.batch_size)
+    if args.sync_a_stock_comment:
+        upsert_a_stock_comment_daily(codes=codes, batch_size=args.batch_size)
 
 
 if __name__ == "__main__":
-    # main(sys.argv[1:])
-    # upsert_index_info_by_codes()
+    main(sys.argv[1:])
