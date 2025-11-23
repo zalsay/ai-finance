@@ -12,17 +12,17 @@ interface LoginProps {
 type FormType = 'login' | 'register';
 
 // 将InputField组件移到外部以避免重新渲染时重新创建
-const InputField: React.FC<{ 
-    id: string; 
-    label: string; 
-    type: string; 
-    placeholder: string; 
+const InputField: React.FC<{
+    id: string;
+    label: string;
+    type: string;
+    placeholder: string;
     value: string;
     onChange: (value: string) => void;
     required?: boolean;
     disabled?: boolean;
 }> = ({ id, label, type, placeholder, value, onChange, required = true, disabled = false }) => (
-     <div className="flex flex-col">
+    <div className="flex flex-col">
         <label className="text-[#E0E0E0] text-sm font-medium leading-normal pb-2" htmlFor={id}>{label}</label>
         <input
             className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-[#444] bg-[#2a2a2a] h-12 placeholder:text-[#757575] p-3 text-base font-normal leading-normal"
@@ -75,7 +75,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     useEffect(() => {
         const savedEmail = localStorage.getItem('rememberedEmail');
         const shouldRemember = localStorage.getItem('rememberPassword') === 'true';
-        
+
         if (savedEmail && shouldRemember) {
             setEmail(savedEmail);
             setRememberPassword(true);
@@ -100,8 +100,16 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 }
             } else {
                 await authAPI.register(email, username, password);
+                // Force reload after registration to pick up auth state
+                // Small delay to ensure localStorage write completes
+                await new Promise(resolve => setTimeout(resolve, 100));
+                window.location.reload();
+                return; // Prevent onLogin() from being called
             }
-            onLogin();
+            // Force reload after login to pick up auth state
+            // Small delay to ensure localStorage write completes
+            await new Promise(resolve => setTimeout(resolve, 100));
+            window.location.reload();
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -131,57 +139,57 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         {t('login.subtitle')}
                     </p>
                 </div>
-                
+
                 <div className="w-full md:w-1/2 p-8 sm:p-12 flex flex-col bg-[#1E1E1E]">
                     <div className="w-full">
                         <div className="flex border-b border-[#333]">
-                           <TabButton type="login" label={t('login.loginTab')} />
-                           <TabButton type="register" label={t('login.registerTab')} />
+                            <TabButton type="login" label={t('login.loginTab')} />
+                            <TabButton type="register" label={t('login.registerTab')} />
                         </div>
                     </div>
-                    
+
                     <div className="flex flex-col flex-1 mt-8">
                         <h3 className="text-white text-2xl font-bold leading-tight mb-6">
                             {formType === 'login' ? t('login.welcomeBack') : t('login.createAccount')}
                         </h3>
-                        
+
                         {error && (
                             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
                                 <p className="text-red-400 text-sm">{error}</p>
                             </div>
                         )}
-                        
+
                         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
                             {formType === 'register' && (
-                                <InputField 
-                                    id="fullname" 
-                                    label={t('login.fullName')} 
-                                    type="text" 
-                                    placeholder={t('login.fullNamePlaceholder')} 
+                                <InputField
+                                    id="fullname"
+                                    label={t('login.fullName')}
+                                    type="text"
+                                    placeholder={t('login.fullNamePlaceholder')}
                                     value={username}
                                     onChange={setUsername}
                                     disabled={isLoading}
                                 />
                             )}
-                            <InputField 
-                                id="email" 
-                                label={t('login.emailAddress')} 
-                                type="email" 
-                                placeholder={t('login.emailPlaceholder')} 
+                            <InputField
+                                id="email"
+                                label={t('login.emailAddress')}
+                                type="email"
+                                placeholder={t('login.emailPlaceholder')}
                                 value={email}
                                 onChange={setEmail}
                                 disabled={isLoading}
                             />
-                            <InputField 
-                                id="password" 
-                                label={t('login.password')} 
-                                type="password" 
-                                placeholder={t('login.passwordPlaceholder')} 
+                            <InputField
+                                id="password"
+                                label={t('login.password')}
+                                type="password"
+                                placeholder={t('login.passwordPlaceholder')}
                                 value={password}
                                 onChange={setPassword}
                                 disabled={isLoading}
                             />
-                            
+
                             {formType === 'login' && (
                                 <div className="flex items-center justify-between -mt-2">
                                     <CheckboxField
@@ -194,11 +202,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                                     <a className="text-sm text-primary hover:underline" href="#">{t('login.forgotPassword')}</a>
                                 </div>
                             )}
-                            
+
                             {formType === 'register' && <div className="-mt-2"></div>}
-                            
-                            <button 
-                                className="flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-bold h-12 px-6 bg-primary text-black mt-4 hover:bg-opacity-90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-[#1E1E1E] disabled:opacity-50 disabled:cursor-not-allowed" 
+
+                            <button
+                                className="flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-bold h-12 px-6 bg-primary text-black mt-4 hover:bg-opacity-90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-[#1E1E1E] disabled:opacity-50 disabled:cursor-not-allowed"
                                 type="submit"
                                 disabled={isLoading}
                             >
@@ -217,7 +225,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                                 <span className="flex-shrink mx-4 text-xs text-[#9E9E9E]">{t('login.or')}</span>
                                 <div className="flex-grow border-t border-[#444]"></div>
                             </div>
-                            
+
                             <button className="flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium h-12 px-6 bg-[#2a2a2a] text-white border border-[#444] hover:bg-[#333] transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-[#1E1E1E] gap-2 disabled:opacity-50 disabled:cursor-not-allowed" type="button" onClick={onLogin} disabled={isLoading}>
                                 <GoogleIcon className="h-5 w-5" />
                                 {t('login.continueWithGoogle')}

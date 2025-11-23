@@ -11,10 +11,12 @@ import { INITIAL_STOCKS, NAVIGATION_ITEMS } from './constants';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import LanguageSwitcher from './components/layout/LanguageSwitcher';
 import { authAPI } from './services/apiService';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const AppContent: React.FC = () => {
     const { t } = useLanguage();
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+    const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
     const [currentView, setCurrentView] = useState<View>('dashboard');
     const [stocks, setStocks] = useState<StockData[]>(INITIAL_STOCKS);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -23,16 +25,21 @@ const AppContent: React.FC = () => {
 
     // 检查用户是否已登录
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            // 验证token是否有效
-            authAPI.getProfile()
-                .then(() => setIsAuthenticated(true))
-                .catch(() => {
-                    localStorage.removeItem('token');
+        const checkAuth = async () => {
+            const token = localStorage.getItem('authToken');  // 修复：使用正确的 key
+            if (token) {
+                try {
+                    // 验证token是否有效
+                    await authAPI.getProfile();
+                    setIsAuthenticated(true);
+                } catch {
+                    localStorage.removeItem('authToken');
                     setIsAuthenticated(false);
-                });
-        }
+                }
+            }
+            setIsCheckingAuth(false);
+        };
+        checkAuth();
     }, []);
 
     const fetchPredictions = useCallback(async () => {
@@ -62,14 +69,14 @@ const AppContent: React.FC = () => {
     const handleLogin = () => {
         setIsAuthenticated(true);
     };
-    
+
     const handleLogout = async () => {
         try {
             await authAPI.logout();
         } catch (error) {
             console.error('Logout error:', error);
         } finally {
-            localStorage.removeItem('token');
+            localStorage.removeItem('authToken');  // 修复：使用正确的 key
             setIsAuthenticated(false);
             setCurrentView('dashboard');
         }
@@ -90,7 +97,19 @@ const AppContent: React.FC = () => {
                 </div>;
         }
     };
-    
+
+    // 显示加载画面，等待token验证完成
+    if (isCheckingAuth) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-background-dark">
+                <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-white/60">正在验证登录状态...</p>
+                </div>
+            </div>
+        );
+    }
+
     if (!isAuthenticated) {
         return <Login onLogin={handleLogin} />;
     }
@@ -98,23 +117,22 @@ const AppContent: React.FC = () => {
     return (
         <div className="flex min-h-screen">
             <Sidebar currentView={currentView} setCurrentView={setCurrentView} onLogout={handleLogout} />
-            
+
             {/* Mobile Navigation */}
-             <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#11221a] border-t border-white/10 z-50 safe-area-inset-bottom">
+            <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#11221a] border-t border-white/10 z-50 safe-area-inset-bottom">
                 <div className="flex justify-around items-center h-16">
                     {NAVIGATION_ITEMS.slice(0, 4).map(item => (
-                         <button
+                        <button
                             key={item.id}
                             onClick={() => setCurrentView(item.id)}
-                            className={`flex flex-col items-center justify-center py-1 px-2 w-full h-full transition-colors ${
-                                currentView === item.id ? 'text-primary' : 'text-white/60 hover:text-white'
-                            }`}
-                         >
+                            className={`flex flex-col items-center justify-center py-1 px-2 w-full h-full transition-colors ${currentView === item.id ? 'text-primary' : 'text-white/60 hover:text-white'
+                                }`}
+                        >
                             <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: currentView === item.id ? "'FILL' 1" : "" }}>
                                 {item.icon}
                             </span>
-                             <span className="text-[9px] mt-0.5 truncate leading-tight">{t(`nav.${item.id}`)}</span>
-                         </button>
+                            <span className="text-[9px] mt-0.5 truncate leading-tight">{t(`nav.${item.id}`)}</span>
+                        </button>
                     ))}
                     {/* Language Switcher for Mobile */}
                     <div className="flex flex-col items-center justify-center py-1 px-2 w-full h-full">
@@ -123,7 +141,7 @@ const AppContent: React.FC = () => {
                         </div>
                     </div>
                 </div>
-             </div>
+            </div>
 
             <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 sm:pb-24 lg:pb-8 min-h-screen lg:min-h-0">
                 <div className="max-w-full overflow-x-auto">
@@ -137,7 +155,9 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
     return (
         <LanguageProvider>
-            <AppContent />
+            <ErrorBoundary>
+                <AppContent />
+            </ErrorBoundary>
         </LanguageProvider>
     );
 };
