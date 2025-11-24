@@ -121,30 +121,30 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
         best_pct_predictions = []
         for chunk_result in response.chunk_results:
             chunk_size = len(chunk_result.actual_values)
-            key_score = chunk_result.metrics.get('best_quantile')
-            key_pct = chunk_result.metrics.get('best_quantile_pct')
+            key_score = chunk_result.metrics.get('best_quantile_colname')
+            key_pct = chunk_result.metrics.get('best_quantile_colname_pct')
             if key_score in chunk_result.predictions and len(chunk_result.predictions[key_score]) == chunk_size:
                 best_score_predictions.extend(chunk_result.predictions[key_score])
-            elif 'tsf-0.5' in chunk_result.predictions:
-                best_score_predictions.extend(chunk_result.predictions['tsf-0.5'][:chunk_size])
-            elif chunk_result.predictions:
-                best_score_predictions.extend(list(chunk_result.predictions.values())[0][:chunk_size])
-            else:
-                best_score_predictions.extend([0] * chunk_size)
+            # elif 'tsf-0.5' in chunk_result.predictions:
+            #     best_score_predictions.extend(chunk_result.predictions['tsf-0.5'][:chunk_size])
+            # elif chunk_result.predictions:
+            #     best_score_predictions.extend(list(chunk_result.predictions.values())[0][:chunk_size])
+            # else:
+            #     best_score_predictions.extend([0] * chunk_size)
             if key_pct in chunk_result.predictions and len(chunk_result.predictions[key_pct]) == chunk_size:
                 best_pct_predictions.extend(chunk_result.predictions[key_pct])
-            elif 'tsf-0.5' in chunk_result.predictions:
-                best_pct_predictions.extend(chunk_result.predictions['tsf-0.5'][:chunk_size])
-            elif chunk_result.predictions:
-                best_pct_predictions.extend(list(chunk_result.predictions.values())[0][:chunk_size])
-            else:
-                best_pct_predictions.extend([0] * chunk_size)
+            # elif 'tsf-0.5' in chunk_result.predictions:
+            #     best_pct_predictions.extend(chunk_result.predictions['tsf-0.5'][:chunk_size])
+            # elif chunk_result.predictions:
+            #     best_pct_predictions.extend(list(chunk_result.predictions.values())[0][:chunk_size])
+            # else:
+            #     best_pct_predictions.extend([0] * chunk_size)
         
         # Plot actual values
         plt.plot(dates, actual_values, 'b-', linewidth=2, label='Actual Values', alpha=0.8)
         
-        plt.plot(dates, best_score_predictions, 'r-', linewidth=2, label='Best Quantile (Score)', alpha=0.8)
-        plt.plot(dates, best_pct_predictions, color='orange', linewidth=2, label='Best Quantile (Pct)')
+        plt.plot(dates, best_score_predictions, 'r-', linewidth=2, label=f'Best Quantile ({key_score}) (Score)', alpha=0.8)
+        plt.plot(dates, best_pct_predictions, color='orange', linewidth=2, label=f'Best Quantile ({key_pct}) (Pct)')
         
         # Confidence interval fill using tsf-0.1 and tsf-0.9 if available
         predictions = response.concatenated_predictions or {}
