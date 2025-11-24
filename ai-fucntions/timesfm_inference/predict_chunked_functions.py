@@ -10,15 +10,38 @@ finance_dir = parent_dir
 pre_data_dir = os.path.join(parent_dir, 'preprocess_data')
 sys.path.append(pre_data_dir)
 
+# 导入其他模块
 from chunks_functions import create_chunks_from_test_data
 from processor import df_preprocess
 from math_functions import mean_squared_error, mean_absolute_error
+
+# 在需要时才导入timesfm-2.5版本的inference模块
+def import_predict_2p5():
+    # 保存原始sys.path
+    original_sys_path = sys.path.copy()
+    
+    # 添加timesfm-2p5-functions路径和timesfm-2.5源码路径
+    timesfm_2P5_dir = os.path.join(current_dir, "timesfm-2p5-functions")
+    timesfm_src = os.path.join(timesfm_2P5_dir, "timesfm-2.5", "src")
+    
+    # 只添加必要的路径，而不是完全替换sys.path
+    sys.path.insert(0, timesfm_src)
+    sys.path.insert(0, timesfm_2P5_dir)
+    
+    try:
+        from inference import predict_2p5
+        return predict_2p5
+    finally:
+        # 恢复原始sys.path
+        sys.path = original_sys_path
 
 def predict_single_chunk_mode1(
         df_train: pd.DataFrame,
         df_test: pd.DataFrame, 
         tfm, 
-        chunk_index: int
+        chunk_index: int,
+        timesfm_version: str = "2.0",
+        symbol: str = ""
     ) -> ChunkPredictionResult:
     """
     模式1：对单个分块进行预测（固定训练集，使用ak_stock_data生成测试数据）
@@ -34,17 +57,22 @@ def predict_single_chunk_mode1(
         ChunkPredictionResult: 分块预测结果
     """
     try:
-        # 使用新数据集进行预测
-        forecast_df = tfm.forecast_on_df(
-            inputs=df_train,
-            freq="D",
-            value_name="close",
-            num_jobs=1,
-        )
-        rename_dict = {c: f"tsf-{c.split('timesfm-q-')[1]}" for c in forecast_df.columns if c.startswith('timesfm-q-')}
-        rename_dict["timesfm"] = "tsf"
-        if rename_dict:
-            forecast_df = forecast_df.rename(columns=rename_dict)
+        if timesfm_version == "2.0":
+            # 使用新数据集进行预测
+            forecast_df = tfm.forecast_on_df(
+                inputs=df_train,
+                freq="D",
+                value_name="close",
+                num_jobs=1,
+            )
+            rename_dict = {c: f"tsf-{c.split('timesfm-q-')[1]}" for c in forecast_df.columns if c.startswith('timesfm-q-')}
+            rename_dict["timesfm"] = "tsf"
+            if rename_dict:
+                forecast_df = forecast_df.rename(columns=rename_dict)
+        elif timesfm_version == "2.5":
+            predict_2p5_func = import_predict_2p5()
+            forecast_df = predict_2p5_func(df_train, pred_horizon=len(df_test), unique_id=symbol)
+
         
         # 获取预测结果的前horizon_len条记录
         horizon_len = len(df_test)
@@ -232,7 +260,7 @@ def predict_single_chunk_mode1(
             }
         )
 
-def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPredictionResponse:
+def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm = None, timesfm_version = "2.0") -> ChunkedPredictionResponse:
     """
     模式1分块预测主函数
     
@@ -298,7 +326,9 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm) -> ChunkedPred
                 df_train=df_train_current,
                 df_test=chunk,
                 tfm=tfm,
-                chunk_index=i
+                chunk_index=i,
+                timesfm_version=timesfm_version,
+                symbol=request.stock_code,
             )
             
             chunk_results.append(result)
@@ -382,10 +412,14 @@ if __name__ == "__main__":
         context_len=2048,
         time_step=0,
         stock_type=1,
-        chunk_num=1
+        chunk_num=1,
+        timesfm_version="2.5",
     )
-    tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
-    response = predict_chunked_mode1(test_request, tfm)
+    if test_request.timesfm_version == "2.0":
+        tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
+        response = predict_chunked_mode1(test_request, tfm, timesfm_version=test_request.timesfm_version)
+    else:
+        response = predict_chunked_mode1(test_request, tfm=None, timesfm_version=test_request.timesfm_version)
     # print(response)
     # 输出结果
     print(f"\n=== 分块预测结果 ===")

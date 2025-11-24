@@ -20,7 +20,7 @@ from processor import df_preprocess
 from timesfm.configs import ForecastConfig
 from timesfm.timesfm_2p5.timesfm_2p5_torch import TimesFM_2p5_200M_torch
 
-async def fetch_df(symbol: str, start_date: str, end_date: str, stock_type: int) -> pd.DataFrame:
+async def fetch_df(symbol: str, start_date: str, end_date: str, stock_type: int = 1) -> pd.DataFrame:
     async with PostgresHandler() as handler:
         df = await handler.ensure_date_range_df(symbol, start_date, end_date, stock_type=stock_type)
         return df
@@ -69,6 +69,7 @@ def run_timesfm_inference_pg(
     q = quantile_outputs[0]
     for i in range(q.shape[-1]):
         out_df[f"q_{i}"] = q[:, i]
+
     out_df.to_csv(output_csv, index=False)
     print(output_csv)
     try:
