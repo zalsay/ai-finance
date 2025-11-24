@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-timesfm_src = os.path.join(current_dir, "timesfm", "src")
+timesfm_src = os.path.join(current_dir, "timesfm-2.5", "src")
 root_dir = os.path.dirname(os.path.dirname(current_dir))
 akshare_tools_dir = os.path.join(root_dir, "akshare-tools")
 preprocess_data_dir = os.path.join(root_dir, "preprocess-data")
@@ -126,8 +126,6 @@ def main():
         per_core_batch_size=args.per_core_batch_size,
         normalize_inputs=args.normalize_inputs,
         return_backcast=args.return_backcast,
-        use_demo=args.use_demo,
-        no_weights=args.no_weights,
     )
 
 def test():
@@ -138,8 +136,7 @@ def test():
         horizon=7,
         value_col="close",
         output_csv="test.csv",
-        use_demo=False,
-        no_weights=False,
+
     )
     print(df)
 if __name__ == "__main__":
