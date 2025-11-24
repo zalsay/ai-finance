@@ -122,7 +122,7 @@ def predict_single_chunk_mode1(
                 mae_q = mean_absolute_error(np.array(pred_values_trimmed), np.array(actual_values_trimmed))
                 pct_q = (pred_values_trimmed[-1] / actual_values_trimmed[0] - 1) * 100
                 actual_pct = (actual_values_trimmed[-1] / actual_values_trimmed[0] - 1) * 100
-                diff_pct = (1 - abs(pct_q - actual_pct) / actual_pct) # 预测涨跌幅与实际涨跌幅的百分比差
+                diff_pct = abs(pct_q - actual_pct) / actual_pct # 预测涨跌幅与实际涨跌幅的百分比差
                 # 计算综合得分 (MSE和MAE各占50%权重)
                 # 为了统一量纲，对MSE和MAE进行标准化处理
                 combined_score = 0.5 * mse_q + 0.5 * mae_q
@@ -413,7 +413,7 @@ if __name__ == "__main__":
         time_step=0,
         stock_type=1,
         chunk_num=1,
-        timesfm_version="2.5",
+        timesfm_version="2.0",
     )
     if test_request.timesfm_version == "2.0":
         tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
