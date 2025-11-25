@@ -59,6 +59,7 @@ def predict_single_chunk_mode1(
     try:
         if timesfm_version == "2.0":
             # 使用新数据集进行预测
+            print(f"正在使用TimesFM-2.0模型对测试集分块 {chunk_index} 进行预测...")
             forecast_df = tfm.forecast_on_df(
                 inputs=df_train,
                 freq="D",
@@ -70,6 +71,7 @@ def predict_single_chunk_mode1(
             if rename_dict:
                 forecast_df = forecast_df.rename(columns=rename_dict)
         elif timesfm_version == "2.5":
+            print(f"正在使用TimesFM-2.5模型对测试集分块 {chunk_index} 进行预测...")
             predict_2p5_func = import_predict_2p5()
             forecast_df = predict_2p5_func(df_train, pred_horizon=len(df_test), unique_id=symbol)
 
@@ -79,17 +81,17 @@ def predict_single_chunk_mode1(
         forecast_chunk = forecast_df.head(horizon_len)
         
         # 调试信息：打印预测结果的列名
-        print(f"  预测结果列名: {list(forecast_df.columns)}")
-        print(f"  预测结果形状: {forecast_df.shape}")
-        print(f"  预测结果前{horizon_len}行: ")
-        print(forecast_chunk.head(horizon_len))
-        print(f"  测试数据前{horizon_len}行: ")
-        print(df_test.head(horizon_len))
+        # print(f"  预测结果列名: {list(forecast_df.columns)}")
+        # print(f"  预测结果形状: {forecast_df.shape}")
+        # print(f"  预测结果前{horizon_len}行: ")
+        # print(forecast_chunk.head(horizon_len))
+        # print(f"  测试数据前{horizon_len}行: ")
+        # print(df_test.head(horizon_len))
 
         # 提取预测值和实际值
         actual_values = df_test['close'].tolist()
         actual_dates = df_test['ds'].tolist()
-        print(f"  实际日期前7行: {actual_dates[:7]}")
+        # print(f"  实际日期前7行: {actual_dates[:7]}")
         # 获取所有预测分位数
         predictions = {}
         forecast_columns = [col for col in forecast_chunk.columns if col.startswith('tsf-')]
@@ -156,9 +158,9 @@ def predict_single_chunk_mode1(
             mse = quantile_metrics[best_quantile_colname]['mse']
             mae = quantile_metrics[best_quantile_colname]['mae']
             
-            print(f"  📊 分位数评估结果:")
-            for q, metrics in quantile_metrics.items():
-                print(f"    {q}: MSE={metrics['mse']:.2f}, MAE={metrics['mae']:.2f}, 综合得分={metrics['combined_score']:.2f}, 预测涨跌幅={metrics['pred_pct']:.2f}, 实际涨跌幅={metrics['actual_pct']:.2f}, 百分比差={metrics['diff_pct']:.2f}")
+            # print(f"  📊 分位数评估结果:")
+            # for q, metrics in quantile_metrics.items():
+            #     print(f"    {q}: MSE={metrics['mse']:.2f}, MAE={metrics['mae']:.2f}, 综合得分={metrics['combined_score']:.2f}, 预测涨跌幅={metrics['pred_pct']:.2f}, 实际涨跌幅={metrics['actual_pct']:.2f}, 百分比差={metrics['diff_pct']:.2f}")
             print(f"  🏆 最优分位数: {best_quantile_colname} (综合得分: {best_score:.6f})")
             print(f"  🏆 最优分位数(涨跌幅): {best_quantile_colname_pct} (百分比差: {best_diff_pct:.2f})")
             print(f"  最优(涨跌幅)预测值: {quantile_metrics[best_quantile_colname_pct]['pred_values']}")
@@ -174,46 +176,46 @@ def predict_single_chunk_mode1(
             forecast_chunk["mae"] = quantile_metrics[best_quantile_colname_pct]['mae']
             forecast_chunk["combined_score"] = quantile_metrics[best_quantile_colname_pct]['combined_score']
             forecast_chunk["symbol"] = forecast_chunk["unique_id"]
-            try:
-                payload = []
-                for _, row in forecast_chunk.iterrows():
-                    item = {
-                        "symbol": row.get("symbol"),
-                        "ds": str(row.get("ds")),
-                        "tsf": float(row.get("tsf")) if row.get("tsf") is not None else 0.0,
-                        "tsf_01": float(row.get("tsf-0.1")) if row.get("tsf-0.1") is not None else 0.0,
-                        "tsf_02": float(row.get("tsf-0.2")) if row.get("tsf-0.2") is not None else 0.0,
-                        "tsf_03": float(row.get("tsf-0.3")) if row.get("tsf-0.3") is not None else 0.0,
-                        "tsf_04": float(row.get("tsf-0.4")) if row.get("tsf-0.4") is not None else 0.0,
-                        "tsf_05": float(row.get("tsf-0.5")) if row.get("tsf-0.5") is not None else 0.0,
-                        "tsf_06": float(row.get("tsf-0.6")) if row.get("tsf-0.6") is not None else 0.0,
-                        "tsf_07": float(row.get("tsf-0.7")) if row.get("tsf-0.7") is not None else 0.0,
-                        "tsf_08": float(row.get("tsf-0.8")) if row.get("tsf-0.8") is not None else 0.0,
-                        "tsf_09": float(row.get("tsf-0.9")) if row.get("tsf-0.9") is not None else 0.0,
-                        "chunk_index": chunk_index,
-                        "best_quantile": str(best_quantile_colname),
-                        "best_quantile_pct": str(best_quantile_colname_pct),
-                        "best_pred_pct": float(quantile_metrics[best_quantile_colname_pct]['pred_pct']),
-                        "actual_pct": float(quantile_metrics[best_quantile_colname_pct]['actual_pct']),
-                        "diff_pct": float(quantile_metrics[best_quantile_colname_pct]['diff_pct']),
-                        "mse": float(quantile_metrics[best_quantile_colname_pct]['mse']),
-                        "mae": float(quantile_metrics[best_quantile_colname_pct]['mae']),
-                        "combined_score": float(quantile_metrics[best_quantile_colname_pct]['combined_score']),
-                    }
-                    payload.append(item)
+            # try:
+            #     payload = []
+            #     for _, row in forecast_chunk.iterrows():
+            #         item = {
+            #             "symbol": row.get("symbol"),
+            #             "ds": str(row.get("ds")),
+            #             "tsf": float(row.get("tsf")) if row.get("tsf") is not None else 0.0,
+            #             "tsf_01": float(row.get("tsf-0.1")) if row.get("tsf-0.1") is not None else 0.0,
+            #             "tsf_02": float(row.get("tsf-0.2")) if row.get("tsf-0.2") is not None else 0.0,
+            #             "tsf_03": float(row.get("tsf-0.3")) if row.get("tsf-0.3") is not None else 0.0,
+            #             "tsf_04": float(row.get("tsf-0.4")) if row.get("tsf-0.4") is not None else 0.0,
+            #             "tsf_05": float(row.get("tsf-0.5")) if row.get("tsf-0.5") is not None else 0.0,
+            #             "tsf_06": float(row.get("tsf-0.6")) if row.get("tsf-0.6") is not None else 0.0,
+            #             "tsf_07": float(row.get("tsf-0.7")) if row.get("tsf-0.7") is not None else 0.0,
+            #             "tsf_08": float(row.get("tsf-0.8")) if row.get("tsf-0.8") is not None else 0.0,
+            #             "tsf_09": float(row.get("tsf-0.9")) if row.get("tsf-0.9") is not None else 0.0,
+            #             "chunk_index": chunk_index,
+            #             "best_quantile": str(best_quantile_colname),
+            #             "best_quantile_pct": str(best_quantile_colname_pct),
+            #             "best_pred_pct": float(quantile_metrics[best_quantile_colname_pct]['pred_pct']),
+            #             "actual_pct": float(quantile_metrics[best_quantile_colname_pct]['actual_pct']),
+            #             "diff_pct": float(quantile_metrics[best_quantile_colname_pct]['diff_pct']),
+            #             "mse": float(quantile_metrics[best_quantile_colname_pct]['mse']),
+            #             "mae": float(quantile_metrics[best_quantile_colname_pct]['mae']),
+            #             "combined_score": float(quantile_metrics[best_quantile_colname_pct]['combined_score']),
+            #         }
+            #         payload.append(item)
 
-                import requests
-                base_url = os.environ.get("GO_API_BASE_URL", "http://localhost:8080")
-                token = os.environ.get("API_TOKEN", "fintrack-dev-token")
-                url = f"{base_url.rstrip('/')}/api/v1/timesfm/forecast/batch"
-                headers = {"Content-Type": "application/json", "X-Token": token}
-                resp = requests.post(url, json=payload, headers=headers, timeout=30)
-                if resp.status_code != 200:
-                    print(f"⚠️ 写入PG失败: HTTP {resp.status_code} {resp.text[:256]}")
-                else:
-                    print(f"✅ 已写入PG预测结果: {len(payload)} 条, chunk={chunk_index}")
-            except Exception as e:
-                print(f"⚠️ 写入PG异常: {e}")
+            #     import requests
+            #     base_url = os.environ.get("GO_API_BASE_URL", "http://localhost:8080")
+            #     token = os.environ.get("API_TOKEN", "fintrack-dev-token")
+            #     url = f"{base_url.rstrip('/')}/api/v1/timesfm/forecast/batch"
+            #     headers = {"Content-Type": "application/json", "X-Token": token}
+            #     resp = requests.post(url, json=payload, headers=headers, timeout=3)
+            #     if resp.status_code != 200:
+            #         print(f"⚠️ 写入PG失败: HTTP {resp.status_code} {resp.text[:256]}")
+            #     else:
+            #         print(f"✅ 已写入PG预测结果: {len(payload)} 条, chunk={chunk_index}")
+            # except Exception as e:
+            #     print(f"⚠️ 写入PG异常: {e}")
         # 获取实际值和预测值对应的日期范围
         # 实际值和预测值对应的是分块中的最后horizon_len个日期
         chunk_dates = df_test['ds'].tolist()
@@ -260,23 +262,23 @@ def predict_single_chunk_mode1(
             }
         )
 
-def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm = None, timesfm_version = "2.0") -> ChunkedPredictionResponse:
+async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm = None, timesfm_version = "2.0") -> ChunkedPredictionResponse:
     """
-    模式1分块预测主函数
+    模式1分块预测主函数 - 支持分块预测、最佳分数选择和在验证集上验证
     
     Args:
         request: 分块预测请求
         tfm: TimesFM模型实例
         
     Returns:
-        ChunkedPredictionResponse: 分块预测响应
+        ChunkedPredictionResponse: 分块预测响应，包含最佳预测项和验证结果
     """
     import time
     start_time = time.time()
     
     try:
         # 数据预处理
-        df_original, df_train, df_test = df_preprocess(
+        df_original, df_train, df_test, df_val = await df_preprocess(
             request.stock_code, 
             request.stock_type, 
             request.start_date,
@@ -287,9 +289,8 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm = None, timesfm
         )
         
         # 检查数据预处理是否成功
-        if df_original is None or df_train is None or df_test is None:
+        if df_original is None or df_train is None or df_test is None or df_val is None:
             print(f"❌ 股票 {request.stock_code} 数据预处理失败，无法进行预测")
-            # 返回一个空的响应对象
             return ChunkedPredictionResponse(
                 stock_code=request.stock_code,
                 total_chunks=0,
@@ -302,26 +303,33 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm = None, timesfm
                 },
                 processing_time=time.time() - start_time
             )
-        print(f"✅ 股票 {request.stock_code} 数据预处理成功，test开始日期: {df_test['ds'].min().strftime('%Y-%m-%d')}")
+        
+        print(f"✅ 股票 {request.stock_code} 数据预处理成功")
+        print(f"📊 数据集大小: 训练集={len(df_train)}, 测试集={len(df_test)}, 验证集={len(df_val)}")
+        
         # 添加唯一标识符
         df_train["unique_id"] = df_train["stock_code"].astype(str)
         df_test["unique_id"] = df_test["stock_code"].astype(str)
+        df_val["unique_id"] = df_val["stock_code"].astype(str)
         
-        # 对测试数据进行分块
+        # 对测试数据进行分块（自动计算分块数量，不使用chunk_num限制）
         chunks = create_chunks_from_test_data(df_test, request.horizon_len)
-        active_chunks = chunks[:request.chunk_num] if request.chunk_num and request.chunk_num > 0 else chunks
+        active_chunks = chunks
+        
         # 对每个分块进行预测
         chunk_results = []
         all_mse = []
         all_mae = []
-        print(f"分块数量: {len(active_chunks)}")
+        all_predictions = []  # 存储所有分块的所有预测结果
+                
         for i, chunk in enumerate(active_chunks):
-            print(f"正在处理分块 {i+1}/{len(active_chunks)}...")
+            print(f"正在处理测试集分块 {i+1}/{len(active_chunks)}...")
             history_len = i * request.horizon_len
             if history_len > 0:
                 df_train_current = pd.concat([df_train, df_test.iloc[:history_len, :]], axis=0)
             else:
                 df_train_current = df_train
+                
             result = predict_single_chunk_mode1(
                 df_train=df_train_current,
                 df_test=chunk,
@@ -337,13 +345,144 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm = None, timesfm
             if result.metrics['mse'] != float('inf'):
                 all_mse.append(result.metrics['mse'])
                 all_mae.append(result.metrics['mae'])
+                
+            # 收集所有预测结果
+            if result.predictions:
+                all_predictions.append({
+                    'chunk_index': i,
+                    'predictions': result.predictions,
+                    'actual_values': result.actual_values,
+                    'dates': pd.date_range(
+                        start=pd.to_datetime(result.chunk_start_date),
+                        end=pd.to_datetime(result.chunk_end_date),
+                        freq='D'
+                    )[:len(result.actual_values)]
+                })
+        
+        # 分析最佳预测项 (tsf-0.1 到 tsf-0.9)
+        best_prediction_item = None
+        best_score = float('inf')
+        best_metrics = {}
+        
+        prediction_items = [f"tsf-0.{i}" for i in range(1, 10)]
+        
+        for item in prediction_items:
+            item_mse = []
+            item_mae = []
+            item_returns = []  # 涨跌幅
+            
+            for pred_data in all_predictions:
+                if item in pred_data['predictions']:
+                    pred_values = pred_data['predictions'][item]
+                    actual_values = pred_data['actual_values']
+                    
+                    # 计算MSE和MAE
+                    mse = mean_squared_error(actual_values, pred_values)
+                    mae = mean_absolute_error(actual_values, pred_values)
+                    item_mse.append(mse)
+                    item_mae.append(mae)
+                    
+                    # 计算涨跌幅
+                    if len(pred_values) >= 2 and len(actual_values) >= 2:
+                        pred_return = (pred_values[-1] - pred_values[0]) / pred_values[0] * 100
+                        actual_return = (actual_values[-1] - actual_values[0]) / actual_values[0] * 100
+                        item_returns.append(abs(pred_return - actual_return))
+            
+            if item_mse:
+                avg_mse = np.mean(item_mse)
+                avg_mae = np.mean(item_mae)
+                avg_return_diff = np.mean(item_returns) if item_returns else float('inf')
+                
+                # 综合评分 (MSE权重0.3, MAE权重0.3, 涨跌幅差异权重0.4)
+                composite_score = 0.3 * avg_mse + 0.3 * avg_mae + 0.4 * avg_return_diff
+                
+                if composite_score < best_score:
+                    best_score = composite_score
+                    best_prediction_item = item
+                    best_metrics = {
+                        'mse': avg_mse,
+                        'mae': avg_mae,
+                        'return_diff': avg_return_diff,
+                        'composite_score': composite_score
+                    }
+        
+        print(f"🎯 最佳预测项: {best_prediction_item}")
+        print(f"📊 最佳指标: MSE={best_metrics.get('mse', 'N/A'):.4f}, "
+                f"MAE={best_metrics.get('mae', 'N/A'):.4f}, "
+                f"涨跌幅差异={best_metrics.get('return_diff', 'N/A'):.2f}%")
+        
+        # 在验证集上使用最佳预测项进行验证
+        validation_results = None
+        if best_prediction_item and len(df_val) >= request.horizon_len:
+            print(f"🔍 使用最佳预测项 {best_prediction_item} 在验证集上进行验证...")
+            
+            # 对验证集进行分块
+            val_chunks = create_chunks_from_test_data(df_val, request.horizon_len)
+            val_results = []
+            
+            for i, val_chunk in enumerate(val_chunks):
+                # 使用与测试集相同的处理方式：随着分块数据平移
+                print(f"正在处理验证集分块 {i+1}/{len(val_chunks)}...")
+                history_len = i * request.horizon_len
+                if history_len > 0:
+                    # 使用训练集+测试集+验证集的前history_len行数据
+                    cumulative_train_data = pd.concat([df_train, df_test, df_val.iloc[:history_len, :]], axis=0)
+                else:
+                    # 如果没有历史数据，只使用训练集+测试集
+                    cumulative_train_data = pd.concat([df_train, df_test], axis=0)
+                
+                val_result = predict_single_chunk_mode1(
+                    df_train=cumulative_train_data,  # 使用训练集+测试集+之前验证分块
+                    df_test=val_chunk,
+                    tfm=tfm,
+                    chunk_index=i,
+                    timesfm_version=timesfm_version,
+                    symbol=request.stock_code,
+                )
+                val_results.append(val_result)
+            
+            # 计算验证集指标
+            val_mse = []
+            val_mae = []
+            val_returns = []
+            
+            for result in val_results:
+                if best_prediction_item in result.predictions:
+                    pred_values = result.predictions[best_prediction_item]
+                    actual_values = result.actual_values
+                    
+                    mse = mean_squared_error(actual_values, pred_values)
+                    mae = mean_absolute_error(actual_values, pred_values)
+                    val_mse.append(mse)
+                    val_mae.append(mae)
+                    
+                    if len(pred_values) >= 2 and len(actual_values) >= 2:
+                        pred_return = (pred_values[-1] - pred_values[0]) / pred_values[0] * 100
+                        actual_return = (actual_values[-1] - actual_values[0]) / actual_values[0] * 100
+                        val_returns.append(abs(pred_return - actual_return))
+            
+            validation_results = {
+                'best_prediction_item': best_prediction_item,
+                'validation_mse': np.mean(val_mse) if val_mse else float('inf'),
+                'validation_mae': np.mean(val_mae) if val_mae else float('inf'),
+                'validation_return_diff': np.mean(val_returns) if val_returns else float('inf'),
+                'validation_chunks': len(val_results),
+                'successful_validation_chunks': len(val_mse)
+            }
+            
+            print(f"✅ 验证结果: MSE={validation_results['validation_mse']:.4f}, "
+                  f"MAE={validation_results['validation_mae']:.4f}, "
+                  f"涨跌幅差异={validation_results['validation_return_diff']:.2f}%")
         
         # 计算总体指标
         overall_metrics = {
             'avg_mse': np.mean(all_mse) if all_mse else float('inf'),
             'avg_mae': np.mean(all_mae) if all_mae else float('inf'),
             'total_chunks': len(chunks),
-            'successful_chunks': len(all_mse)
+            'successful_chunks': len(all_mse),
+            'best_prediction_item': best_prediction_item,
+            'best_metrics': best_metrics,
+            'validation_results': validation_results
         }
         
         # 拼接所有分块的预测结果
@@ -361,18 +500,22 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm = None, timesfm
             
             # 拼接每个分块的结果
             for result in chunk_results:
-                # 拼接预测值
+                start_date = pd.to_datetime(result.chunk_start_date, errors='coerce')
+                end_date = pd.to_datetime(result.chunk_end_date, errors='coerce')
+                chunk_size = len(result.actual_values)
+                if chunk_size == 0 or pd.isna(start_date) or pd.isna(end_date):
+                    continue
+
                 for col in prediction_columns:
-                    concatenated_predictions[col].extend(result.predictions[col])
-                
-                # 拼接实际值
+                    if col in result.predictions:
+                        concatenated_predictions[col].extend(result.predictions[col])
+                    else:
+                        concatenated_predictions[col].extend([float('nan')] * chunk_size)
+
                 concatenated_actual.extend(result.actual_values)
-                
-                # 生成日期序列（基于分块的开始和结束日期）
-                start_date = pd.to_datetime(result.chunk_start_date)
-                end_date = pd.to_datetime(result.chunk_end_date)
+
                 chunk_dates = pd.date_range(start=start_date, end=end_date, freq='D')
-                concatenated_dates.extend([date.strftime('%Y-%m-%d') for date in chunk_dates[:len(result.actual_values)]])
+                concatenated_dates.extend([date.strftime('%Y-%m-%d') for date in chunk_dates[:chunk_size]])
         
         processing_time = time.time() - start_time
         
@@ -390,7 +533,7 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm = None, timesfm
         
     except Exception as e:
         processing_time = time.time() - start_time
-        print(f"分块预测失败: {str(e)}")
+        print(f"分块预测失败: {str(e)} 错误行 {e.__traceback__.tb_lineno}")
         
         return ChunkedPredictionResponse(
             stock_code=request.stock_code,
@@ -402,6 +545,7 @@ def predict_chunked_mode1(request: ChunkedPredictionRequest, tfm = None, timesfm
         )
 
 if __name__ == "__main__":
+    import asyncio
     from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
         stock_code="sh600398",
@@ -412,14 +556,14 @@ if __name__ == "__main__":
         context_len=2048,
         time_step=0,
         stock_type=1,
-        chunk_num=1,
+        chunk_num=5,
         timesfm_version="2.0",
     )
     if test_request.timesfm_version == "2.0":
         tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
-        response = predict_chunked_mode1(test_request, tfm, timesfm_version=test_request.timesfm_version)
+        response = asyncio.run(predict_chunked_mode_for_best(test_request, tfm, timesfm_version=test_request.timesfm_version))
     else:
-        response = predict_chunked_mode1(test_request, tfm=None, timesfm_version=test_request.timesfm_version)
+        response = asyncio.run(predict_chunked_mode_for_best(test_request, tfm=None, timesfm_version=test_request.timesfm_version))
     # print(response)
     # 输出结果
     print(f"\n=== 分块预测结果 ===")
