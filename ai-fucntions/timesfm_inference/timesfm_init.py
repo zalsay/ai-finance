@@ -1,5 +1,5 @@
 import os
-import sys
+import torch
 import warnings
 import timesfm
 
@@ -9,7 +9,11 @@ os.environ['JAX_PMAP_USE_TENSORSTORE'] = 'false'
 
 # 忽略警告
 warnings.filterwarnings("ignore")
-
+current_device_type = "cuda" if torch.backends.cuda.is_built() else "cpu"
+if current_device_type == "cpu":
+    if torch.backends.mps.is_available():
+        current_device_type = "mps"
+print(f"当前设备类型: {current_device_type}")
 # 模型路径设置
 current_dir = os.path.dirname(os.path.abspath(__file__))
 # timesfm_dir = "/root/models/ai_tools/timesfm/senrajat_google_com/google_finetune"
@@ -34,7 +38,7 @@ def init_timesfm(horizon_len: int, context_len: int) -> timesfm.TimesFm:
 
         tfm[f"{horizon_len}_{context_len}"] = timesfm.TimesFm(
             hparams=timesfm.TimesFmHparams(
-                backend="mps",
+                backend=current_device_type,
                 per_core_batch_size=32,  # 降低批次大小以支持并发
                 horizon_len=horizon_len,
                 num_layers=50,
