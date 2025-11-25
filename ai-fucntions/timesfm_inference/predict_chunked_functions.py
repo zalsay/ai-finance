@@ -558,7 +558,7 @@ if __name__ == "__main__":
         time_step=0,
         stock_type=1,
         chunk_num=5,
-        timesfm_version="2.0",
+        timesfm_version="2.5",
     )
     if test_request.timesfm_version == "2.0":
         tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
