@@ -9,7 +9,7 @@ os.environ['JAX_PMAP_USE_TENSORSTORE'] = 'false'
 
 # 忽略警告
 warnings.filterwarnings("ignore")
-current_device_type = "cuda" if torch.backends.cuda.is_built() else "cpu"
+current_device_type = "gpu" if torch.backends.cuda.is_built() else "cpu"
 if current_device_type == "cpu":
     if torch.backends.mps.is_available():
         current_device_type = "mps"
