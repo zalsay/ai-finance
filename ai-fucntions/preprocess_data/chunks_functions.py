@@ -27,7 +27,7 @@ def create_chunks_from_test_data(df_test: pd.DataFrame, horizon_len: int) -> Lis
         chunk = df_test.iloc[start_idx:end_idx].copy()
         chunks.append(chunk)
     remainder = total_length % horizon_len
-    print(f"测试数据分块完成: 总长度 {total_length}, 分块数量 {len(chunks)}, 每块长度 {horizon_len}, 舍弃残缺长度 {remainder}")
+    print(f"数据分块完成: 总长度 {total_length}, 分块数量 {len(chunks)}, 每块长度 {horizon_len}, 舍弃残缺长度 {remainder}")
     return chunks
 
 # 分块推理函数
