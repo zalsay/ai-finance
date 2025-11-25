@@ -258,6 +258,7 @@ def predict_single_chunk_mode1(
                 'best_quantile_colname': 'tsf',
                 'best_quantile_colname_pct': 'tsf',
                 'best_combined_score': float('inf'),
+                'best_diff_pct': float('inf'),
                 'all_quantile_metrics': {}
             }
         )
@@ -557,7 +558,7 @@ if __name__ == "__main__":
         time_step=0,
         stock_type=1,
         chunk_num=5,
-        timesfm_version="2.0",
+        timesfm_version="2.5",
     )
     if test_request.timesfm_version == "2.0":
         tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
@@ -571,94 +572,15 @@ if __name__ == "__main__":
     print(f"总分块数: {response.total_chunks}")
     print(f"预测长度: {response.horizon_len}")
     print(f"处理时间: {response.processing_time:.2f} 秒")
-    
-    # print(f"\n=== 总体指标 ===")
-    # for metric, value in response.overall_metrics.items():
-    #     if isinstance(value, float) and value != float('inf'):
-    #         print(f"{metric}: {value:.6f}")
-    #     else:
-    #         print(f"{metric}: {value}")
-    
-    print(f"\n=== 各分块详细结果 ===")
-    for i, chunk_result in enumerate(response.chunk_results):
-        print(f"\n分块 {i+1}:")
-        print(f"  索引: {chunk_result.chunk_index}")
-        print(f"  预测日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
-        print(f"  实际值日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}")
-        print(f"  实际值数量: {len(chunk_result.actual_values)}")
-        print(f"  最佳预测结果: {chunk_result.metrics['best_quantile_colname']} 最佳分数: {chunk_result.metrics['best_combined_score']:.6f}")        
-        print(f"  最佳预测结果(涨跌幅): {chunk_result.metrics['best_quantile_colname_pct']} 百分比差: {chunk_result.metrics['best_diff_pct']*100:.2f}%")
-        # 显示指标
-        # for metric, value in chunk_result.metrics.items():
-        #     if isinstance(value, float) and value != float('inf'):
-        #         print(f"  {metric}: {value:.6f}")
-        #     else:
-        #         print(f"  {metric}: {value}")
-        
-    
-    # 保存结果到文件
-    mode_suffix = "chunked"
-    results_filename = os.path.join(finance_dir, f"forecast-results/{test_request.stock_code}_{mode_suffix}_prediction_results.txt")
-    with open(results_filename, 'w', encoding='utf-8') as f:
-        f.write(f"结果 - 股票: {response.stock_code}\n")
-        f.write(f"总分块数: {response.total_chunks}\n")
-        f.write(f"预测长度: {response.horizon_len}\n")
-        f.write(f"处理时间: {response.processing_time:.2f} 秒\n\n")
-        
-        f.write("总体指标:\n")
-        for metric, value in response.overall_metrics.items():
-            f.write(f"  {metric}: {value}\n")
-        
-        f.write("\n各分块详细结果:\n")
-        for chunk_result in response.chunk_results:
-            f.write(f"\n分块 {chunk_result.chunk_index + 1}:\n")
-            f.write(f"  预测日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}\n")
-            f.write(f"  实际值日期范围: {chunk_result.chunk_start_date} 到 {chunk_result.chunk_end_date}\n")
-            f.write(f"  指标: {chunk_result.metrics}\n")
-            quant_metrics = chunk_result.metrics.get('all_quantile_metrics', {})
-            f.write("  分位数评估结果:\n")
-            if quant_metrics:
-                for q in sorted(quant_metrics.keys()):
-                    m = quant_metrics[q]
-                    try:
-                        f.write(f"    {q}: MSE={m['mse']:.2f}, MAE={m['mae']:.2f}, 综合得分={m['combined_score']:.2f}, 预测涨跌幅={m['pred_pct']:.2f}, 实际涨跌幅={m['actual_pct']:.2f}, 百分比差={m['diff_pct']:.2f}\n")
-                    except Exception:
-                        f.write(f"    {q}: {m}\n")
-                best_q = chunk_result.metrics.get('best_quantile_colname', '')
-                best_score = chunk_result.metrics.get('best_combined_score', '')
-                f.write(f"    最优分位数(综合得分): {best_q}, 综合得分: {best_score}\n")
-            else:
-                f.write("    无\n")
-            if chunk_result.actual_values:
-                start_actual = chunk_result.actual_values[0]
-                actual_pct = [((v / start_actual) - 1) * 100 if start_actual != 0 else 0 for v in chunk_result.actual_values]
-                best_mae = float('inf')
-                best_key_pct = None
-                for qi in range(1, 10):
-                    key = f"tsf-0.{qi}"
-                    if key in chunk_result.predictions:
-                        pred_values = chunk_result.predictions[key]
-                        if len(pred_values) != len(actual_pct):
-                            continue
-                        pred_pct = [((v / start_actual) - 1) * 100 if start_actual != 0 else 0 for v in pred_values]
-                        mae_val = np.mean(np.abs(np.array(pred_pct) - np.array(actual_pct)))
-                        if mae_val < best_mae:
-                            best_mae = mae_val
-                            best_key_pct = key
-                if best_key_pct:
-                    f.write(f"    最优分位数(涨跌幅): {best_key_pct}\n")
-            f.write(f"  实际值: {chunk_result.actual_values}\n")
-            f.write(f"  预测值: {chunk_result.predictions}\n")
-
+    print(f"处理结果: {response.overall_metrics}")
     # 生成绘图
     from plot_functions import plot_chunked_prediction_results
     print(f"\n正在生成结果图表...")
-    plot_save_path = os.path.join(finance_dir, f"forecast-results/{test_request.stock_code}_{mode_suffix}_prediction_plot.png")
+    plot_save_path = os.path.join(finance_dir, f"forecast-results/{test_request.stock_code}_prediction_plot.png")
     try:
         plot_path = plot_chunked_prediction_results(response, plot_save_path)
         print(f"图表已保存到: {plot_path}")
     except Exception as plot_error:
         print(f"⚠️ 绘图失败: {str(plot_error)}")
     
-    print(f"详细结果已保存到: {results_filename}")
     
