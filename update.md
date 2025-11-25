@@ -23,8 +23,10 @@
      - 验证集现在使用训练集+测试集+验证集的前history_len行数据，与测试集处理方式保持一致
      - 收集 tsf-0.1 到 tsf-0.9 所有预测结果
      - 基于综合评分（MSE 0.6, MAE 0.2, 涨跌幅差异 0.2）选择最佳预测项
-     - 在验证集上验证最佳预测项性能
-     - 拼接结果阶段增加日期校验，跳过无效日期或空分块，避免 `NaT` 导致的异常
+      - 在验证集上验证最佳预测项性能
+      - 拼接结果阶段增加日期校验，跳过无效日期或空分块，避免 `NaT` 导致的异常
+      - 打印分块详情时为缺失的 `best_diff_pct` 提供默认值，避免 `KeyError`
+      - 绘图阶段对日期与分块边界使用 `errors='coerce'` 并过滤 `NaT`，避免 Matplotlib 轴转换错误
 
 3. **数据预处理优化**
    - 文件: `/Users/yingzhang/Documents/dev/ai-finance/ai-fucntions/preprocess_data/processor.py`
