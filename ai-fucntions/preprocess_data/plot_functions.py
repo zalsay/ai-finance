@@ -117,7 +117,7 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 12))
         
         # Convert dates
-        dates = pd.to_datetime(response.concatenated_dates)
+        dates = pd.to_datetime(response.concatenated_dates, errors='coerce')
         actual_values = response.concatenated_actual
         
         # Get best prediction item information
@@ -154,9 +154,10 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
         # Add chunk boundary lines
         chunk_boundaries = []
         for i, result in enumerate(response.chunk_results):
-            if i > 0:  # Skip the first chunk start
-                chunk_start = pd.to_datetime(result.chunk_start_date)
-                chunk_boundaries.append(chunk_start)
+            if i > 0:
+                chunk_start = pd.to_datetime(result.chunk_start_date, errors='coerce')
+                if not pd.isna(chunk_start):
+                    chunk_boundaries.append(chunk_start)
         
         for boundary in chunk_boundaries:
             ax1.axvline(x=boundary, color='gray', linestyle='--', alpha=0.5, linewidth=1)
