@@ -31,9 +31,10 @@ def init_timesfm(horizon_len: int, context_len: int) -> timesfm.TimesFm:
     global tfm
     if f"{horizon_len}_{context_len}" not in tfm:
         print("初始化TimesFM模型...")
+
         tfm[f"{horizon_len}_{context_len}"] = timesfm.TimesFm(
             hparams=timesfm.TimesFmHparams(
-                backend="gpu",
+                backend="mps",
                 per_core_batch_size=32,  # 降低批次大小以支持并发
                 horizon_len=horizon_len,
                 num_layers=50,

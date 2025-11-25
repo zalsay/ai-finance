@@ -1,11 +1,9 @@
 import os
 import sys
-import numpy as np
 import pandas as pd
 import warnings
 import asyncio
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+
 from datetime import datetime, timedelta
 import logging
 
@@ -37,7 +35,7 @@ def to_symbol(stock_code: str, stock_type: int = 1) -> str:
             return f"sz{stock_code}"
     return stock_code
 
-def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_step=0, years=10, horizon_len=7):
+async def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_step=0, years=10, horizon_len=7):
     """
     预处理股票数据
     
@@ -50,7 +48,7 @@ def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_s
         horizon_len: 预测长度
         
     Returns:
-        tuple: (df, df_train, df_test) 或 (None, None, None) 如果失败
+        tuple: (df, df_train, df_test, df_val) 或 (None, None, None, None) 如果失败
     """
     try:
         # 获取股票数据
@@ -65,7 +63,7 @@ def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_s
         
         symbol = to_symbol(stock_code, stock_type)
         logger.info(f"获取股票{symbol} 数据，时间范围：{start_date} 到 {end_date} ，股票类型：{stock_type}")
-        df = asyncio.run(pg_client.ensure_date_range_df(symbol=symbol, start_date=start_date, end_date=end_date, stock_type=stock_type))
+        df = await pg_client.ensure_date_range_df(symbol=symbol, start_date=start_date, end_date=end_date, stock_type=stock_type)
         
         # 检查数据是否成功获取
         if df is None:
@@ -128,45 +126,53 @@ def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_s
         
         # 数据分割
         original_length = df.shape[0]
-        # 使用80%的数据作为训练集
-        initial_train_size = int(original_length * 0.8)
-        initial_test_size = original_length - initial_train_size
+        # 使用7:2:1的比例划分训练集、测试集、验证集
+        initial_train_size = int(original_length * 0.7)  # 70% 训练集
+        initial_test_size = int(original_length * 0.2)   # 20% 测试集
+        initial_val_size = original_length - initial_train_size - initial_test_size  # 10% 验证集
         
-        # 确保训练集和测试集都是horizon_len的整数倍
+        # 确保训练集、测试集、验证集都是horizon_len的整数倍
         # 如果不是，则去掉最早的数据来调整
         train_size = (initial_train_size // horizon_len) * horizon_len
         test_size = (initial_test_size // horizon_len) * horizon_len
+        val_size = (initial_val_size // horizon_len) * horizon_len
         # train_size = initial_train_size
         # test_size = initial_test_size
         # 计算需要去掉的最早数据量
-        total_usable_size = train_size + test_size
+        total_usable_size = train_size + test_size + val_size
         data_to_remove = original_length - total_usable_size
         if total_usable_size < horizon_len * 100:
             print(f"❌ 股票 {stock_code} 数据量不足 (仅 {total_usable_size} 条记录，需要至少 {horizon_len * 100} 条)")
-            return None, None, None
-        # 确保训练集和测试集都有足够的数据
+            return None, None, None, None
+        # 确保训练集、测试集和验证集都有足够的数据
         if train_size < horizon_len:
             print(f"❌ 股票 {stock_code} 训练集数据不足 (调整后仅有 {train_size} 条记录，需要至少 {horizon_len} 条)")
-            return None, None, None
+            return None, None, None, None
         
         if test_size < horizon_len:
             print(f"❌ 股票 {stock_code} 测试集数据不足 (调整后仅有 {test_size} 条记录，需要至少 {horizon_len} 条)")
-            return None, None, None
+            return None, None, None, None
+        
+        if val_size < horizon_len:
+            print(f"❌ 股票 {stock_code} 验证集数据不足 (调整后仅有 {val_size} 条记录，需要至少 {horizon_len} 条)")
+            return None, None, None, None
         
         print(f"📏 数据调整: 原始长度={original_length}, 去掉最早的{data_to_remove}条数据")
-        print(f"📏 调整后: 训练集={train_size}条 (是{horizon_len}的{train_size//horizon_len}倍), 测试集={test_size}条 (是{horizon_len}的{test_size//horizon_len}倍)")
+        print(f"📏 调整后: 训练集={train_size}条 (是{horizon_len}的{train_size//horizon_len}倍), 测试集={test_size}条 (是{horizon_len}的{test_size//horizon_len}倍), 验证集={val_size}条 (是{horizon_len}的{val_size//horizon_len}倍)")
         
         # 从去掉最早数据后的位置开始切分
         start_idx = data_to_remove
         df_train = df.iloc[start_idx:start_idx + train_size, :]
         df_test = df.iloc[start_idx + train_size:start_idx + train_size + test_size, :]
+        df_val = df.iloc[start_idx + train_size + test_size:start_idx + train_size + test_size + val_size, :]
         
-        print(f"📊 训练集: {len(df_train)} 条记录, 测试集: {len(df_test)} 条记录")
-        print(f"训练集列名: {df_train.columns.tolist()}")
-        print(f"测试集列名: {df_test.columns.tolist()}")
+        print(f"📊 训练集: {len(df_train)} 条记录, 测试集: {len(df_test)} 条记录, 验证集: {len(df_val)} 条记录")
+        # print(f"训练集列名: {df_train.columns.tolist()}")
+        # print(f"测试集列名: {df_test.columns.tolist()}")
+        # print(f"验证集列名: {df_val.columns.tolist()}")
 
-        return df, df_train, df_test
+        return df, df_train, df_test, df_val
         
     except Exception as e:
         print(f"❌ 股票 {stock_code} 数据预处理失败: {str(e)}")
-        return None, None, None
+        return None, None, None, None
