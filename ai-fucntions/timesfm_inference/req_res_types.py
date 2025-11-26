@@ -14,7 +14,6 @@ class ChunkedPredictionRequest:
     context_len: int = 2048
     time_step: int = 0
     stock_type: str = 'stock'
-    chunk_num: int = 1
     timesfm_version: str = "2.0"
 
 
@@ -36,9 +35,11 @@ class ChunkedPredictionResponse:
     total_chunks: int
     horizon_len: int
     chunk_results: List[ChunkPredictionResult]
-    overall_metrics: Dict[str, float]
+    overall_metrics: Dict[str, Any]
     processing_time: float
     # 新增拼接结果字段
     concatenated_predictions: Optional[Dict[str, List[float]]] = None  # 拼接后的完整预测结果
     concatenated_actual: Optional[List[float]] = None  # 拼接后的完整实际值
     concatenated_dates: Optional[List[str]] = None  # 拼接后的完整日期序列
+    # 新增验证集分块结果（用于在验证集上进行回测）
+    validation_chunk_results: Optional[List[ChunkPredictionResult]] = None
