@@ -33,9 +33,10 @@ def init_timesfm(horizon_len: int, context_len: int) -> timesfm.TimesFm:
         timesfm.TimesFm: 初始化后的TimesFM模型实例
     """
     global tfm
+    if context_len > 2048:
+        context_len = 2048
     if f"{horizon_len}_{context_len}" not in tfm:
         print("初始化TimesFM模型...")
-
         tfm[f"{horizon_len}_{context_len}"] = timesfm.TimesFm(
             hparams=timesfm.TimesFmHparams(
                 backend=current_device_type,

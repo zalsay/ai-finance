@@ -551,7 +551,7 @@ def run_backtest(
     fixed_quantile_key = None
     try:
         out_dir = os.path.join(finance_dir, "forecast-results")
-        out_path = os.path.join(out_dir, f"{request.stock_code}_best_quantile.json")
+        out_path = os.path.join(out_dir, f"{request.stock_code}_best_quantile_horizon_{request.horizon_len}_v_{request.timesfm_version}.json")
         if os.path.exists(out_path):
             with open(out_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -691,14 +691,14 @@ def run_backtest(
 if __name__ == "__main__":
     # 测试代码
     test_request = ChunkedPredictionRequest(
-        stock_code="sz301091",
+        stock_code="sh510050",
         years=10,
         horizon_len=7,
         start_date="20100101",
         end_date="20251114",
-        context_len=2048,
+        context_len=4096,
         time_step=0,
-        stock_type=1,
+        stock_type=2,
         timesfm_version="2.5",
     )
     
@@ -875,38 +875,38 @@ if __name__ == "__main__":
     results_filename = os.path.join(finance_dir, f"forecast-results/{test_request.stock_code}_{mode_suffix}_results.txt")
     
     with open(results_filename, 'w', encoding='utf-8') as f:
-        f.write(f"Backtest result - stock: {test_request.stock_code}\n")
-        f.write(f"Backtest period: {test_request.start_date} to {test_request.end_date}\n\n")
+        f.write(f"回测结果 - 股票: {test_request.stock_code}\n")
+        f.write(f"回测区间: {test_request.start_date} 到 {test_request.end_date}\n\n")
         
-        f.write("=== Prediction summary ===\n")
-        f.write(f"Total chunks: {response.total_chunks}\n")
-        f.write(f"Processing time: {response.processing_time:.2f} s\n\n")
+        f.write("=== 预测结果摘要 ===\n")
+        f.write(f"总分块数: {response.total_chunks}\n")
+        f.write(f"处理时间: {response.processing_time:.2f} 秒\n\n")
         
-        f.write("=== Backtest summary (validation) ===\n" if getattr(response, 'validation_chunk_results', None) else "=== Backtest summary (test) ===\n")
-        f.write(f"Initial cash: {backtest['initial_cash']:.2f}\n")
-        f.write(f"Final value (net, incl. fees): {backtest['final_value']:.2f}\n")
-        f.write(f"Total return (net, incl. fees): {backtest['total_return_pct']:.2f}%\n")
-        f.write(f"Annualized return (net, incl. fees): {backtest['annualized_return_pct']:.2f}%\n")
+        f.write("=== 回测结果摘要（验证集）===\n" if getattr(response, 'validation_chunk_results', None) else "=== 回测结果摘要（测试集）===\n")
+        f.write(f"初始资金: {backtest['initial_cash']:.2f}\n")
+        f.write(f"最终价值（净，含手续费）: {backtest['final_value']:.2f}\n")
+        f.write(f"总收益率（净，含手续费）: {backtest['total_return_pct']:.2f}%\n")
+        f.write(f"年化收益率（净，含手续费）: {backtest['annualized_return_pct']:.2f}%\n")
         # 费前对比指标（不含手续费）
-        f.write(f"Final value (gross, excl. fees, for comparison): {backtest.get('final_value_gross', backtest['final_value']):.2f}\n")
-        f.write(f"Total return (gross, excl. fees): {backtest.get('total_return_pct_gross', backtest['total_return_pct']):.2f}%\n")
-        f.write(f"Annualized return (gross, excl. fees): {backtest.get('annualized_return_pct_gross', backtest['annualized_return_pct']):.2f}%\n")
+        f.write(f"最终价值（毛，不含手续费，仅用于对比）: {backtest.get('final_value_gross', backtest['final_value']):.2f}\n")
+        f.write(f"总收益率（毛，不含手续费）: {backtest.get('total_return_pct_gross', backtest['total_return_pct']):.2f}%\n")
+        f.write(f"年化收益率（毛，不含手续费）: {backtest.get('annualized_return_pct_gross', backtest['annualized_return_pct']):.2f}%\n")
         # 明确利润指标
-        f.write(f"Net profit (incl. fees): {backtest.get('net_profit', backtest['final_value'] - backtest['initial_cash']):.2f}\n")
-        f.write(f"Gross profit (excl. fees): {backtest.get('gross_profit', backtest.get('final_value_gross', backtest['final_value']) - backtest['initial_cash']):.2f}\n")
-        f.write(f"Number of trades: {len(backtest['trades'])}\n")
-        f.write(f"Benchmark (first/last) total return: {backtest.get('benchmark_return_pct', 0.0):.2f}%\n")
-        f.write(f"Benchmark (first/last) annualized return: {backtest.get('benchmark_annualized_return_pct', 0.0):.2f}%\n")
-        f.write(f"Fee rate: {backtest.get('trade_fee_rate', 0.0) * 100:.2f}%\n")
-        f.write(f"Total fees paid: {backtest.get('total_fees_paid', 0.0):.2f}\n")
+        f.write(f"净利润（含手续费）: {backtest.get('net_profit', backtest['final_value'] - backtest['initial_cash']):.2f}\n")
+        f.write(f"毛利润（不含手续费）: {backtest.get('gross_profit', backtest.get('final_value_gross', backtest['final_value']) - backtest['initial_cash']):.2f}\n")
+        f.write(f"交易次数: {len(backtest['trades'])}\n")
+        f.write(f"基准（首末价）总收益率: {backtest.get('benchmark_return_pct', 0.0):.2f}%\n")
+        f.write(f"基准（首末价）年化收益率: {backtest.get('benchmark_annualized_return_pct', 0.0):.2f}%\n")
+        f.write(f"手续费率: {backtest.get('trade_fee_rate', 0.0) * 100:.2f}%\n")
+        f.write(f"累计手续费支出: {backtest.get('total_fees_paid', 0.0):.2f}\n")
         if backtest.get('validation_benchmark_return_pct') is not None:
-            f.write(f"Validation benchmark (first/last) total return: {backtest.get('validation_benchmark_return_pct', 0.0):.2f}%\n")
+            f.write(f"验证集基准（首末价）总收益率: {backtest.get('validation_benchmark_return_pct', 0.0):.2f}%\n")
             if backtest.get('validation_benchmark_annualized_return_pct') is not None:
-                f.write(f"Validation benchmark (first/last) annualized return: {backtest.get('validation_benchmark_annualized_return_pct', 0.0):.2f}%\n")
-        f.write(f"Used quantile: {backtest.get('used_quantile', 'auto')}\n")
-        f.write(f"Buy threshold: {backtest['buy_threshold_pct']:.2f}% , Sell threshold: {backtest['sell_threshold_pct']:.2f}%\n")
+                f.write(f"验证集基准（首末价）年化收益率: {backtest.get('validation_benchmark_annualized_return_pct', 0.0):.2f}%\n")
+        f.write(f"使用分位数: {backtest.get('used_quantile', 'auto')}\n")
+        f.write(f"买入阈值: {backtest['buy_threshold_pct']:.2f}% , 卖出阈值: {backtest['sell_threshold_pct']:.2f}%\n")
         pc = backtest.get('position_control', {})
-        f.write("=== Position control settings ===\n")
+        f.write("=== 仓位控制设置 ===\n")
         f.write(f"enable_rebalance: {pc.get('enable_rebalance', False)}\n")
         f.write(f"max_position_pct: {pc.get('max_position_pct', 0.0):.2f}\n")
         f.write(f"min_position_pct: {pc.get('min_position_pct', 0.0):.2f}\n")
@@ -915,17 +915,17 @@ if __name__ == "__main__":
 
         # 预测变化分布统计
         stats = backtest.get('predicted_change_stats', {})
-        f.write("=== Predicted change distribution stats ===\n")
+        f.write("=== 预测变化分布统计 ===\n")
         if stats:
-            f.write(f"Number of chunks: {stats.get('count_chunks', 0)}\n")
-            f.write(f"Mean: {stats.get('mean', 0.0):.2f}%\n")
-            f.write(f"Median: {stats.get('median', 0.0):.2f}%\n")
-            f.write(f"75th percentile: {stats.get('p75', 0.0):.2f}%\n")
-            f.write(f"90th percentile: {stats.get('p90', 0.0):.2f}%\n")
-            f.write(f"Chunks above buy threshold: {stats.get('above_buy_count', 0)}\n")
-            f.write(f"Chunks below sell threshold: {stats.get('below_sell_count', 0)}\n\n")
+            f.write(f"分块数: {stats.get('count_chunks', 0)}\n")
+            f.write(f"均值: {stats.get('mean', 0.0):.2f}%\n")
+            f.write(f"中位数: {stats.get('median', 0.0):.2f}%\n")
+            f.write(f"75分位数: {stats.get('p75', 0.0):.2f}%\n")
+            f.write(f"90分位数: {stats.get('p90', 0.0):.2f}%\n")
+            f.write(f"高于买入阈值的分块数: {stats.get('above_buy_count', 0)}\n")
+            f.write(f"低于卖出阈值的分块数: {stats.get('below_sell_count', 0)}\n\n")
         else:
-            f.write("No stats available\n\n")
+            f.write("暂无统计数据\n\n")
 
         # 图表信息
         curve_dates = backtest.get('curve_dates', [])
