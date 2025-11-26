@@ -1,9 +1,11 @@
 
 from req_res_types import *
+from typing import List, Optional
 import os
 import sys
 import pandas as pd
 import numpy as np
+import json
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 finance_dir = parent_dir
@@ -414,6 +416,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
         
         # 在验证集上使用最佳预测项进行验证
         validation_results = None
+        val_results: List[ChunkPredictionResult] = []
         if best_prediction_item and len(df_val) >= request.horizon_len:
             print(f"🔍 使用最佳预测项 {best_prediction_item} 在验证集上进行验证...")
             
@@ -485,6 +488,23 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
             'best_metrics': best_metrics,
             'validation_results': validation_results
         }
+
+        # 将最佳分位数按股票代码写入 JSON，便于回测直接读取
+        try:
+            out_dir = os.path.join(finance_dir, "forecast-results")
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, f"{request.stock_code}_best_quantile.json")
+            payload = {
+                "stock_code": request.stock_code,
+                "best_prediction_item": best_prediction_item,
+                "timesfm_version": timesfm_version,
+                "best_metrics": best_metrics,
+            }
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            print(f"✅ 最佳分位数已保存: {out_path} -> {best_prediction_item}")
+        except Exception as save_err:
+            print(f"⚠️ 保存最佳分位 JSON 失败: {save_err}")
         
         # 拼接所有分块的预测结果
         concatenated_predictions = {}
@@ -520,7 +540,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
         
         processing_time = time.time() - start_time
         
-        return ChunkedPredictionResponse(
+        resp = ChunkedPredictionResponse(
             stock_code=request.stock_code,
             total_chunks=len(chunks),
             horizon_len=request.horizon_len,
@@ -529,7 +549,245 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
             processing_time=processing_time,
             concatenated_predictions=concatenated_predictions if concatenated_predictions else None,
             concatenated_actual=concatenated_actual if concatenated_actual else None,
-            concatenated_dates=concatenated_dates if concatenated_dates else None
+            concatenated_dates=concatenated_dates if concatenated_dates else None,
+            validation_chunk_results=val_results if val_results else None
+        )
+
+        # 将完整的分块响应保存为 JSON，便于后续直接加载并跳过预测
+        try:
+            out_dir = os.path.join(finance_dir, "forecast-results")
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, f"{request.stock_code}_chunked_response.json")
+
+            def _cr_to_dict(cr: ChunkPredictionResult):
+                return {
+                    "chunk_index": cr.chunk_index,
+                    "chunk_start_date": cr.chunk_start_date,
+                    "chunk_end_date": cr.chunk_end_date,
+                    "predictions": cr.predictions,
+                    "actual_values": cr.actual_values,
+                    "metrics": cr.metrics,
+                }
+
+            payload = {
+                "stock_code": resp.stock_code,
+                "total_chunks": resp.total_chunks,
+                "horizon_len": resp.horizon_len,
+                "chunk_results": [ _cr_to_dict(cr) for cr in (resp.chunk_results or []) ],
+                "overall_metrics": resp.overall_metrics,
+                "processing_time": resp.processing_time,
+                "concatenated_predictions": resp.concatenated_predictions,
+                "concatenated_actual": resp.concatenated_actual,
+                "concatenated_dates": resp.concatenated_dates,
+                "validation_chunk_results": [ _cr_to_dict(vcr) for vcr in (resp.validation_chunk_results or []) ] if resp.validation_chunk_results else None,
+            }
+
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            print(f"✅ 分块响应已保存: {out_path}")
+        except Exception as save_err:
+            print(f"⚠️ 保存分块响应 JSON 失败: {save_err}")
+
+        return resp
+    except Exception as e:
+        # 兜底：主流程异常时返回占位响应，并打印错误信息
+        processing_time = time.time() - start_time
+        try:
+            lineno = e.__traceback__.tb_lineno if getattr(e, "__traceback__", None) else -1
+        except Exception:
+            lineno = -1
+        print(f"模式1分块预测主函数失败: {str(e)} 错误行 {lineno}")
+        return ChunkedPredictionResponse(
+            stock_code=request.stock_code,
+            total_chunks=0,
+            horizon_len=request.horizon_len,
+            chunk_results=[],
+            overall_metrics={'avg_mse': float('inf'), 'avg_mae': float('inf'), 'error': str(e)},
+            processing_time=processing_time,
+            validation_chunk_results=None,
+        )
+
+async def predict_validation_chunks_only(
+    request: ChunkedPredictionRequest,
+    tfm = None,
+    timesfm_version: str = "2.0",
+    fixed_best_prediction_item: Optional[str] = None,
+) -> ChunkedPredictionResponse:
+    """
+    仅预测验证集分块，并使用已知的最佳分位数（来自JSON或环境变量）。
+
+    用途：当已存在最佳分位数，但没有缓存的分块响应时，仅预测验证集以进行回测，无需对测试集进行预测。
+
+    Returns:
+        ChunkedPredictionResponse: chunk_results为空；validation_chunk_results包含验证集分块预测结果；
+        overall_metrics中包含best_prediction_item与验证集指标。
+    """
+    import time
+    start_time = time.time()
+
+    try:
+        # 数据预处理
+        df_original, df_train, df_test, df_val = await df_preprocess(
+            request.stock_code,
+            request.stock_type,
+            request.start_date,
+            request.end_date,
+            request.time_step,
+            years=request.years,
+            horizon_len=request.horizon_len,
+        )
+
+        if df_original is None or df_train is None or df_test is None or df_val is None:
+            print(f"❌ 股票 {request.stock_code} 数据预处理失败，无法进行验证集预测")
+            return ChunkedPredictionResponse(
+                stock_code=request.stock_code,
+                total_chunks=0,
+                horizon_len=request.horizon_len,
+                chunk_results=[],
+                overall_metrics={
+                    'avg_mse': float('inf'),
+                    'avg_mae': float('inf'),
+                    'error': 'Data preprocessing failed'
+                },
+                processing_time=time.time() - start_time
+            )
+
+        print(f"✅ 股票 {request.stock_code} 数据预处理成功（验证集专用模式）")
+        print(f"📊 数据集大小: 训练集={len(df_train)}, 测试集={len(df_test)}, 验证集={len(df_val)}")
+
+        # 添加唯一标识符
+        df_train["unique_id"] = df_train["stock_code"].astype(str)
+        df_test["unique_id"] = df_test["stock_code"].astype(str)
+        df_val["unique_id"] = df_val["stock_code"].astype(str)
+
+        # 对验证集进行分块
+        val_chunks = create_chunks_from_test_data(df_val, request.horizon_len)
+        val_results: List[ChunkPredictionResult] = []
+
+        for i, val_chunk in enumerate(val_chunks):
+            print(f"正在处理验证集分块 {i+1}/{len(val_chunks)}...")
+            history_len = i * request.horizon_len
+            if history_len > 0:
+                cumulative_train_data = pd.concat([df_train, df_test, df_val.iloc[:history_len, :]], axis=0)
+            else:
+                cumulative_train_data = pd.concat([df_train, df_test], axis=0)
+
+            val_result = predict_single_chunk_mode1(
+                df_train=cumulative_train_data,
+                df_test=val_chunk,
+                tfm=tfm,
+                chunk_index=i,
+                timesfm_version=timesfm_version,
+                symbol=request.stock_code,
+            )
+            val_results.append(val_result)
+
+        # 计算验证集指标（使用固定最佳分位数）
+        validation_results = None
+        if fixed_best_prediction_item:
+            val_mse = []
+            val_mae = []
+            val_returns = []
+
+            for result in val_results:
+                if fixed_best_prediction_item in result.predictions:
+                    pred_values = result.predictions[fixed_best_prediction_item]
+                    actual_values = result.actual_values
+
+                    mse = mean_squared_error(actual_values, pred_values)
+                    mae = mean_absolute_error(actual_values, pred_values)
+                    val_mse.append(mse)
+                    val_mae.append(mae)
+
+                    if len(pred_values) >= 2 and len(actual_values) >= 2:
+                        pred_return = (pred_values[-1] - pred_values[0]) / pred_values[0] * 100
+                        actual_return = (actual_values[-1] - actual_values[0]) / actual_values[0] * 100
+                        val_returns.append(abs(pred_return - actual_return))
+
+            validation_results = {
+                'best_prediction_item': fixed_best_prediction_item,
+                'validation_mse': np.mean(val_mse) if val_mse else float('inf'),
+                'validation_mae': np.mean(val_mae) if val_mae else float('inf'),
+                'validation_return_diff': np.mean(val_returns) if val_returns else float('inf'),
+                'validation_chunks': len(val_results),
+                'successful_validation_chunks': len(val_mse),
+            }
+            print(
+                f"✅ 验证结果: MSE={validation_results['validation_mse']:.4f}, "
+                f"MAE={validation_results['validation_mae']:.4f}, "
+                f"涨跌幅差异={validation_results['validation_return_diff']:.2f}%"
+            )
+        else:
+            print("⚠️ 未提供固定最佳分位数，验证集指标无法计算，overall_metrics仅包含验证分块数量")
+
+        overall_metrics = {
+            'best_prediction_item': fixed_best_prediction_item,
+            'validation_results': validation_results,
+            'total_chunks': len(val_chunks),
+            'successful_chunks': len(val_results),
+        }
+
+        processing_time = time.time() - start_time
+
+        resp = ChunkedPredictionResponse(
+            stock_code=request.stock_code,
+            total_chunks=len(val_chunks),
+            horizon_len=request.horizon_len,
+            chunk_results=[],
+            overall_metrics=overall_metrics,
+            processing_time=processing_time,
+            concatenated_predictions=None,
+            concatenated_actual=None,
+            concatenated_dates=None,
+            validation_chunk_results=val_results if val_results else None,
+        )
+
+        # 保存响应到JSON，便于回测直接加载
+        try:
+            out_dir = os.path.join(finance_dir, "forecast-results")
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, f"{request.stock_code}_chunked_response.json")
+
+            def _cr_to_dict(cr: ChunkPredictionResult):
+                return {
+                    "chunk_index": cr.chunk_index,
+                    "chunk_start_date": cr.chunk_start_date,
+                    "chunk_end_date": cr.chunk_end_date,
+                    "predictions": cr.predictions,
+                    "actual_values": cr.actual_values,
+                    "metrics": cr.metrics,
+                }
+
+            payload = {
+                "stock_code": resp.stock_code,
+                "total_chunks": resp.total_chunks,
+                "horizon_len": resp.horizon_len,
+                "chunk_results": [],
+                "overall_metrics": resp.overall_metrics,
+                "processing_time": resp.processing_time,
+                "concatenated_predictions": resp.concatenated_predictions,
+                "concatenated_actual": resp.concatenated_actual,
+                "concatenated_dates": resp.concatenated_dates,
+                "validation_chunk_results": [ _cr_to_dict(vcr) for vcr in (resp.validation_chunk_results or []) ] if resp.validation_chunk_results else None,
+            }
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            print(f"✅ 验证集分块响应已保存: {out_path}")
+        except Exception as save_err:
+            print(f"⚠️ 保存验证集分块响应 JSON 失败: {save_err}")
+
+        return resp
+    except Exception as e:
+        processing_time = time.time() - start_time
+        print(f"验证集分块预测失败: {str(e)} 错误行 {e.__traceback__.tb_lineno}")
+        return ChunkedPredictionResponse(
+            stock_code=request.stock_code,
+            total_chunks=0,
+            horizon_len=request.horizon_len,
+            chunk_results=[],
+            overall_metrics={'avg_mse': float('inf'), 'avg_mae': float('inf'), 'error': str(e)},
+            processing_time=processing_time,
+            validation_chunk_results=None,
         )
         
     except Exception as e:
@@ -557,7 +815,6 @@ if __name__ == "__main__":
         context_len=2048,
         time_step=0,
         stock_type=1,
-        chunk_num=5,
         timesfm_version="2.5",
     )
     if test_request.timesfm_version == "2.0":

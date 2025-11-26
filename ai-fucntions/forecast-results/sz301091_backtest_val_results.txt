@@ -1,0 +1,57 @@
+Backtest result - stock: sz301091
+Backtest period: 20100101 to 20251114
+
+=== Prediction summary ===
+Total chunks: 28
+Processing time: 23.12 s
+
+=== Backtest summary (validation) ===
+Initial cash: 100000.00
+Final value (net, incl. fees): 101540.21
+Total return (net, incl. fees): 1.54%
+Annualized return (net, incl. fees): 3.98%
+Final value (gross, excl. fees, for comparison): 103080.73
+Total return (gross, excl. fees): 3.08%
+Annualized return (gross, excl. fees): 8.05%
+Net profit (incl. fees): 1540.21
+Gross profit (excl. fees): 3080.73
+Number of trades: 11
+Benchmark (first/last) total return: 4.33%
+Benchmark (first/last) annualized return: 11.42%
+Fee rate: 0.60%
+Total fees paid: 1540.52
+Validation benchmark (first/last) total return: 4.33%
+Validation benchmark (first/last) annualized return: 11.42%
+Used quantile: tsf-0.7
+Buy threshold: 3.00% , Sell threshold: -1.00%
+=== Position control settings ===
+enable_rebalance: True
+max_position_pct: 1.00
+min_position_pct: 0.20
+slope_position_per_pct: 0.10
+rebalance_tolerance_pct: 0.05
+
+=== Predicted change distribution stats ===
+Number of chunks: 14
+Mean: 3.89%
+Median: 4.28%
+75th percentile: 5.44%
+90th percentile: 5.88%
+Chunks above buy threshold: 10
+Chunks below sell threshold: 1
+
+=== Figures ===
+Validation actual price (chunk end) vs backtest cumulative return: /root/workers/finance/ai-fucntions/forecast-results/sz301091_backtest_val_equity_vs_actual.png
+
+=== Trade details ===
+Date: 2025-07-02, Action: buy, Price: 94.45, Size: 227, Reason: rebalance_up-> 0.21
+Date: 2025-07-11, Action: buy, Price: 95.49, Size: 277, Reason: rebalance_up-> 0.48
+Date: 2025-08-11, Action: sell, Price: 109.25, Size: 504, Reason: rebalance_down-> 0.00
+Date: 2025-08-20, Action: buy, Price: 107.77, Size: 442, Reason: rebalance_up-> 0.45
+Date: 2025-08-29, Action: sell, Price: 116.34, Size: 131, Reason: rebalance_down-> 0.33
+Date: 2025-09-09, Action: buy, Price: 109.72, Size: 118, Reason: rebalance_up-> 0.44
+Date: 2025-09-18, Action: buy, Price: 104.93, Size: 65, Reason: rebalance_up-> 0.49
+Date: 2025-09-29, Action: sell, Price: 111.36, Size: 117, Reason: rebalance_down-> 0.39
+Date: 2025-10-16, Action: buy, Price: 110.42, Size: 215, Reason: rebalance_up-> 0.60
+Date: 2025-10-27, Action: sell, Price: 106.17, Size: 266, Reason: rebalance_down-> 0.33
+Date: 2025-11-05, Action: sell, Price: 100.91, Size: 60, Reason: rebalance_down-> 0.26
