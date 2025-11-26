@@ -43,7 +43,8 @@ def predict_single_chunk_mode1(
         tfm, 
         chunk_index: int,
         timesfm_version: str = "2.0",
-        symbol: str = ""
+        symbol: str = "",
+        context_len: int = 2048,
     ) -> ChunkPredictionResult:
     """
     模式1：对单个分块进行预测（固定训练集，使用ak_stock_data生成测试数据）
@@ -75,7 +76,7 @@ def predict_single_chunk_mode1(
         elif timesfm_version == "2.5":
             print(f"正在使用TimesFM-2.5模型对测试集分块 {chunk_index} 进行预测...")
             predict_2p5_func = import_predict_2p5()
-            forecast_df = predict_2p5_func(df_train, pred_horizon=len(df_test), unique_id=symbol)
+            forecast_df = predict_2p5_func(df_train, max_context=context_len, pred_horizon=len(df_test), unique_id=symbol)
 
         
         # 获取预测结果的前horizon_len条记录
@@ -332,7 +333,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                 df_train_current = pd.concat([df_train, df_test.iloc[:history_len, :]], axis=0)
             else:
                 df_train_current = df_train
-                
+            df_train_last_one = df_train_current.iloc[-1, :]
             result = predict_single_chunk_mode1(
                 df_train=df_train_current,
                 df_test=chunk,
@@ -340,6 +341,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                 chunk_index=i,
                 timesfm_version=timesfm_version,
                 symbol=request.stock_code,
+                context_len=request.context_len,
             )
             
             chunk_results.append(result)
@@ -385,10 +387,11 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                     item_mse.append(mse)
                     item_mae.append(mae)
                     
-                    # 计算涨跌幅
-                    if len(pred_values) >= 2 and len(actual_values) >= 2:
-                        pred_return = (pred_values[-1] - pred_values[0]) / pred_values[0] * 100
-                        actual_return = (actual_values[-1] - actual_values[0]) / actual_values[0] * 100
+                    # 计算涨跌幅：统一以 df_train_last_one 的收盘价为起点
+                    if len(pred_values) >= 1 and len(actual_values) >= 1:
+                        base_price = float(df_train_last_one['close']) if 'close' in df_train_last_one else actual_values[0]
+                        pred_return = (pred_values[-1] - base_price) / base_price * 100
+                        actual_return = (actual_values[-1] - base_price) / base_price * 100
                         item_returns.append(abs(pred_return - actual_return))
             
             if item_mse:
@@ -442,6 +445,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                     chunk_index=i,
                     timesfm_version=timesfm_version,
                     symbol=request.stock_code,
+                    context_len=request.context_len,
                 )
                 val_results.append(val_result)
             
@@ -460,9 +464,11 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                     val_mse.append(mse)
                     val_mae.append(mae)
                     
-                    if len(pred_values) >= 2 and len(actual_values) >= 2:
-                        pred_return = (pred_values[-1] - pred_values[0]) / pred_values[0] * 100
-                        actual_return = (actual_values[-1] - actual_values[0]) / actual_values[0] * 100
+                    # 计算涨跌幅：统一以训练集最后一条的收盘价为起点
+                    if len(pred_values) >= 1 and len(actual_values) >= 1:
+                        base_price = float(df_train_last_one['close']) if 'close' in df_train_last_one else actual_values[0]
+                        pred_return = (pred_values[-1] - base_price) / base_price * 100
+                        actual_return = (actual_values[-1] - base_price) / base_price * 100
                         val_returns.append(abs(pred_return - actual_return))
             
             validation_results = {
@@ -493,7 +499,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
         try:
             out_dir = os.path.join(finance_dir, "forecast-results")
             os.makedirs(out_dir, exist_ok=True)
-            out_path = os.path.join(out_dir, f"{request.stock_code}_best_quantile.json")
+            out_path = os.path.join(out_dir, f"{request.stock_code}_best_quantile_horizon_{request.horizon_len}_v_{timesfm_version}.json")
             payload = {
                 "stock_code": request.stock_code,
                 "best_prediction_item": best_prediction_item,
@@ -679,6 +685,7 @@ async def predict_validation_chunks_only(
                 chunk_index=i,
                 timesfm_version=timesfm_version,
                 symbol=request.stock_code,
+                context_len=request.context_len,
             )
             val_results.append(val_result)
 

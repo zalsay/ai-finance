@@ -27,7 +27,7 @@ today = datetime.datetime.today()
 years = 5
 start = today - datetime.timedelta(days=365*years)
 start = start.strftime("%Y%m%d")
-code = "sh600439"
+code = "sz000001"
 data = json.loads(scf0({"functionName":"get_financial_data","type":"stock","code":code,"start_date":start,"end_date":None},""))
 if data["code"] > 0:
     df = pd.DataFrame(data["data"])
@@ -38,4 +38,4 @@ if data["code"] > 0:
     df.fillna(0)
     df.dropna(inplace=True)
 
-print(df.head(1))
+print(df.head(-10))

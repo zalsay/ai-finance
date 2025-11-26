@@ -1,44 +1,44 @@
-Backtest result - stock: sz301091
-Backtest period: 20100101 to 20251114
+回测结果 - 股票: sz301091
+回测区间: 20100101 到 20251114
 
-=== Prediction summary ===
-Total chunks: 28
-Processing time: 23.12 s
+=== 预测结果摘要 ===
+总分块数: 28
+处理时间: 23.12 秒
 
-=== Backtest summary (validation) ===
-Initial cash: 100000.00
-Final value (net, incl. fees): 101540.21
-Total return (net, incl. fees): 1.54%
-Annualized return (net, incl. fees): 3.98%
-Final value (gross, excl. fees, for comparison): 103080.73
-Total return (gross, excl. fees): 3.08%
-Annualized return (gross, excl. fees): 8.05%
-Net profit (incl. fees): 1540.21
-Gross profit (excl. fees): 3080.73
-Number of trades: 11
-Benchmark (first/last) total return: 4.33%
-Benchmark (first/last) annualized return: 11.42%
-Fee rate: 0.60%
-Total fees paid: 1540.52
-Validation benchmark (first/last) total return: 4.33%
-Validation benchmark (first/last) annualized return: 11.42%
-Used quantile: tsf-0.7
-Buy threshold: 3.00% , Sell threshold: -1.00%
-=== Position control settings ===
+=== 回测结果摘要（验证集）===
+初始资金: 100000.00
+最终价值（净，含手续费）: 101540.21
+总收益率（净，含手续费）: 1.54%
+年化收益率（净，含手续费）: 3.98%
+最终价值（毛，不含手续费，仅用于对比）: 103080.73
+总收益率（毛，不含手续费）: 3.08%
+年化收益率（毛，不含手续费）: 8.05%
+净利润（含手续费）: 1540.21
+毛利润（不含手续费）: 3080.73
+交易次数: 11
+基准（首末价）总收益率: 4.33%
+基准（首末价）年化收益率: 11.42%
+手续费率: 0.60%
+累计手续费支出: 1540.52
+验证集基准（首末价）总收益率: 4.33%
+验证集基准（首末价）年化收益率: 11.42%
+使用分位数: tsf-0.7
+买入阈值: 3.00% , 卖出阈值: -1.00%
+=== 仓位控制设置 ===
 enable_rebalance: True
 max_position_pct: 1.00
 min_position_pct: 0.20
 slope_position_per_pct: 0.10
 rebalance_tolerance_pct: 0.05
 
-=== Predicted change distribution stats ===
-Number of chunks: 14
-Mean: 3.89%
-Median: 4.28%
-75th percentile: 5.44%
-90th percentile: 5.88%
-Chunks above buy threshold: 10
-Chunks below sell threshold: 1
+=== 预测变化分布统计 ===
+分块数: 14
+均值: 3.89%
+中位数: 4.28%
+75分位数: 5.44%
+90分位数: 5.88%
+高于买入阈值的分块数: 10
+低于卖出阈值的分块数: 1
 
 === Figures ===
 Validation actual price (chunk end) vs backtest cumulative return: /root/workers/finance/ai-fucntions/forecast-results/sz301091_backtest_val_equity_vs_actual.png

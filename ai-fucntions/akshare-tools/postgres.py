@@ -606,18 +606,23 @@ class SyncDataHanlder:
         trading_start_dates = get_trading_days(start_date, end_date, need_=False)
         if len(trading_start_dates) == 0:
             return {"error": "无交易日"}
-        event["code"] = symbol
         event["start_date"] = trading_start_dates[0]
         event["end_date"] = trading_start_dates[-1]
-        event["adjust"] = adjust
-        result = stock_zh_a_daily(event["code"], event["start_date"], event["end_date"], adjust)
-        
-        print("stock_zh_a_daily: ", result)
+        if stock_type == 1:
+            event["code"] = symbol
+            event["adjust"] = adjust
+            result = stock_zh_a_daily(event["code"], event["start_date"], event["end_date"], adjust)
+        elif stock_type == 2:
+            event["code"] = symbol
+            event["adjust"] = adjust
+            import akshare as ak
+            result = ak.fund_etf_hist_sina(symbol=event["code"])
+
         if result is None or result.empty:
             return 500, None
         return 200, result
 
-    def get_stock_data_from_local(self, symbol: str, stock_type: int = 1, start_date=None, end_date=None, years=0, adjust: str = "hfq", max_retries=3):
+    def get_stock_data_from_local(self, symbol: str, stock_type: int = 1, start_date=None, end_date=None, years=0, adjust: str = "qfq", max_retries=3):
         """
         使用SCF云函数获取股票数据
         
@@ -656,11 +661,18 @@ class SyncDataHanlder:
                     if not df.empty:
                         # 处理日期转换 - 从Unix时间戳(毫秒)转换为datetime
                         if 'date' in df.columns:
-                            # 正确处理Unix时间戳转换
-                            df['datetime'] = pd.to_datetime(df['date'], unit='ms', utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+                            if pd.api.types.is_numeric_dtype(df['date']):
+                                df['datetime'] = pd.to_datetime(df['date'], unit='ms', utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+                            else:
+                                df['datetime'] = pd.to_datetime(df['date'], errors='coerce')
                             df = df.drop('date', axis=1)
                         elif 'datetime' in df.columns:
-                            df['datetime'] = pd.to_datetime(df['datetime'])
+                            df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
+                        if start_date is not None and end_date is not None and 'datetime' in df.columns:
+                            sd = pd.to_datetime(start_date, format='%Y%m%d', errors='coerce')
+                            ed = pd.to_datetime(end_date, format='%Y%m%d', errors='coerce')
+                            if not pd.isna(sd) and not pd.isna(ed):
+                                df = df[(df['datetime'] >= sd) & (df['datetime'] <= ed)]
                         
                         # 计算缺失的字段
                         if 'close' in df.columns and 'open' in df.columns:
@@ -734,10 +746,10 @@ class SyncDataHanlder:
 
 async def _demo():
     # 注意：远端服务端口为 8000，且需要携带固定 X-Token（默认 fintrack-dev-token）
-    async with PostgresHandler(base_url="http://8.163.5.7:8000", api_token="fintrack-dev-token") as handler:
+    async with PostgresHandler(base_url="http://localhost:8080", api_token="fintrack-dev-token") as handler:
         ok = await handler.health_check()
         print("健康检查:", ok)
-        sync_result = await handler.sync_stock("sh600398", stock_type=1)
+        sync_result = await handler.sync_stock("sh510050", stock_type=2)
         print("同步结果:", sync_result)
         # latest = await handler.get_latest("600398", stock_type=1, limit=1)
         # print("最新记录:", latest)
@@ -762,7 +774,7 @@ async def _demo():
 
 def test():
     handler = SyncDataHanlder()
-    return handler.get_stock_data_from_local("sh600398", stock_type=1, start_date="20100101", end_date="20251101")
+    return handler.get_stock_data_from_local("sh510050", stock_type=2, start_date="20100101", end_date="20251101")
 if __name__ == "__main__":
     asyncio.run(_demo())
     # result = test()
