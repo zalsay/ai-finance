@@ -11,11 +11,6 @@ GO_API_URL = os.getenv("GO_API_URL", "http://127.0.0.1:8080")
 API_TOKEN = os.getenv("API_TOKEN", "fintrack-dev-token")
 
 
-# 兼容旧脚本：Go 服务会在初始化时自动创建 etf_daily 表，这里不再直连数据库创建表
-def ensure_table():
-    return
-
-
 def fetch_etf_df():
     # 从新浪获取全部ETF基金实时数据
     df = ak.fund_etf_category_sina(symbol="ETF基金")
@@ -110,10 +105,11 @@ def upsert_etf_daily(df: pd.DataFrame, api_url=None, token=None, batch_size=500)
 
 def main():
     df = fetch_etf_df()
-    ensure_table()  # 兼容旧逻辑占位
     n = upsert_etf_daily(df)
     print(f"Upserted {n} rows into etf_daily (via Go API) on {date.today()}.")
 
 
 if __name__ == "__main__":
     main()
+    # df = fetch_etf_df()
+    # df.to_csv("etf_daily.csv", index=False)
