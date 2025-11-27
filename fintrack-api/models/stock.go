@@ -17,13 +17,13 @@ type Stock struct {
 }
 
 type StockPrice struct {
-	ID           int       `json:"id" db:"id"`
-	StockID      int       `json:"stock_id" db:"stock_id"`
-	Price        float64   `json:"price" db:"price"`
-	ChangePercent *float64 `json:"change_percent" db:"change_percent"`
-	Volume       *int64    `json:"volume" db:"volume"`
-	MarketCap    *int64    `json:"market_cap" db:"market_cap"`
-	RecordedAt   time.Time `json:"recorded_at" db:"recorded_at"`
+	ID            int       `json:"id" db:"id"`
+	StockID       int       `json:"stock_id" db:"stock_id"`
+	Price         float64   `json:"price" db:"price"`
+	ChangePercent *float64  `json:"change_percent" db:"change_percent"`
+	Volume        *int64    `json:"volume" db:"volume"`
+	MarketCap     *int64    `json:"market_cap" db:"market_cap"`
+	RecordedAt    time.Time `json:"recorded_at" db:"recorded_at"`
 }
 
 type StockPrediction struct {
@@ -67,12 +67,12 @@ type StockData struct {
 }
 
 type WatchlistItem struct {
-	ID          int                `json:"id"`
-	Stock       Stock              `json:"stock"`
-	CurrentPrice *StockPrice       `json:"current_price,omitempty"`
-	Prediction  *StockPrediction   `json:"prediction,omitempty"`
-	AddedAt     time.Time          `json:"added_at"`
-	Notes       *string            `json:"notes"`
+	ID           int              `json:"id"`
+	Stock        Stock            `json:"stock"`
+	CurrentPrice *StockPrice      `json:"current_price,omitempty"`
+	Prediction   *StockPrediction `json:"prediction,omitempty"`
+	AddedAt      time.Time        `json:"added_at"`
+	Notes        *string          `json:"notes"`
 }
 
 type AddToWatchlistRequest struct {
@@ -85,13 +85,63 @@ type UpdateWatchlistRequest struct {
 }
 
 type PortfolioItem struct {
-	ID           int              `json:"id"`
-	Stock        Stock            `json:"stock"`
-	Shares       float64          `json:"shares"`
-	AverageCost  float64          `json:"average_cost"`
-	CurrentPrice *StockPrice      `json:"current_price,omitempty"`
-	TotalValue   float64          `json:"total_value"`
-	GainLoss     float64          `json:"gain_loss"`
-	GainLossPercent float64       `json:"gain_loss_percent"`
-	PurchaseDate time.Time        `json:"purchase_date"`
+	ID              int         `json:"id"`
+	Stock           Stock       `json:"stock"`
+	Shares          float64     `json:"shares"`
+	AverageCost     float64     `json:"average_cost"`
+	CurrentPrice    *StockPrice `json:"current_price,omitempty"`
+	TotalValue      float64     `json:"total_value"`
+	GainLoss        float64     `json:"gain_loss"`
+	GainLossPercent float64     `json:"gain_loss_percent"`
+	PurchaseDate    time.Time   `json:"purchase_date"`
+}
+
+// TimesFM最佳分位预测保存的模型与请求体
+type TimesfmBestPrediction struct {
+	ID                 int       `json:"id" db:"id"`
+	UniqueKey          string    `json:"unique_key" db:"unique_key"`
+	Symbol             string    `json:"symbol" db:"symbol"`
+	TimesfmVersion     string    `json:"timesfm_version" db:"timesfm_version"`
+	BestPredictionItem string    `json:"best_prediction_item" db:"best_prediction_item"`
+	BestMetrics        string    `json:"best_metrics" db:"best_metrics"` // JSON string
+	IsPublic           int       `json:"is_public" db:"is_public"`
+	TrainStartDate     time.Time `json:"train_start_date" db:"train_start_date"`
+	TrainEndDate       time.Time `json:"train_end_date" db:"train_end_date"`
+	TestStartDate      time.Time `json:"test_start_date" db:"test_start_date"`
+	TestEndDate        time.Time `json:"test_end_date" db:"test_end_date"`
+	ValStartDate       time.Time `json:"val_start_date" db:"val_start_date"`
+	ValEndDate         time.Time `json:"val_end_date" db:"val_end_date"`
+	ContextLen         int       `json:"context_len" db:"context_len"`
+	HorizonLen         int       `json:"horizon_len" db:"horizon_len"`
+	CreatedAt          time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type SaveTimesfmBestRequest struct {
+	UniqueKey          string                 `json:"unique_key" binding:"required"`
+	Symbol             string                 `json:"symbol" binding:"required"`
+	TimesfmVersion     string                 `json:"timesfm_version" binding:"required"`
+	BestPredictionItem string                 `json:"best_prediction_item" binding:"required"`
+	BestMetrics        map[string]interface{} `json:"best_metrics" binding:"required"`
+	IsPublic           *int                   `json:"is_public"`
+	TrainStartDate     string                 `json:"train_start_date" binding:"required"`
+	TrainEndDate       string                 `json:"train_end_date" binding:"required"`
+	TestStartDate      string                 `json:"test_start_date" binding:"required"`
+	TestEndDate        string                 `json:"test_end_date" binding:"required"`
+	ValStartDate       string                 `json:"val_start_date" binding:"required"`
+	ValEndDate         string                 `json:"val_end_date" binding:"required"`
+	ContextLen         int                    `json:"context_len" binding:"required"`
+	HorizonLen         int                    `json:"horizon_len" binding:"required"`
+}
+
+type SaveTimesfmValChunkRequest struct {
+	UniqueKey   string                 `json:"unique_key" binding:"required"`
+	ChunkIndex  int                    `json:"chunk_index" binding:"gte=0"`
+	StartDate   string                 `json:"start_date" binding:"required"`
+	EndDate     string                 `json:"end_date" binding:"required"`
+	Symbol      string                 `json:"symbol"`
+	UserID      *int                   `json:"user_id"`
+	Predictions map[string]interface{} `json:"predictions" binding:"required"` // best item vector or all columns
+	Actual      []float64              `json:"actual_values" binding:"required"`
+	Dates       []string               `json:"dates" binding:"required"`
 }

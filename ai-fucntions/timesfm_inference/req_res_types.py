@@ -15,6 +15,7 @@ class ChunkedPredictionRequest:
     time_step: int = 0
     stock_type: str = 'stock'
     timesfm_version: str = "2.0"
+    user_id: Optional[int] = None
 
 
 @dataclass
