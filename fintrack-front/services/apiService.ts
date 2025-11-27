@@ -1,5 +1,5 @@
 // API服务 - 连接fintrack-api后端
-const API_BASE_URL = 'http://localhost:8080/api/v1';
+const API_BASE_URL = 'http://localhost:8881/api/v1';
 
 // 存储认证token
 let authToken: string | null = null;
