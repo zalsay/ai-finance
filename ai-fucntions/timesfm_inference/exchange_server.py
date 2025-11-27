@@ -24,6 +24,7 @@ if current_dir not in sys.path:
 from timesfm_init import init_timesfm
 from predict_chunked_functions import predict_chunked_mode_for_best, predict_validation_chunks_only
 from req_res_types import ChunkedPredictionRequest, ChunkedPredictionResponse, ChunkPredictionResult
+from http_client import get_json
 
 @dataclass
 class BacktestTrade:
@@ -98,7 +99,10 @@ def backtest_from_chunked_response(
     slope_position_per_pct: float = 0.0,
     rebalance_tolerance_pct: float = 0.05,
     trade_fee_rate: float = 0.006,
-    actual_total_return_pct: Optional[float] = None
+    actual_total_return_pct: Optional[float] = None,
+    # 累计收益止盈参数
+    take_profit_threshold_pct: float = 10.0,
+    take_profit_sell_frac: float = 0.5,
 ) -> Dict[str, Any]:
     """
     基于分块预测结果进行回测
@@ -130,6 +134,7 @@ def backtest_from_chunked_response(
     # 曲线数据（用于绘图）：每个分块结束时的实际价格与组合价值
     equity_curve_values: List[float] = []
     equity_curve_pct: List[float] = []
+    equity_curve_pct_gross: List[float] = []
     curve_dates: List[str] = []
     actual_end_prices: List[float] = []
     # 计算实际总体涨跌幅（首末价），安全处理 concatenated_actual 可能为 None 的情况
@@ -190,6 +195,25 @@ def backtest_from_chunked_response(
         portfolio_value_start = cash + shares * start_price
         current_position_pct = (shares * start_price / portfolio_value_start) if portfolio_value_start > 0 else 0.0
 
+        # 累计收益止盈：当累计收益超过阈值，卖出持仓的 n%
+        try:
+            tp_th = float(take_profit_threshold_pct)
+            tp_frac = max(0.0, min(float(take_profit_sell_frac), 1.0))
+        except Exception:
+            tp_th = None
+            tp_frac = 0.0
+        if tp_th is not None and tp_frac > 0.0 and shares > 0 and start_price is not None and not np.isnan(start_price) and portfolio_value_start > 0:
+            cum_ret_start_pct = (portfolio_value_start / initial_cash - 1.0) * 100.0
+            if cum_ret_start_pct >= tp_th:
+                sell_size_tp = shares * tp_frac
+                if sell_size_tp > 0:
+                    proceeds = sell_size_tp * start_price
+                    fee_amt = proceeds * trade_fee_rate
+                    shares -= sell_size_tp
+                    cash += (proceeds - fee_amt)
+                    total_fees_paid += fee_amt
+                    trades.append(BacktestTrade(date=cr.chunk_start_date, action="sell", price=float(start_price), size=float(sell_size_tp), chunk_index=cr.chunk_index, reason=f"take_profit>= {tp_th:.2f}", fee=float(fee_amt)))
+
         if enable_rebalance:
             # 根据信号强度设定目标仓位
             if predicted_pct_change >= buy_threshold_pct:
@@ -230,15 +254,16 @@ def backtest_from_chunked_response(
                         trades.append(BacktestTrade(date=cr.chunk_start_date, action="sell", price=float(start_price), size=float(sell_size), chunk_index=cr.chunk_index, reason=f"rebalance_down-> {target_position_pct:.2f}", fee=float(fee_amt)))
         else:
             # 原有的全仓买入/清仓卖出逻辑
-            if predicted_pct_change >= buy_threshold_pct and shares == 0.0:
-                # 全仓买入时考虑手续费，使现金不为负
+            if predicted_pct_change >= buy_threshold_pct:
+                # 允许再次买入：用全部可用现金买入（考虑手续费）
                 size = cash / (start_price * (1.0 + trade_fee_rate)) if start_price > 0 else 0.0
-                shares += size
-                buy_cost = size * start_price
-                fee_amt = buy_cost * trade_fee_rate
-                cash -= (buy_cost + fee_amt)
-                total_fees_paid += fee_amt
-                trades.append(BacktestTrade(date=cr.chunk_start_date, action="buy", price=float(start_price), size=float(size), chunk_index=cr.chunk_index, reason=f"pred_pct>={buy_threshold_pct}", fee=float(fee_amt)))
+                if size > 0:
+                    shares += size
+                    buy_cost = size * start_price
+                    fee_amt = buy_cost * trade_fee_rate
+                    cash -= (buy_cost + fee_amt)
+                    total_fees_paid += fee_amt
+                    trades.append(BacktestTrade(date=cr.chunk_start_date, action="buy", price=float(start_price), size=float(size), chunk_index=cr.chunk_index, reason=f"pred_pct>={buy_threshold_pct}", fee=float(fee_amt)))
             elif predicted_pct_change <= sell_threshold_pct and shares > 0.0:
                 proceeds = shares * start_price
                 fee_amt = proceeds * trade_fee_rate
@@ -263,6 +288,9 @@ def backtest_from_chunked_response(
             pv_end = cash + shares * end_price
             equity_curve_values.append(float(pv_end))
             equity_curve_pct.append(float((pv_end / initial_cash - 1) * 100))
+            # 毛收益率曲线：在相同交易数量下加回已累计手续费
+            pv_end_gross = pv_end + total_fees_paid
+            equity_curve_pct_gross.append(float((pv_end_gross / initial_cash - 1) * 100))
             actual_end_prices.append(float(end_price))
             curve_dates.append(cr.chunk_end_date)
 
@@ -362,6 +390,8 @@ def backtest_from_chunked_response(
             "min_position_pct": min_position_pct,
             "slope_position_per_pct": slope_position_per_pct,
             "rebalance_tolerance_pct": rebalance_tolerance_pct,
+            "take_profit_threshold_pct": take_profit_threshold_pct,
+            "take_profit_sell_frac": take_profit_sell_frac,
         },
         "trade_fee_rate": trade_fee_rate,
         "total_fees_paid": float(total_fees_paid),
@@ -369,6 +399,7 @@ def backtest_from_chunked_response(
         # 曲线数据（用于绘图）
         "equity_curve_values": equity_curve_values,
         "equity_curve_pct": equity_curve_pct,
+        "equity_curve_pct_gross": equity_curve_pct_gross,
         "curve_dates": curve_dates,
         "actual_end_prices": actual_end_prices,
     }
@@ -387,6 +418,8 @@ def backtest_on_results(
     slope_position_per_pct: float,
     rebalance_tolerance_pct: float,
     trade_fee_rate: float,
+    take_profit_threshold_pct: float,
+    take_profit_sell_frac: float,
 ) -> Dict[str, Any]:
     """
     将原本在 run_backtest 内部定义的 _backtest_on_results 提取为模块级函数。
@@ -429,6 +462,8 @@ def backtest_on_results(
         slope_position_per_pct=slope_position_per_pct,
         rebalance_tolerance_pct=rebalance_tolerance_pct,
         trade_fee_rate=trade_fee_rate,
+        take_profit_threshold_pct=take_profit_threshold_pct,
+        take_profit_sell_frac=take_profit_sell_frac,
     )
 
 def _load_cached_chunked_response(stock_code: str) -> Optional[ChunkedPredictionResponse]:
@@ -513,7 +548,7 @@ def _load_cached_chunked_response(stock_code: str) -> Optional[ChunkedPrediction
         print(f"⚠️ 加载缓存的分块响应失败: {e}")
         return None
 
-def run_backtest(
+async def run_backtest(
     request: ChunkedPredictionRequest,
     buy_threshold_pct: float = 3.0,
     sell_threshold_pct: float = -1.0,
@@ -525,6 +560,9 @@ def run_backtest(
     slope_position_per_pct: float = 0.1,
     rebalance_tolerance_pct: float = 0.05,
     trade_fee_rate: float = 0.006,
+    # 累计收益止盈参数
+    take_profit_threshold_pct: Optional[float] = None,
+    take_profit_sell_frac: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     运行完整的回测流程
@@ -547,19 +585,38 @@ def run_backtest(
     Returns:
         Dict[str, Any]: 包含预测响应和回测结果的字典
     """    
-    # 选择用于回测的固定分位数：优先读取 JSON 文件（预测阶段已写入），其次环境变量，最后回退到响应中的测试集最佳分位
+    # 选择用于回测的固定分位数：优先读取 Go 后端，其次本地 JSON，然后环境变量，最后回退到响应中的测试集最佳分位
     fixed_quantile_key = None
+    # 优先从Go后端查询是否已存在记录：/api/v1/predictions/timesfm-best/by-unique?unique_key=...
     try:
-        out_dir = os.path.join(finance_dir, "forecast-results")
-        out_path = os.path.join(out_dir, f"{request.stock_code}_best_quantile_horizon_{request.horizon_len}_v_{request.timesfm_version}.json")
-        if os.path.exists(out_path):
-            with open(out_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                fixed_quantile_key = data.get("best_prediction_item")
-                print(f"从 JSON 文件读取到的固定分位数: {fixed_quantile_key}")
-    except Exception as read_err:
-        print(f"⚠️ 读取最佳分位 JSON 失败: {read_err}")
-        fixed_quantile_key = None
+        unique_key = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}"
+        status_code, data, text = await get_json(
+            "/api/v1/predictions/timesfm-best/by-unique",
+            params={"unique_key": unique_key},
+        )
+        if status_code == 200 and data:
+            pred = (data or {}).get('prediction') or {}
+            fixed_quantile_key = pred.get('best_prediction_item')
+            if fixed_quantile_key:
+                print(f"从Go后端读取到的固定分位数: {fixed_quantile_key}")
+        else:
+            print(f"ℹ️ 查询Go后端最佳分位失败，HTTP {status_code}: {str(text)[:200]}")
+    except Exception as go_err:
+        print(f"ℹ️ 查询Go后端最佳分位异常，回退到本地JSON: {go_err}")
+
+    # 回退：本地JSON缓存
+    if not fixed_quantile_key:
+        try:
+            out_dir = os.path.join(finance_dir, "forecast-results")
+            out_path = os.path.join(out_dir, f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}.json")
+            if os.path.exists(out_path):
+                with open(out_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    fixed_quantile_key = data.get("best_prediction_item")
+                    print(f"从 JSON 文件读取到的固定分位数: {fixed_quantile_key}")
+        except Exception as read_err:
+            print(f"⚠️ 读取最佳分位 JSON 失败: {read_err}")
+            fixed_quantile_key = None
 
     # 是否强制重新预测（忽略缓存）
     force_repredict = os.getenv("FORCE_REPREDICT", "0").strip().lower() in ("1", "true", "yes", "y")
@@ -578,23 +635,18 @@ def run_backtest(
     # - 如果没有固定分位数，则进行完整分块预测以选取最佳分位。
     if response is None:
         tfm = init_timesfm(horizon_len=request.horizon_len, context_len=request.context_len)
-        import asyncio
         if fixed_quantile_key:
             print("➡️ 已有固定分位数但无缓存，开始仅预测验证集数据以供回测...")
-            response = asyncio.run(
-                predict_validation_chunks_only(
-                    request,
-                    tfm,
-                    timesfm_version=request.timesfm_version,
-                    fixed_best_prediction_item=fixed_quantile_key,
-                )
+            response = await predict_validation_chunks_only(
+                request,
+                tfm,
+                timesfm_version=request.timesfm_version,
+                fixed_best_prediction_item=fixed_quantile_key,
             )
         else:
             print("➡️ 未取得固定分位数，开始完整分块预测（含测试集）以选取最佳分位...")
-            response = asyncio.run(
-                predict_chunked_mode_for_best(
-                    request, tfm, timesfm_version=request.timesfm_version
-                )
+            response = await predict_chunked_mode_for_best(
+                request, tfm, timesfm_version=request.timesfm_version
             )
 
     # 若未从 JSON 获取固定分位数，则尝试从环境变量；再不行则回退到响应中的测试集最佳分位
@@ -627,6 +679,8 @@ def run_backtest(
             slope_position_per_pct,
             rebalance_tolerance_pct,
             trade_fee_rate,
+            take_profit_threshold_pct if take_profit_threshold_pct is not None else float(os.getenv("TAKE_PROFIT_THRESHOLD_PCT", "10.0")),
+            take_profit_sell_frac if take_profit_sell_frac is not None else float(os.getenv("TAKE_PROFIT_SELL_FRAC", "0.5")),
         )
     else:
         result = backtest_on_results(
@@ -642,6 +696,8 @@ def run_backtest(
             slope_position_per_pct,
             rebalance_tolerance_pct,
             trade_fee_rate,
+            take_profit_threshold_pct if take_profit_threshold_pct is not None else float(os.getenv("TAKE_PROFIT_THRESHOLD_PCT", "10.0")),
+            take_profit_sell_frac if take_profit_sell_frac is not None else float(os.getenv("TAKE_PROFIT_SELL_FRAC", "0.5")),
         )
     # 计算验证集首末价涨跌幅（用于对比收益）
     try:
@@ -708,8 +764,8 @@ if __name__ == "__main__":
     
 
     # 从环境变量读取阈值与仓位控制参数
-    buy_threshold = float(os.getenv("BUY_THRESHOLD_PCT", "3.0"))
-    sell_threshold = float(os.getenv("SELL_THRESHOLD_PCT", "-1.0"))
+    buy_threshold = float(os.getenv("BUY_THRESHOLD_PCT", "0.0"))
+    sell_threshold = float(os.getenv("SELL_THRESHOLD_PCT", "-5.0"))
     initial_cash = float(os.getenv("INITIAL_CASH", "100000.0"))
     enable_rebalance = os.getenv("ENABLE_REBALANCE", "1").strip().lower() in ("1", "true", "yes", "y")
     max_position_pct = float(os.getenv("MAX_POSITION_PCT", "1.0"))
@@ -717,12 +773,18 @@ if __name__ == "__main__":
     slope_position_per_pct = float(os.getenv("SLOPE_POSITION_PER_PCT", "0.1"))
     rebalance_tolerance_pct = float(os.getenv("REBALANCE_TOLERANCE_PCT", "0.05"))
     trade_fee_rate = float(os.getenv("TRADE_FEE_RATE", "0.006"))
+    # 止盈参数
+    take_profit_threshold_env = float(os.getenv("TAKE_PROFIT_THRESHOLD_PCT", "10.0"))
+    take_profit_sell_frac_env = float(os.getenv("TAKE_PROFIT_SELL_FRAC", "0.8"))
 
     print(f"使用买入阈值: {buy_threshold:.2f}% , 卖出阈值: {sell_threshold:.2f}% , 初始资金: {initial_cash:.2f}")
     print(f"仓位控制: enable_rebalance={enable_rebalance}, max={max_position_pct:.2f}, min={min_position_pct:.2f}, slope_per_pct={slope_position_per_pct:.2f}, tol={rebalance_tolerance_pct:.2f}")
-
+    print(f"止盈: take_profit_threshold_pct={take_profit_threshold_env:.2f}% , take_profit_sell_frac={take_profit_sell_frac_env:.2f}")
+    
+    enable_rebalance = False
     # 运行回测
-    result = run_backtest(
+    import asyncio
+    result = asyncio.run(run_backtest(
         test_request,
         buy_threshold_pct=buy_threshold,
         sell_threshold_pct=sell_threshold,
@@ -733,7 +795,9 @@ if __name__ == "__main__":
         slope_position_per_pct=slope_position_per_pct,
         rebalance_tolerance_pct=rebalance_tolerance_pct,
         trade_fee_rate=trade_fee_rate,
-    )
+        take_profit_threshold_pct=take_profit_threshold_env,
+        take_profit_sell_frac=take_profit_sell_frac_env,
+    ))
     
     response = result["response"]
     backtest = result["backtest"]
@@ -812,53 +876,59 @@ if __name__ == "__main__":
                 pass
 
             ax2 = ax1.twinx()
-            ln2 = ax2.plot(x, equity_pct, color='tab:red', label='Backtest cumulative return (%)', linewidth=2, linestyle='--')
+            ln2 = ax2.plot(x, equity_pct, color='tab:red', label='Backtest cumulative return (net, with fees) (%)', linewidth=2, linestyle='--')
+            # 增加毛收益率（不含手续费）曲线
+            equity_pct_gross = backtest.get('equity_curve_pct_gross', [])
+            if equity_pct_gross and len(equity_pct_gross) == len(x):
+                ln2_gross = ax2.plot(x, equity_pct_gross, color='tab:orange', label='Backtest cumulative return (gross, no fees) (%)', linewidth=2)
+            else:
+                ln2_gross = []
             # 计算并绘制验证集基准（首末价）累计收益率曲线（与回测累计收益同轴对比）
-            try:
-                # 选择第一个有效且非零的价格作为基准
-                baseline = None
-                for p in prices:
-                    if p is not None and not np.isnan(p) and p != 0:
-                        baseline = p
-                        break
-                benchmark_pct_curve = []
-                if baseline is not None and baseline != 0:
-                    for p in prices:
-                        if p is not None and not np.isnan(p):
-                            benchmark_pct_curve.append(((p / baseline) - 1) * 100)
-                        else:
-                            benchmark_pct_curve.append(np.nan)
-                else:
-                    benchmark_pct_curve = [np.nan] * len(prices)
-                ln3 = ax2.plot(x, benchmark_pct_curve, color='tab:green', label=f'{dataset_label} benchmark cumulative return (%)', linewidth=1.8)
-            except Exception:
-                ln3 = []
+            # try:
+            #     # 选择第一个有效且非零的价格作为基准
+            #     baseline = None
+            #     for p in prices:
+            #         if p is not None and not np.isnan(p) and p != 0:
+            #             baseline = p
+            #             break
+            #     benchmark_pct_curve = []
+            #     if baseline is not None and baseline != 0:
+            #         for p in prices:
+            #             if p is not None and not np.isnan(p):
+            #                 benchmark_pct_curve.append(((p / baseline) - 1) * 100)
+            #             else:
+            #                 benchmark_pct_curve.append(np.nan)
+            #     else:
+            #         benchmark_pct_curve = [np.nan] * len(prices)
+            #     ln3 = ax2.plot(x, benchmark_pct_curve, color='tab:green', label=f'{dataset_label} benchmark cumulative return (%)', linewidth=1.8)
+            # except Exception:
+            #     ln3 = []
             ax2.set_ylabel('Cumulative return (%)', color='tab:red')
             ax2.tick_params(axis='y', labelcolor='tab:red')
 
             # 可选：绘制完整实际价格序列（如果响应中提供了拼接的日期与实际值）
             extra_lines = []
-            try:
-                full_dates = getattr(response, 'concatenated_dates', None)
-                full_actual = getattr(response, 'concatenated_actual', None)
-                vs = backtest.get('validation_start_date')
-                ve = backtest.get('validation_end_date')
-                if full_dates and full_actual and len(full_dates) == len(full_actual) and vs and ve:
-                    xd = pd.to_datetime(full_dates)
-                    vs_dt = pd.to_datetime(vs)
-                    ve_dt = pd.to_datetime(ve)
-                    mask = (xd >= vs_dt) & (xd <= ve_dt)
-                    xd_v = xd[mask]
-                    full_actual_v = np.array(full_actual)[mask]
-                    ln4 = ax1.plot(xd_v, full_actual_v, color='dimgray', alpha=0.6, linewidth=1.4, label='Validation actual price (full series)')
-                    extra_lines = ln4
-            except Exception:
-                extra_lines = []
+            # try:
+            #     full_dates = getattr(response, 'concatenated_dates', None)
+            #     full_actual = getattr(response, 'concatenated_actual', None)
+            #     vs = backtest.get('validation_start_date')
+            #     ve = backtest.get('validation_end_date')
+            #     if full_dates and full_actual and len(full_dates) == len(full_actual) and vs and ve:
+            #         xd = pd.to_datetime(full_dates)
+            #         vs_dt = pd.to_datetime(vs)
+            #         ve_dt = pd.to_datetime(ve)
+            #         mask = (xd >= vs_dt) & (xd <= ve_dt)
+            #         xd_v = xd[mask]
+            #         full_actual_v = np.array(full_actual)[mask]
+            #         ln4 = ax1.plot(xd_v, full_actual_v, color='dimgray', alpha=0.6, linewidth=1.4, label='Validation actual price (full series)')
+            #         extra_lines = ln4
+            # except Exception:
+            #     extra_lines = []
 
-            lines = ln1 + ln2 + ln3 + extra_lines
+            lines = ln1 + ln2 + ln2_gross
             labels = [l.get_label() for l in lines]
             ax1.legend(lines, labels, loc='upper left')
-            plt.title(f"{test_request.stock_code} {dataset_label} actual price vs backtest cumulative return")
+            plt.title(f"{test_request.stock_code} {dataset_label} actual price vs backtest cumulative return (net vs gross)")
             plt.tight_layout()
             mode_suffix = "backtest_val" if getattr(response, 'validation_chunk_results', None) else "backtest_test"
             plot_filename = os.path.join(finance_dir, f"forecast-results/{test_request.stock_code}_{mode_suffix}_equity_vs_actual.png")
@@ -911,7 +981,10 @@ if __name__ == "__main__":
         f.write(f"max_position_pct: {pc.get('max_position_pct', 0.0):.2f}\n")
         f.write(f"min_position_pct: {pc.get('min_position_pct', 0.0):.2f}\n")
         f.write(f"slope_position_per_pct: {pc.get('slope_position_per_pct', 0.0):.2f}\n")
-        f.write(f"rebalance_tolerance_pct: {pc.get('rebalance_tolerance_pct', 0.0):.2f}\n\n")
+        f.write(f"rebalance_tolerance_pct: {pc.get('rebalance_tolerance_pct', 0.0):.2f}\n")
+        # 止盈参数
+        f.write(f"take_profit_threshold_pct: {pc.get('take_profit_threshold_pct', 0.0):.2f}%\n")
+        f.write(f"take_profit_sell_frac: {pc.get('take_profit_sell_frac', 0.0):.2f}\n\n")
 
         # 预测变化分布统计
         stats = backtest.get('predicted_change_stats', {})

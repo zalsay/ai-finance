@@ -68,3 +68,57 @@ CREATE INDEX IF NOT EXISTS idx_watchlist_user ON user_watchlist(user_id);
 CREATE INDEX IF NOT EXISTS idx_watchlist_stock ON user_watchlist(stock_id);
 CREATE INDEX IF NOT EXISTS idx_prices_stock ON stock_prices(stock_id);
 CREATE INDEX IF NOT EXISTS idx_prices_recorded ON stock_prices(recorded_at);
+
+-- 仅在表不存在时创建 timesfm_best_predictions 表，用于保存TimesFM最佳分位预测结果
+CREATE TABLE IF NOT EXISTS timesfm_best_predictions (
+    id SERIAL PRIMARY KEY,
+    unique_key TEXT NOT NULL UNIQUE,
+    stock_code VARCHAR(20) NOT NULL,
+    timesfm_version VARCHAR(20) NOT NULL,
+    best_prediction_item VARCHAR(50) NOT NULL,
+    best_metrics JSONB NOT NULL,
+    is_public SMALLINT NOT NULL DEFAULT 0,
+    train_start_date DATE NOT NULL,
+    train_end_date DATE NOT NULL,
+    test_start_date DATE NOT NULL,
+    test_end_date DATE NOT NULL,
+    val_start_date DATE NOT NULL,
+    val_end_date DATE NOT NULL,
+    context_len INTEGER NOT NULL,
+    horizon_len INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 兼容已存在的表结构：添加 is_public 列（若不存在）
+ALTER TABLE timesfm_best_predictions
+    ADD COLUMN IF NOT EXISTS is_public SMALLINT NOT NULL DEFAULT 0;
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_timesfm_best_predictions_symbol ON timesfm_best_predictions(stock_code);
+
+-- 保存验证集分块的pred与actual，并与timesfm-best关联
+CREATE TABLE IF NOT EXISTS timesfm_best_validation_chunks (
+    id SERIAL PRIMARY KEY,
+    unique_key TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    user_id INT4,
+    symbol VARCHAR(20),
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    predictions JSONB NOT NULL,
+    actual_values JSONB NOT NULL,
+    dates JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_timesfm_best
+        FOREIGN KEY (unique_key)
+        REFERENCES timesfm_best_predictions (unique_key)
+        ON DELETE CASCADE,
+    CONSTRAINT uq_timesfm_best_chunk UNIQUE (unique_key, chunk_index)
+);
+
+-- 索引：验证分块按用户维度查询
+CREATE INDEX IF NOT EXISTS idx_timesfm_best_validation_chunks_user_id ON timesfm_best_validation_chunks(user_id);
+-- 索引：验证分块按股票代码查询
+CREATE INDEX IF NOT EXISTS idx_timesfm_best_validation_chunks_symbol ON timesfm_best_validation_chunks(symbol);

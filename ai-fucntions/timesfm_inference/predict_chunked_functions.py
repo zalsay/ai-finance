@@ -16,6 +16,7 @@ sys.path.append(pre_data_dir)
 from chunks_functions import create_chunks_from_test_data
 from processor import df_preprocess
 from math_functions import mean_squared_error, mean_absolute_error
+from http_client import post_gzip_json
 
 # 在需要时才导入timesfm-2.5版本的inference模块
 def import_predict_2p5():
@@ -499,7 +500,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
         try:
             out_dir = os.path.join(finance_dir, "forecast-results")
             os.makedirs(out_dir, exist_ok=True)
-            out_path = os.path.join(out_dir, f"{request.stock_code}_best_quantile_horizon_{request.horizon_len}_v_{timesfm_version}.json")
+            out_path = os.path.join(out_dir, f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}.json")
             payload = {
                 "stock_code": request.stock_code,
                 "best_prediction_item": best_prediction_item,
@@ -509,8 +510,141 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f"✅ 最佳分位数已保存: {out_path} -> {best_prediction_item}")
+
+            # 追加：同时调用Go后端接口保存到PostgreSQL
+            try:
+                # 计算训练/测试/验证集的开始结束日期（使用df_preprocess生成的数据帧）
+                def to_date_str(x):
+                    try:
+                        return pd.to_datetime(x).strftime('%Y-%m-%d')
+                    except Exception:
+                        return str(x)
+
+                train_start_date = to_date_str(df_train['ds'].min())
+                train_end_date = to_date_str(df_train['ds'].max())
+                test_start_date = to_date_str(df_test['ds'].min())
+                test_end_date = to_date_str(df_test['ds'].max())
+                val_start_date = to_date_str(df_val['ds'].min())
+                val_end_date = to_date_str(df_val['ds'].max())
+
+                unique_key = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
+
+                go_payload = {
+                    "unique_key": unique_key,
+                    "symbol": request.stock_code,
+                    "timesfm_version": timesfm_version,
+                    "best_prediction_item": best_prediction_item,
+                    "best_metrics": best_metrics,
+                    "train_start_date": train_start_date,
+                    "train_end_date": train_end_date,
+                    "test_start_date": test_start_date,
+                    "test_end_date": test_end_date,
+                    "val_start_date": val_start_date,
+                    "val_end_date": val_end_date,
+                    "context_len": int(request.context_len),
+                    "horizon_len": int(request.horizon_len),
+                    "user_id": request.user_id,
+                }
+
+                base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
+                url = f"{base_url}/api/v1/predictions/timesfm-best"
+
+                status_code = None
+                saved_best_ok = False
+                body_text = ""
+                status_code, data, body_text = await post_gzip_json(url, go_payload)
+
+                if status_code == 200:
+                    print(f"✅ 已通过Go后端保存到PG: unique_key={unique_key}")
+                    saved_best_ok = True
+                else:
+                    print(f"⚠️ Go后端保存失败: status={status_code}, body={body_text}")
+            except Exception as go_err:
+                print(f"⚠️ 调用Go后端保存到PG失败: {go_err}")
         except Exception as save_err:
             print(f"⚠️ 保存最佳分位 JSON 失败: {save_err}")
+
+        # 将验证集分块的预测与实际值逐块写入后端（与timesfm-best关联）
+        try:
+            if val_results and saved_best_ok:
+                base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
+                url = f"{base_url}/api/v1/predictions/timesfm-best/val-chunk"
+                unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
+
+                for vcr in val_results:
+                    try:
+                        start_date = str(vcr.chunk_start_date)
+                        end_date = str(vcr.chunk_end_date)
+                        size = len(vcr.actual_values)
+                        if size <= 0:
+                            continue
+
+                        chunk_dates = pd.date_range(
+                            start=pd.to_datetime(start_date, errors='coerce'),
+                            end=pd.to_datetime(end_date, errors='coerce'),
+                            freq='D'
+                        )[:size]
+                        dates_str = [d.strftime('%Y-%m-%d') for d in chunk_dates]
+
+                        def to_float_list(arr):
+                            out = []
+                            for x in arr:
+                                try:
+                                    out.append(float(x))
+                                except Exception:
+                                    out.append(None)
+                            return out
+
+                        # 仅保存最佳分位的预测数组，而不是所有分位
+                        predictions_clean = {}
+                        try:
+                            best_key = best_prediction_item
+                        except Exception:
+                            best_key = None
+                        preds_map = (vcr.predictions or {})
+                        if best_key and best_key in preds_map:
+                            predictions_clean[best_key] = to_float_list(preds_map.get(best_key) or [])
+                        else:
+                            # 回退：尝试使用默认分位或第一个可用分位
+                            fallback_key = best_key or "tsf-0.5"
+                            if fallback_key in preds_map:
+                                predictions_clean[fallback_key] = to_float_list(preds_map.get(fallback_key) or [])
+                            else:
+                                for k, arr in preds_map.items():
+                                    predictions_clean[k] = to_float_list(arr or [])
+                                    break
+                        actual_clean = to_float_list(vcr.actual_values or [])
+
+                        chunk_payload = {
+                            "unique_key": unique_key_val,
+                            "chunk_index": int(vcr.chunk_index),
+                            "start_date": start_date,
+                            "end_date": end_date,
+                            "predictions": predictions_clean,
+                            "actual_values": actual_clean,
+                            "dates": dates_str,
+                            "symbol": request.stock_code,
+                            "is_public": 1,
+                            "user_id": request.user_id,
+                        }
+
+                        status_code = None
+                        body_text = ""
+                        status_code, data, body_text = await post_gzip_json(url, chunk_payload)
+                        if status_code == 0:
+                            print(f"⚠️ 验证分块写入失败(chunk={vcr.chunk_index})，网络异常")
+                            continue
+
+                        if status_code == 200:
+                            print(f"✅ 验证分块已保存: unique_key={unique_key_val}, chunk_index={vcr.chunk_index}")
+                        else:
+                            print(f"⚠️ 验证分块保存失败: chunk={vcr.chunk_index}, status={status_code}, body={body_text}")
+                    except Exception as e:
+                        print(f"⚠️ 处理验证分块写入异常(chunk={getattr(vcr,'chunk_index', '?')}): {e}")
+        except Exception as e:
+            print(f"⚠️ 验证分块写入后端过程异常: {e}")
+        if val_results and not saved_best_ok:
+            print("⚠️ 跳过验证分块写入：未成功保存timesfm-best，避免外键冲突")
         
         # 拼接所有分块的预测结果
         concatenated_predictions = {}
@@ -724,6 +858,136 @@ async def predict_validation_chunks_only(
                 f"MAE={validation_results['validation_mae']:.4f}, "
                 f"涨跌幅差异={validation_results['validation_return_diff']:.2f}%"
             )
+
+        # 先在仅验证模式下写入timesfm-best主表，避免分块外键失败
+        try:
+            if fixed_best_prediction_item:
+                timesfm_version_str = timesfm_version
+                # 提取各数据集的起止日期
+                def to_date_str(val):
+                    try:
+                        dt = pd.to_datetime(val, errors='coerce')
+                        return dt.strftime('%Y-%m-%d') if not pd.isna(dt) else str(val)
+                    except Exception:
+                        return str(val)
+
+                train_start_date = to_date_str(df_train['ds'].min())
+                train_end_date = to_date_str(df_train['ds'].max())
+                test_start_date = to_date_str(df_test['ds'].min())
+                test_end_date = to_date_str(df_test['ds'].max())
+                val_start_date = to_date_str(df_val['ds'].min())
+                val_end_date = to_date_str(df_val['ds'].max())
+
+                unique_key_best = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version_str}"
+
+                best_metrics = validation_results if validation_results else {
+                    'best_prediction_item': fixed_best_prediction_item
+                }
+                go_payload = {
+                    "unique_key": unique_key_best,
+                    "stock_code": request.stock_code,
+                    "timesfm_version": timesfm_version_str,
+                    "best_prediction_item": fixed_best_prediction_item,
+                    "best_metrics": best_metrics,
+                    "train_start_date": train_start_date,
+                    "train_end_date": train_end_date,
+                    "test_start_date": test_start_date,
+                    "test_end_date": test_end_date,
+                    "val_start_date": val_start_date,
+                    "val_end_date": val_end_date,
+                    "context_len": int(request.context_len),
+                    "horizon_len": int(request.horizon_len),
+                    "user_id": getattr(request, 'user_id', None),
+                }
+
+                base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
+                url_best = f"{base_url}/api/v1/predictions/timesfm-best"
+
+                status_code = None
+                body_text = ""
+                status_code, data, body_text = await post_gzip_json(url_best, go_payload)
+
+                if status_code == 200:
+                    print(f"✅ 已通过Go后端保存timesfm-best(仅验证模式): unique_key={unique_key_best}")
+                else:
+                    print(f"⚠️ 保存timesfm-best失败(仅验证模式): status={status_code}, body={body_text}")
+        except Exception as go_err:
+            print(f"⚠️ 仅验证模式调用Go后端保存best失败: {go_err}")
+
+        # 将验证集分块逐块写入后端（仅验证模式也持久化）
+        try:
+            if val_results:
+                base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
+                url = f"{base_url}/api/v1/predictions/timesfm-best/val-chunk"
+                unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
+
+                for vcr in val_results:
+                    try:
+                        start_date = str(vcr.chunk_start_date)
+                        end_date = str(vcr.chunk_end_date)
+                        size = len(vcr.actual_values)
+                        if size <= 0:
+                            continue
+
+                        chunk_dates = pd.date_range(
+                            start=pd.to_datetime(start_date, errors='coerce'),
+                            end=pd.to_datetime(end_date, errors='coerce'),
+                            freq='D'
+                        )[:size]
+                        dates_str = [d.strftime('%Y-%m-%d') for d in chunk_dates]
+
+                        def to_float_list(arr):
+                            out = []
+                            for x in arr:
+                                try:
+                                    out.append(float(x))
+                                except Exception:
+                                    out.append(None)
+                            return out
+
+                        # 仅保存固定最佳分位的预测数组（仅验证模式）
+                        predictions_clean = {}
+                        preds_map = (vcr.predictions or {})
+                        best_key = fixed_best_prediction_item
+                        if best_key and best_key in preds_map:
+                            predictions_clean[best_key] = to_float_list(preds_map.get(best_key) or [])
+                        else:
+                            fallback_key = best_key or "tsf-0.5"
+                            if fallback_key in preds_map:
+                                predictions_clean[fallback_key] = to_float_list(preds_map.get(fallback_key) or [])
+                            else:
+                                for k, arr in preds_map.items():
+                                    predictions_clean[k] = to_float_list(arr or [])
+                                    break
+                        actual_clean = to_float_list(vcr.actual_values or [])
+
+                        chunk_payload = {
+                            "unique_key": unique_key_val,
+                            "chunk_index": int(vcr.chunk_index),
+                            "start_date": start_date,
+                            "end_date": end_date,
+                            "predictions": predictions_clean,
+                            "actual_values": actual_clean,
+                            "dates": dates_str,
+                            "symbol": request.stock_code,
+                            "user_id": getattr(request, 'user_id', None),
+                        }
+
+                        status_code = None
+                        body_text = ""
+                        status_code, data, body_text = await post_gzip_json(url, chunk_payload)
+                        if status_code == 0:
+                            print(f"⚠️ 验证分块写入失败(chunk={vcr.chunk_index})，网络异常")
+                            continue
+
+                        if status_code == 200:
+                            print(f"✅ 验证分块已保存: unique_key={unique_key_val}, chunk_index={vcr.chunk_index}")
+                        else:
+                            print(f"⚠️ 验证分块保存失败: chunk={vcr.chunk_index}, status={status_code}, body={body_text}")
+                    except Exception as e:
+                        print(f"⚠️ 处理验证分块写入异常(chunk={getattr(vcr,'chunk_index', '?')}): {e}")
+        except Exception as e:
+            print(f"⚠️ 验证分块写入后端过程异常: {e}")
         else:
             print("⚠️ 未提供固定最佳分位数，验证集指标无法计算，overall_metrics仅包含验证分块数量")
 
@@ -776,6 +1040,8 @@ async def predict_validation_chunks_only(
                 "concatenated_actual": resp.concatenated_actual,
                 "concatenated_dates": resp.concatenated_dates,
                 "validation_chunk_results": [ _cr_to_dict(vcr) for vcr in (resp.validation_chunk_results or []) ] if resp.validation_chunk_results else None,
+                "is_public": 1,
+                "user_id": 1,
             }
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -814,15 +1080,16 @@ if __name__ == "__main__":
     import asyncio
     from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
-        stock_code="sh600398",
+        stock_code="sh510050",
         years=10,
         horizon_len=7,
         start_date="20100101",
         end_date="20251114",
         context_len=2048,
         time_step=0,
-        stock_type=1,
+        stock_type=2,
         timesfm_version="2.5",
+        user_id=1
     )
     if test_request.timesfm_version == "2.0":
         tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
