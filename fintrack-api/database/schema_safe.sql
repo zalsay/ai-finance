@@ -73,7 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_prices_recorded ON stock_prices(recorded_at);
 CREATE TABLE IF NOT EXISTS timesfm_best_predictions (
     id SERIAL PRIMARY KEY,
     unique_key TEXT NOT NULL UNIQUE,
-    stock_code VARCHAR(20) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
     timesfm_version VARCHAR(20) NOT NULL,
     best_prediction_item VARCHAR(50) NOT NULL,
     best_metrics JSONB NOT NULL,
@@ -95,7 +95,7 @@ ALTER TABLE timesfm_best_predictions
     ADD COLUMN IF NOT EXISTS is_public SMALLINT NOT NULL DEFAULT 0;
 
 -- 索引
-CREATE INDEX IF NOT EXISTS idx_timesfm_best_predictions_symbol ON timesfm_best_predictions(stock_code);
+CREATE INDEX IF NOT EXISTS idx_timesfm_best_predictions_symbol ON timesfm_best_predictions(symbol);
 
 -- 保存验证集分块的pred与actual，并与timesfm-best关联
 CREATE TABLE IF NOT EXISTS timesfm_best_validation_chunks (
