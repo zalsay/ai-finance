@@ -1,6 +1,11 @@
 package routes
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
+	"strings"
+
 	"fintrack-api/config"
 	"fintrack-api/database"
 	"fintrack-api/handlers"
@@ -17,6 +22,23 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 	}
 
 	router := gin.Default()
+
+	// 支持请求体gzip解压
+	router.Use(func(c *gin.Context) {
+		if strings.EqualFold(c.GetHeader("Content-Encoding"), "gzip") {
+			if gzReader, err := gzip.NewReader(c.Request.Body); err == nil {
+				defer gzReader.Close()
+				if body, err := io.ReadAll(gzReader); err == nil {
+					c.Request.Body = io.NopCloser(bytes.NewReader(body))
+					c.Request.Header.Del("Content-Encoding")
+				}
+			}
+		}
+		c.Next()
+	})
+
+	// 响应内容gzip压缩（不依赖外部包）
+	router.Use(GzipResponseMiddleware())
 
 	// CORS配置
 	corsConfig := cors.DefaultConfig()
@@ -64,6 +86,19 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			watchlist.PUT("/:id", watchlistHandler.UpdateWatchlistItem)
 		}
 
+		// 预测保存路由：保存TimesFM最佳分位结果（无需鉴权，或按需添加鉴权）
+		predictions := v1.Group("/predictions")
+		{
+			predictions.POST("/timesfm-best", watchlistHandler.SaveTimesfmBest)
+			predictions.POST("/timesfm-best/val-chunk", watchlistHandler.SaveTimesfmValChunk)
+			// 需要鉴权，按当前登录用户查询其关联的best列表
+			predictions.GET("/timesfm-best", authHandler.AuthMiddleware(), watchlistHandler.ListTimesfmBestByUser)
+			// 公开查询：根据 is_public = 1 返回公开的 timesfm-best，并同步返回对应的验证集分块
+			predictions.GET("/timesfm-best/public", watchlistHandler.ListPublicTimesfmBestWithValidation)
+			// 公开接口：按 unique_key 查询单条 best 记录
+			predictions.GET("/timesfm-best/by-unique", watchlistHandler.GetTimesfmBestByUniqueKey)
+		}
+
 		// 股票相关路由（预留）
 		stocks := v1.Group("/stocks")
 		{
@@ -77,4 +112,29 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 	}
 
 	return router
+}
+
+// gzip Writer包装，拦截写出并压缩
+type gzipWriter struct {
+	gin.ResponseWriter
+	writer io.Writer
+}
+
+func (g *gzipWriter) Write(data []byte) (int, error) {
+	return g.writer.Write(data)
+}
+
+// 中间件：按客户端Accept-Encoding支持gzip时压缩响应
+func GzipResponseMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
+			c.Next()
+			return
+		}
+		c.Header("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(c.Writer)
+		defer gz.Close()
+		c.Writer = &gzipWriter{ResponseWriter: c.Writer, writer: gz}
+		c.Next()
+	}
 }

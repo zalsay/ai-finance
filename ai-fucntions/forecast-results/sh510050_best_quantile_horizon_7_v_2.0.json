@@ -1,0 +1,11 @@
+{
+  "stock_code": "sh510050",
+  "best_prediction_item": "tsf-0.4",
+  "timesfm_version": "2.0",
+  "best_metrics": {
+    "mse": 0.003742547586704136,
+    "mae": 0.045410261201239255,
+    "return_diff": 2.411180565475711,
+    "composite_score": 0.9792180688266675
+  }
+}
