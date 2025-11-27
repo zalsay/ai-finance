@@ -346,7 +346,7 @@ func (s *WatchlistService) ListPublicTimesfmBest() ([]models.TimesfmBestPredicti
             test_start_date, test_end_date,
             val_start_date, val_end_date,
             context_len, horizon_len,
-            created_at, updated_at
+            created_at, updated_at, short_name
         FROM timesfm_best_predictions
         WHERE is_public = 1
         ORDER BY updated_at DESC
@@ -366,7 +366,7 @@ func (s *WatchlistService) ListPublicTimesfmBest() ([]models.TimesfmBestPredicti
 			&item.TestStartDate, &item.TestEndDate,
 			&item.ValStartDate, &item.ValEndDate,
 			&item.ContextLen, &item.HorizonLen,
-			&item.CreatedAt, &item.UpdatedAt,
+			&item.CreatedAt, &item.UpdatedAt, &item.ShortName,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan public timesfm_best_predictions: %v", err)
 		}
