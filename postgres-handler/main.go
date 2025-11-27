@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 )
@@ -1697,12 +1698,22 @@ func main() {
 	}
 	defer handler.Close()
 
-    // 创建 Gin 引擎
-    r := gin.Default()
-    apiToken := getEnv("API_TOKEN", "fintrack-dev-token")
-    RegisterRoutes(r, handler, apiToken)
+	// 创建 Gin 引擎
+	r := gin.Default()
 
-	port := getEnv("PORT", "8080")
+	// 全量放通 CORS（允许所有来源、方法和常见请求头）
+	r.Use(cors.New(cors.Config{
+		AllowOriginFunc:  func(origin string) bool { return true },
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "Content-Length"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}))
+	apiToken := getEnv("API_TOKEN", "fintrack-dev-token")
+	RegisterRoutes(r, handler, apiToken)
+
+	port := getEnv("PORT", "8000")
 	log.Printf("Server starting on port %s", port)
 	log.Printf("API endpoints:")
 	log.Printf("  POST /api/v1/stock-data - Insert single stock data")
@@ -1727,7 +1738,6 @@ func main() {
 		log.Fatal("Server failed to start:", err)
 	}
 }
-
 
 // TokenAuthMiddleware 使用固定token进行简单鉴权
 // 客户端需要在请求头中携带：

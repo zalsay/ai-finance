@@ -1,10 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StockData } from '../../types';
 import StockPredictionCard from './StockPredictionCard';
 import AddStockModal from './AddStockModal';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { watchlistAPI } from '../../services/apiService';
+import { watchlistAPI, getPublicPredictions } from '../../services/apiService';
 
 interface DashboardProps {
     stocks: StockData[];
@@ -24,11 +24,93 @@ const FilterChip: React.FC<{ label: string; active?: boolean; onClick: () => voi
 );
 
 
-const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error, onRefresh }) => {
+const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: propIsLoading, error: propError, onRefresh }) => {
     const { t } = useLanguage();
     const [activeFilter, setActiveFilter] = useState('All');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const filters = ['All', 'Highest Confidence', 'Potential Growth', 'Bullish', 'Bearish'];
+    
+    const [publicStocks, setPublicStocks] = useState<StockData[]>([]);
+    const [isFetching, setIsFetching] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchPublic = async () => {
+            setIsFetching(true);
+            setFetchError(null);
+            try {
+                const res = await getPublicPredictions();
+                if (res && res.items) {
+                     const mapped = res.items.map(item => {
+                        const bestItemKey = item.best.best_prediction_item;
+                        // Sort chunks by date ascending (oldest first)
+                        const sortedChunks = (item.chunks || []).sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+                        
+                        let allDates: string[] = [];
+                        let allActuals: number[] = [];
+                        let allPreds: number[] = [];
+
+                        sortedChunks.forEach(chunk => {
+                            if (chunk.dates && chunk.dates.length > 0) {
+                                allDates = allDates.concat(chunk.dates);
+                                allActuals = allActuals.concat(chunk.actual_values || []);
+                                const chunkPreds = chunk.predictions[bestItemKey] || [];
+                                allPreds = allPreds.concat(chunkPreds);
+                            }
+                        });
+
+                        if (allDates.length === 0) return null;
+
+                        const lastActual = allActuals.length > 0 ? allActuals[allActuals.length - 1] : 0;
+                        const lastPred = allPreds.length > 0 ? allPreds[allPreds.length - 1] : 0;
+                        const lastDate = allDates.length > 0 ? allDates[allDates.length - 1] : "";
+
+                        // If no actual data (future forecast), use pred as current? Or 0?
+                        // Let's assume there is some actual data, or we use pred as "Target"
+                        const price = lastActual || lastPred;
+                        // Calculate change based on the last chunk or overall trend? 
+                        // Typically daily change or change from previous day.
+                        // Let's use the last two actuals if available, or last actual vs last pred.
+                        // Existing logic: const change = lastActual > 0 ? ((lastPred - lastActual) / lastActual) * 100 : 0;
+                        // This compares last prediction with last actual. This implies the prediction is "next step" relative to actual?
+                        // But in the chunks, actual and prediction are for the same dates (validation).
+                        // So `lastPred` corresponds to `lastActual` in time (roughly).
+                        // The user wants to show "Trend".
+                        // Let's stick to the previous logic for `changePercent` for now to avoid breaking UI logic, 
+                        // but maybe we should compare last actual with previous actual for "daily change"?
+                        // For now, I'll keep the logic: ((lastPred - lastActual) / lastActual) * 100
+                        const change = lastActual > 0 ? ((lastPred - lastActual) / lastActual) * 100 : 0;
+
+                        return {
+                            symbol: item.best.symbol,
+                            companyName: item.best.short_name || item.best.symbol,
+                            currentPrice: price,
+                            changePercent: change,
+                            prediction: {
+                                predicted_high: lastPred,
+                                predicted_low: lastPred,
+                                confidence: 85,
+                                sentiment: change > 0 ? 'Bullish' : 'Bearish',
+                                analysis: `Forecast for ${lastDate} (Best: ${bestItemKey})`,
+                                chartData: {
+                                    dates: allDates,
+                                    actuals: allActuals,
+                                    predictions: allPreds
+                                }
+                            }
+                        };
+                    }).filter((item): item is StockData => item !== null);
+                    setPublicStocks(mapped);
+                }
+            } catch (e: any) {
+                console.error("Fetch error", e);
+                setFetchError(e.message || "Failed to load public predictions");
+            } finally {
+                setIsFetching(false);
+            }
+        };
+        fetchPublic();
+    }, []);
 
     const handleAddStock = async (symbol: string) => {
         await watchlistAPI.addToWatchlist(symbol);
@@ -38,7 +120,11 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error, onRefre
         }
     };
 
-    const filteredStocks = stocks.filter(stock => {
+    const displayStocks = publicStocks;
+    const isLoading = isFetching;
+    const error = propError || fetchError;
+
+    const filteredStocks = displayStocks.filter(stock => {
         if (!stock.prediction) return activeFilter === 'All';
         switch (activeFilter) {
             case 'Highest Confidence':
@@ -99,8 +185,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks, isLoading, error, onRefre
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                {isLoading && !stocks.some(s => s.prediction) ? (
+            <div className="grid grid-cols-1 gap-6">
+                {isLoading ? (
                     Array.from({ length: 6 }).map((_, index) => (
                         <div key={index} className="flex flex-col gap-4 rounded-xl border border-white/10 bg-card-dark p-6 min-h-[350px] animate-pulse">
                             <div className="flex justify-between items-start">

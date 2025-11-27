@@ -113,6 +113,7 @@ type TimesfmBestPrediction struct {
 	ValEndDate         time.Time `json:"val_end_date" db:"val_end_date"`
 	ContextLen         int       `json:"context_len" db:"context_len"`
 	HorizonLen         int       `json:"horizon_len" db:"horizon_len"`
+	ShortName          string    `json:"short_name" db:"short_name"`
 	CreatedAt          time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
 }
