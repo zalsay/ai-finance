@@ -33,11 +33,49 @@ const Chart: React.FC<{ change: number; language: any; chartData?: { dates: stri
 
             const generatePath = (data: number[]) => {
                 if (!data || data.length === 0) return "";
-                return data.map((val, i) => {
+                
+                // Helper to get point coordinates
+                const getPoint = (i: number) => {
                     const x = i * stepX;
-                    const y = chartHeight - ((val - min) / range) * (chartHeight - 20) - 10; // Top padding 10
-                    return `${i === 0 ? 'M' : 'L'}${x} ${y}`;
-                }).join(' ');
+                    const y = chartHeight - ((data[i] - min) / range) * (chartHeight - 20) - 10;
+                    return [x, y];
+                };
+
+                // Simple smoothing strategy (Catmull-Rom to Bezier)
+                // For a point P[i], control points depends on P[i-1] and P[i+1]
+                const smoothing = 0.2; // 0 to 1
+                
+                // Helper to calculate control point
+                const line = (pointA: number[], pointB: number[]) => {
+                    const lengthX = pointB[0] - pointA[0];
+                    const lengthY = pointB[1] - pointA[1];
+                    return {
+                        length: Math.sqrt(Math.pow(lengthX, 2) + Math.pow(lengthY, 2)),
+                        angle: Math.atan2(lengthY, lengthX)
+                    };
+                };
+
+                const controlPoint = (current: number[], previous: number[], next: number[], reverse?: boolean) => {
+                    const p = previous || current;
+                    const n = next || current;
+                    const o = line(p, n);
+                    const angle = o.angle + (reverse ? Math.PI : 0);
+                    const length = o.length * smoothing;
+                    const x = current[0] + Math.cos(angle) * length;
+                    const y = current[1] + Math.sin(angle) * length;
+                    return [x, y];
+                };
+
+                const points = data.map((_, i) => getPoint(i));
+                
+                return points.reduce((acc, point, i, a) => {
+                    if (i === 0) return `M ${point[0]},${point[1]}`;
+                    
+                    const [cpsX, cpsY] = controlPoint(a[i - 1], a[i - 2], point);
+                    const [cpeX, cpeY] = controlPoint(point, a[i - 1], a[i + 1], true);
+                    
+                    return `${acc} C ${cpsX},${cpsY} ${cpeX},${cpeY} ${point[0]},${point[1]}`;
+                }, "");
             };
 
             const actualsPath = generatePath(actuals);
@@ -65,7 +103,7 @@ const Chart: React.FC<{ change: number; language: any; chartData?: { dates: stri
                      else if (i === labelCount - 1) anchor = "end";
 
                      dateLabels.push(
-                        <text key={i} x={x} y={height - 2} fill="#9CA3AF" fontSize="8" textAnchor={anchor}>{dates[idx]}</text>
+                        <text key={i} x={x} y={height - 2} fill="#9CA3AF" fontSize="6" textAnchor={anchor}>{dates[idx]}</text>
                      );
                  }
             }
@@ -86,7 +124,7 @@ const Chart: React.FC<{ change: number; language: any; chartData?: { dates: stri
 
             return (
                 <div ref={containerRef} className="relative w-full h-full" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
-                    <svg fill="none" height="100%" preserveAspectRatio="none" viewBox="-3 0 478 150" width="100%" xmlns="http://www.w3.org/2000/svg">
+                    <svg fill="none" height="100%" preserveAspectRatio="none" viewBox="-5 0 490 150" width="100%" xmlns="http://www.w3.org/2000/svg">
                         {/* Actuals Line */}
                         <path d={actualsPath} stroke={color} strokeLinecap="round" strokeWidth="1" fill="none"></path>
                         {/* Predictions Line - Dashed, Theme Color */}
