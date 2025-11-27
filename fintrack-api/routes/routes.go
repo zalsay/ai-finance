@@ -1,18 +1,19 @@
 package routes
 
 import (
-	"bytes"
-	"compress/gzip"
-	"io"
-	"strings"
+    "bytes"
+    "compress/gzip"
+    "io"
+    "strings"
+    "time"
 
 	"fintrack-api/config"
 	"fintrack-api/database"
 	"fintrack-api/handlers"
 	"fintrack-api/services"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
+    "github.com/gin-contrib/cors"
+    "github.com/gin-gonic/gin"
 )
 
 func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
@@ -40,13 +41,15 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 	// 响应内容gzip压缩（不依赖外部包）
 	router.Use(GzipResponseMiddleware())
 
-	// CORS配置
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowOrigins = cfg.CORS.AllowedOrigins
-	corsConfig.AllowMethods = cfg.CORS.AllowedMethods
-	corsConfig.AllowHeaders = cfg.CORS.AllowedHeaders
-	corsConfig.AllowCredentials = cfg.CORS.AllowCredentials
-	router.Use(cors.New(corsConfig))
+    // CORS配置：全量放通（与 postgres-handler 保持一致）
+    router.Use(cors.New(cors.Config{
+        AllowOriginFunc: func(origin string) bool { return true },
+        AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+        AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "Content-Length"},
+        ExposeHeaders:    []string{"Content-Length"},
+        AllowCredentials: cfg.CORS.AllowCredentials,
+        MaxAge:           12 * time.Hour,
+    }))
 
 	// 初始化服务
 	authService := services.NewAuthService(db)

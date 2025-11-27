@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { StockData } from '../../types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getChangeColors, getChartColor } from '../../utils/colorUtils';
@@ -8,10 +8,160 @@ interface StockPredictionCardProps {
   stock: StockData;
 }
 
-const Chart: React.FC<{ change: number; language: any }> = ({ change, language }) => {
+const Chart: React.FC<{ change: number; language: any; chartData?: { dates: string[], actuals: number[], predictions: number[] } }> = ({ change, language, chartData }) => {
     const isPositive = change >= 0;
     const color = getChartColor(isPositive, language);
-    // Static paths for visual representation
+    const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    
+    if (chartData && (chartData.actuals.length > 0 || chartData.predictions.length > 0)) {
+        const { actuals, predictions, dates } = chartData;
+        const allValues = [...actuals, ...predictions].filter(v => v !== null && v !== undefined);
+        
+        if (allValues.length > 0) {
+            const min = Math.min(...allValues);
+            const max = Math.max(...allValues);
+            const range = max - min || 1;
+            const width = 478;
+            const height = 150;
+            const padding = 20;
+            const chartHeight = height - padding; // Reserve space for dates
+            
+            // Assume both arrays align with the same X axis (dates)
+            const count = Math.max(actuals.length, predictions.length);
+            const stepX = count > 1 ? width / (count - 1) : 0;
+
+            const generatePath = (data: number[]) => {
+                if (!data || data.length === 0) return "";
+                return data.map((val, i) => {
+                    const x = i * stepX;
+                    const y = chartHeight - ((val - min) / range) * (chartHeight - 20) - 10; // Top padding 10
+                    return `${i === 0 ? 'M' : 'L'}${x} ${y}`;
+                }).join(' ');
+            };
+
+            const actualsPath = generatePath(actuals);
+            const predictionsPath = generatePath(predictions);
+
+            // Generate Date Labels (Start, Middle, End) -> (Start, 25%, 50%, 75%, End)
+            const dateLabels = [];
+            const labelCount = 5; // Target number of labels
+            if (dates.length > 0) {
+                 const step = Math.max(1, Math.floor((dates.length - 1) / (labelCount - 1)));
+                 
+                 for (let i = 0; i < labelCount; i++) {
+                     let idx = i * step;
+                     // Adjust last index to be exactly the end
+                     if (i === labelCount - 1) idx = dates.length - 1;
+                     // Prevent index out of bounds
+                     if (idx >= dates.length) break;
+                     
+                     // Skip duplicates if any (e.g. short arrays)
+                     if (i > 0 && idx === 0) continue;
+                     
+                     const x = idx * stepX;
+                     let anchor = "middle";
+                     if (i === 0) anchor = "start";
+                     else if (i === labelCount - 1) anchor = "end";
+
+                     dateLabels.push(
+                        <text key={i} x={x} y={height - 2} fill="#9CA3AF" fontSize="8" textAnchor={anchor}>{dates[idx]}</text>
+                     );
+                 }
+            }
+
+            const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+                if (!containerRef.current || count <= 1) return;
+                const rect = containerRef.current.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const idx = Math.min(Math.max(0, Math.round((x / rect.width) * (count - 1))), count - 1);
+                setHoverIndex(idx);
+            };
+
+            const handleMouseLeave = () => {
+                setHoverIndex(null);
+            };
+
+            const getY = (val: number) => chartHeight - ((val - min) / range) * (chartHeight - 20) - 10;
+
+            return (
+                <div ref={containerRef} className="relative w-full h-full" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
+                    <svg fill="none" height="100%" preserveAspectRatio="none" viewBox="-3 0 478 150" width="100%" xmlns="http://www.w3.org/2000/svg">
+                        {/* Actuals Line */}
+                        <path d={actualsPath} stroke={color} strokeLinecap="round" strokeWidth="1" fill="none"></path>
+                        {/* Predictions Line - Dashed, Theme Color */}
+                        <path d={predictionsPath} stroke="currentColor" strokeLinecap="round" strokeWidth="1" fill="none" className="text-primary stroke-current"></path>
+                        
+                        {/* Area fill for actuals */}
+                        {actualsPath && (
+                            <path d={`${actualsPath} V${chartHeight} H0 Z`} fill={`url(#paint_dynamic_${isPositive ? 'positive' : 'negative'})`} stroke="none"></path>
+                        )}
+
+                        {/* Hover Line and Dots */}
+                        {hoverIndex !== null && (
+                            <>
+                                <line 
+                                    x1={hoverIndex * stepX} 
+                                    y1={0} 
+                                    x2={hoverIndex * stepX} 
+                                    y2={chartHeight} 
+                                    stroke="#ffffff" 
+                                    strokeOpacity="0.2" 
+                                    strokeWidth="1" 
+                                    strokeDasharray="2 2"
+                                />
+                                {actuals[hoverIndex] !== undefined && actuals[hoverIndex] !== null && (
+                                    <circle cx={hoverIndex * stepX} cy={getY(actuals[hoverIndex])} r="3" fill={color} stroke="#1f2937" strokeWidth="1" />
+                                )}
+                                {predictions[hoverIndex] !== undefined && predictions[hoverIndex] !== null && (
+                                    <circle cx={hoverIndex * stepX} cy={getY(predictions[hoverIndex])} r="3" fill="currentColor" className="text-primary" stroke="#1f2937" strokeWidth="1" />
+                                )}
+                            </>
+                        )}
+
+                        {/* Date Labels */}
+                        {dateLabels}
+                        
+                        <defs>
+                            <linearGradient gradientUnits="userSpaceOnUse" id={`paint_dynamic_${isPositive ? 'positive' : 'negative'}`} x1="0" y1="0" x2="0" y2={chartHeight}>
+                                <stop stopColor={color} stopOpacity="0.5"></stop>
+                                <stop offset="1" stopColor={color} stopOpacity="0"></stop>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+
+                    {/* Tooltip */}
+                    {hoverIndex !== null && (
+                        <div 
+                            className="absolute top-0 pointer-events-none bg-gray-900/90 border border-white/10 rounded p-2 text-xs shadow-xl backdrop-blur-sm z-10"
+                            style={{ 
+                                left: `${(hoverIndex / (count - 1)) * 100}%`, 
+                                transform: `translateX(${hoverIndex > count / 2 ? '-100%' : '0%'}) translateY(-100%)`, // Flip side if on right
+                                marginTop: '-10px',
+                                marginLeft: hoverIndex > count / 2 ? '-10px' : '10px'
+                            }}
+                        >
+                            <div className="text-white/60 mb-1">{dates[hoverIndex]}</div>
+                            {actuals[hoverIndex] !== undefined && actuals[hoverIndex] !== null && (
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }}></div>
+                                    <span className="text-white">Actual: {actuals[hoverIndex].toFixed(2)}</span>
+                                </div>
+                            )}
+                            {predictions[hoverIndex] !== undefined && predictions[hoverIndex] !== null && (
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-primary"></div>
+                                    <span className="text-primary font-medium">Pred: {predictions[hoverIndex].toFixed(2)}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+    }
+
+    // Static paths for visual representation (Fallback)
     const paths = {
       positive1: "M0 109C18.15 109 18.15 21 36.3 21C54.46 21 54.46 41 72.6 41C90.77 41 90.77 93 108.9 93C127.07 93 127.07 33 145.2 33C163.38 33 163.38 101 181.5 101C199.69 101 199.69 61 217.8 61C236 61 236 45 254.1 45C272.3 45 272.3 121 290.4 121C308.6 121 308.6 149 326.7 149C344.9 149 344.9 1 363 1C381.2 1 381.2 81 399.3 81C417.5 81 417.5 129 435.6 129C453.8 129 453.8 25 472 25",
       positive2: "M0 129C18.15 129 18.15 1 36.3 1C54.46 1 54.46 149 72.6 149C90.77 149 90.77 61 108.9 61C127.07 61 127.07 101 145.2 101C163.38 101 163.38 21 181.5 21C199.69 21 199.69 93 217.8 93C236 93 236 33 254.1 33C272.3 33 272.3 121 290.4 121C308.6 121 308.6 41 326.7 41C344.9 41 344.9 81 363 81C381.2 81 381.2 25 399.3 25C417.5 25 417.5 109 435.6 109C453.8 109 453.8 45 472 45",
@@ -37,7 +187,7 @@ const Chart: React.FC<{ change: number; language: any }> = ({ change, language }
 const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
     const { language } = useLanguage();
     const isPositive = stock.changePercent >= 0;
-    const { textClass } = getChangeColors(isPositive, language);
+    const { textClass, hexColor } = getChangeColors(isPositive, language); // Destructure hexColor
     const confidenceColor = stock.prediction?.confidence ?? 0 > 85 ? 'text-primary' : (stock.prediction?.confidence ?? 0) > 70 ? 'text-yellow-400' : 'text-red-400';
 
     return (
@@ -48,15 +198,30 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
                     <p className="text-white/60 text-sm truncate max-w-[150px]">{stock.companyName}</p>
                 </div>
                 <div>
-                    <p className="text-white text-2xl font-bold leading-tight">${stock.currentPrice.toFixed(2)}</p>
+                    <p className="text-white text-2xl font-bold leading-tight">{stock.currentPrice.toFixed(2)}</p>
                     <p className={`text-sm font-medium leading-normal text-right ${textClass}`}>
-                        {isPositive ? '+' : ''}{stock.changePercent.toFixed(2)}%
+                        {isPositive ? '+' : ''}{Math.abs(stock.changePercent).toFixed(2)}%
                     </p>
                 </div>
             </div>
             <div className="flex min-h-[150px] md:min-h-[180px] flex-1 flex-col gap-4 py-4">
-                <Chart change={stock.changePercent} language={language} />
+                <Chart change={stock.changePercent} language={language} chartData={stock.prediction?.chartData} />
             </div>
+            
+            {/* Legend */}
+            {stock.prediction?.chartData && (
+                <div className="flex justify-end gap-4 text-xs text-white/60 -mt-2 mb-2">
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-0.5 rounded-full" style={{ backgroundColor: hexColor }}></div>
+                        <span>Actual</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-0.5 rounded-full bg-primary"></div>
+                        <span>Prediction</span>
+                    </div>
+                </div>
+            )}
+
             {stock.prediction ? (
                 <>
                     <p className="text-sm text-white/80">{stock.prediction.analysis}</p>
