@@ -205,11 +205,11 @@ func (h *WatchlistHandler) GetTimesfmBestByUniqueKey(c *gin.Context) {
 
 // 公开查询：返回 is_public = 1 的 timesfm-best，并联查对应的验证分块数据
 func (h *WatchlistHandler) ListPublicTimesfmBestWithValidation(c *gin.Context) {
-	items, err := h.watchlistService.ListPublicTimesfmBest()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
+        items, err := h.watchlistService.ListPublicTimesfmBest()
+        if err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+                return
+        }
 
 	// 为每条 best 取关联的验证分块列表
 	result := make([]gin.H, 0, len(items))
@@ -225,5 +225,20 @@ func (h *WatchlistHandler) ListPublicTimesfmBestWithValidation(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"items": result, "count": len(result)})
+        c.JSON(http.StatusOK, gin.H{"items": result, "count": len(result)})
+}
+
+// 保存 TimesFM 回测结果
+func (h *WatchlistHandler) SaveTimesfmBacktest(c *gin.Context) {
+        var req models.SaveTimesfmBacktestRequest
+        if err := c.ShouldBindJSON(&req); err != nil {
+                c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+                return
+        }
+
+        if err := h.watchlistService.SaveTimesfmBacktest(&req); err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+                return
+        }
+        c.JSON(http.StatusOK, gin.H{"status": "ok", "unique_key": req.UniqueKey})
 }

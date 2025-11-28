@@ -45,3 +45,47 @@ CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token_hash);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_watchlist_user ON user_watchlist(user_id);
 CREATE INDEX IF NOT EXISTS idx_watchlist_symbol ON user_watchlist(symbol);
+
+-- TimesFM backtests table: stores strategy backtesting results, idempotent by unique_key
+CREATE TABLE IF NOT EXISTS timesfm_backtests (
+    id SERIAL PRIMARY KEY,
+    unique_key VARCHAR(255) NOT NULL UNIQUE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    symbol VARCHAR(20) NOT NULL,
+    timesfm_version VARCHAR(20) NOT NULL,
+    context_len INTEGER NOT NULL,
+    horizon_len INTEGER NOT NULL,
+
+    used_quantile VARCHAR(50),
+    buy_threshold_pct DOUBLE PRECISION,
+    sell_threshold_pct DOUBLE PRECISION,
+    trade_fee_rate DOUBLE PRECISION,
+    total_fees_paid DOUBLE PRECISION,
+    actual_total_return_pct DOUBLE PRECISION,
+
+    benchmark_return_pct DOUBLE PRECISION,
+    benchmark_annualized_return_pct DOUBLE PRECISION,
+    period_days INTEGER,
+
+    validation_start_date DATE,
+    validation_end_date DATE,
+    validation_benchmark_return_pct DOUBLE PRECISION,
+    validation_benchmark_annualized_return_pct DOUBLE PRECISION,
+    validation_period_days INTEGER,
+
+    position_control JSONB,
+    predicted_change_stats JSONB,
+    per_chunk_signals JSONB,
+
+    equity_curve_values JSONB,
+    equity_curve_pct JSONB,
+    equity_curve_pct_gross JSONB,
+    curve_dates JSONB,
+    actual_end_prices JSONB,
+    trades JSONB,
+
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_timesfm_backtests_symbol ON timesfm_backtests(symbol);
