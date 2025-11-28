@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
 from predict_chunked_functions import predict_chunked_mode_for_best
+from exchange_server import run_backtest
 from req_res_types import ChunkedPredictionRequest
 # 设置环境变量
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
@@ -93,6 +94,36 @@ class ChunkedPredictionRequest(BaseModel):
     include_technical_indicators: bool = Field(default=True, description="是否包含技术指标")
     fixed_end_date: str = Field(default="20250630", description="固定结束日期，格式YYYYMMDD")
     prediction_mode: int = Field(default=1, description="预测模式：1=固定训练集，2=滑动窗口（待实现）")
+
+class RunBacktestRequest(BaseModel):
+    """运行回测的请求模型（包含预测与策略参数）"""
+    # 预测基础参数
+    stock_code: str
+    stock_type: str = "stock"
+    time_step: int = 0
+    years: int = 10
+    horizon_len: int = 7
+    context_len: int = 2048
+    include_technical_indicators: bool = True
+    fixed_end_date: Optional[str] = None
+    prediction_mode: int = 1
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    timesfm_version: str = "2.0"
+    user_id: Optional[int] = None
+
+    # 回测策略参数
+    buy_threshold_pct: float = 3.0
+    sell_threshold_pct: float = -1.0
+    initial_cash: float = 100000.0
+    enable_rebalance: bool = True
+    max_position_pct: float = 1.0
+    min_position_pct: float = 0.2
+    slope_position_per_pct: float = 0.1
+    rebalance_tolerance_pct: float = 0.05
+    trade_fee_rate: float = 0.006
+    take_profit_threshold_pct: Optional[float] = None
+    take_profit_sell_frac: Optional[float] = None
 
 class ChunkPredictionResult(BaseModel):
     """单个分块预测结果"""
@@ -189,6 +220,65 @@ async def predict_stock(request: ChunkedPredictionRequest):
             "message": "预测失败",
             "error": str(e),
         })
+
+
+@app.post("/backtest/run")
+async def run_backtest_api(req: RunBacktestRequest):
+    """交易策略回测接口：基于 TimesFM 分块预测并执行策略回测"""
+    try:
+        # 构造 exchange_server 需要的 dataclass 请求体
+        from req_res_types import ChunkedPredictionRequest as TfmRequest
+        tfm_req = TfmRequest(
+            stock_code=req.stock_code,
+            years=req.years,
+            horizon_len=req.horizon_len,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            context_len=req.context_len,
+            time_step=req.time_step,
+            stock_type=req.stock_type,
+            timesfm_version=req.timesfm_version,
+            user_id=req.user_id,
+        )
+
+        result = await run_backtest(
+            tfm_req,
+            buy_threshold_pct=req.buy_threshold_pct,
+            sell_threshold_pct=req.sell_threshold_pct,
+            initial_cash=req.initial_cash,
+            enable_rebalance=req.enable_rebalance,
+            max_position_pct=req.max_position_pct,
+            min_position_pct=req.min_position_pct,
+            slope_position_per_pct=req.slope_position_per_pct,
+            rebalance_tolerance_pct=req.rebalance_tolerance_pct,
+            trade_fee_rate=req.trade_fee_rate,
+            take_profit_threshold_pct=req.take_profit_threshold_pct,
+            take_profit_sell_frac=req.take_profit_sell_frac,
+        )
+
+        backtest = result.get("backtest", {})
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "stock_code": req.stock_code,
+                "gpu_id": GPU_ID,
+                "message": "回测完成",
+                "backtest": backtest,
+            },
+        )
+    except Exception as e:
+        logger.error(f"回测失败: {str(e)}\n{traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "stock_code": req.stock_code,
+                "gpu_id": GPU_ID,
+                "message": "回测失败",
+                "error": str(e),
+            },
+        )
 
 
 
