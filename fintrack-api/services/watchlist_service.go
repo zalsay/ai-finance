@@ -1,14 +1,14 @@
 package services
 
 import (
-	"bytes"
-	"database/sql"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"strings"
-	"time"
+        "bytes"
+        "database/sql"
+        "encoding/json"
+        "fmt"
+        "log"
+        "net/http"
+        "strings"
+        "time"
 
 	"fintrack-api/config"
 	"fintrack-api/database"
@@ -460,4 +460,110 @@ func (s *WatchlistService) SaveTimesfmValChunk(req *models.SaveTimesfmValChunkRe
 		return fmt.Errorf("failed to upsert timesfm_best_validation_chunks: %v", err)
 	}
 	return nil
+}
+
+// 保存 TimesFM 回测结果到 PG（UPSERT by unique_key）
+func (s *WatchlistService) SaveTimesfmBacktest(req *models.SaveTimesfmBacktestRequest) error {
+        posJSON, err := json.Marshal(req.PositionControl)
+        if err != nil {
+            return fmt.Errorf("failed to marshal position_control: %v", err)
+        }
+        statsJSON, err := json.Marshal(req.PredictedChangeStats)
+        if err != nil {
+            return fmt.Errorf("failed to marshal predicted_change_stats: %v", err)
+        }
+        signalsJSON, err := json.Marshal(req.PerChunkSignals)
+        if err != nil {
+            return fmt.Errorf("failed to marshal per_chunk_signals: %v", err)
+        }
+        eqValsJSON, err := json.Marshal(req.EquityCurveValues)
+        if err != nil {
+            return fmt.Errorf("failed to marshal equity_curve_values: %v", err)
+        }
+        eqPctJSON, err := json.Marshal(req.EquityCurvePct)
+        if err != nil {
+            return fmt.Errorf("failed to marshal equity_curve_pct: %v", err)
+        }
+        eqPctGrossJSON, err := json.Marshal(req.EquityCurvePctGross)
+        if err != nil {
+            return fmt.Errorf("failed to marshal equity_curve_pct_gross: %v", err)
+        }
+        curveDatesJSON, err := json.Marshal(req.CurveDates)
+        if err != nil {
+            return fmt.Errorf("failed to marshal curve_dates: %v", err)
+        }
+        actualEndJSON, err := json.Marshal(req.ActualEndPrices)
+        if err != nil {
+            return fmt.Errorf("failed to marshal actual_end_prices: %v", err)
+        }
+        tradesJSON, err := json.Marshal(req.Trades)
+        if err != nil {
+            return fmt.Errorf("failed to marshal trades: %v", err)
+        }
+
+        var uidArg interface{}
+        if req.UserID != nil {
+            uidArg = *req.UserID
+        } else {
+            uidArg = nil
+        }
+
+        _, err = s.db.Conn.Exec(`
+        INSERT INTO timesfm_backtests (
+            unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+            used_quantile, buy_threshold_pct, sell_threshold_pct, trade_fee_rate, total_fees_paid, actual_total_return_pct,
+            benchmark_return_pct, benchmark_annualized_return_pct, period_days,
+            validation_start_date, validation_end_date, validation_benchmark_return_pct, validation_benchmark_annualized_return_pct, validation_period_days,
+            position_control, predicted_change_stats, per_chunk_signals,
+            equity_curve_values, equity_curve_pct, equity_curve_pct_gross, curve_dates, actual_end_prices, trades
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10, $11, $12,
+            $13, $14, $15,
+            $16::date, $17::date, $18, $19, $20,
+            $21::jsonb, $22::jsonb, $23::jsonb,
+            $24::jsonb, $25::jsonb, $26::jsonb, $27::jsonb, $28::jsonb, $29::jsonb
+        )
+        ON CONFLICT (unique_key) DO UPDATE SET
+            user_id = EXCLUDED.user_id,
+            symbol = EXCLUDED.symbol,
+            timesfm_version = EXCLUDED.timesfm_version,
+            context_len = EXCLUDED.context_len,
+            horizon_len = EXCLUDED.horizon_len,
+            used_quantile = EXCLUDED.used_quantile,
+            buy_threshold_pct = EXCLUDED.buy_threshold_pct,
+            sell_threshold_pct = EXCLUDED.sell_threshold_pct,
+            trade_fee_rate = EXCLUDED.trade_fee_rate,
+            total_fees_paid = EXCLUDED.total_fees_paid,
+            actual_total_return_pct = EXCLUDED.actual_total_return_pct,
+            benchmark_return_pct = EXCLUDED.benchmark_return_pct,
+            benchmark_annualized_return_pct = EXCLUDED.benchmark_annualized_return_pct,
+            period_days = EXCLUDED.period_days,
+            validation_start_date = EXCLUDED.validation_start_date,
+            validation_end_date = EXCLUDED.validation_end_date,
+            validation_benchmark_return_pct = EXCLUDED.validation_benchmark_return_pct,
+            validation_benchmark_annualized_return_pct = EXCLUDED.validation_benchmark_annualized_return_pct,
+            validation_period_days = EXCLUDED.validation_period_days,
+            position_control = EXCLUDED.position_control,
+            predicted_change_stats = EXCLUDED.predicted_change_stats,
+            per_chunk_signals = EXCLUDED.per_chunk_signals,
+            equity_curve_values = EXCLUDED.equity_curve_values,
+            equity_curve_pct = EXCLUDED.equity_curve_pct,
+            equity_curve_pct_gross = EXCLUDED.equity_curve_pct_gross,
+            curve_dates = EXCLUDED.curve_dates,
+            actual_end_prices = EXCLUDED.actual_end_prices,
+            trades = EXCLUDED.trades,
+            updated_at = CURRENT_TIMESTAMP
+        `,
+            req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
+            req.UsedQuantile, req.BuyThresholdPct, req.SellThresholdPct, req.TradeFeeRate, req.TotalFeesPaid, req.ActualTotalReturnPct,
+            req.BenchmarkReturnPct, req.BenchmarkAnnualizedReturnPct, req.PeriodDays,
+            req.ValidationStartDate, req.ValidationEndDate, req.ValidationBenchmarkReturnPct, req.ValidationBenchmarkAnnualizedReturnPct, req.ValidationPeriodDays,
+            string(posJSON), string(statsJSON), string(signalsJSON),
+            string(eqValsJSON), string(eqPctJSON), string(eqPctGrossJSON), string(curveDatesJSON), string(actualEndJSON), string(tradesJSON),
+        )
+        if err != nil {
+            return fmt.Errorf("failed to upsert timesfm_backtests: %v", err)
+        }
+        return nil
 }

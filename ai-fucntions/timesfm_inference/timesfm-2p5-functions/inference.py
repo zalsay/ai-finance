@@ -66,10 +66,10 @@ def predict_2p5(
     inputs = df_to_timesfm_inputs(df_train, value_col=value_col, sort_by=["ds"], max_context=max_context)
     point_outputs, quantile_outputs = model.forecast(horizon=pred_horizon, inputs=inputs)
     out_df = pd.DataFrame({"t": np.arange(pred_horizon)})
-    out_df["tsf"] = point_outputs[0]
+    out_df["mtf"] = point_outputs[0]
     q = quantile_outputs[0]
     for i in range(q.shape[-1]):
-        out_df[f"tsf-0.{i}"] = q[:, i]
+        out_df[f"mtf-0.{i}"] = q[:, i]
     out_df["unique_id"] = unique_id
     return out_df
 
