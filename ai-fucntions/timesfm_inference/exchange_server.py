@@ -24,7 +24,9 @@ if current_dir not in sys.path:
 from timesfm_init import init_timesfm
 from predict_chunked_functions import predict_chunked_mode_for_best, predict_validation_chunks_only
 from req_res_types import ChunkedPredictionRequest, ChunkedPredictionResponse, ChunkPredictionResult
-from http_client import get_json
+from http_client import get_json, post_gzip_json
+import os
+import json
 
 @dataclass
 class BacktestTrade:
@@ -736,13 +738,73 @@ async def run_backtest(
                     result['validation_benchmark_annualized_return_pct'] = float(val_annualized)
                 result['validation_period_days'] = int(val_days) if val_days is not None else 0
     except Exception:
-        # 静默失败，不影响主流程
+        
+        pass
+
+    try:
+        await save_backtest_result_to_pg(request, response, result)
+    except Exception:
         pass
 
     return {
         "response": response,
         "backtest": result
     }
+
+async def save_backtest_result_to_pg(request, response, result):
+    try:
+        unique_key = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{str(request.timesfm_version)}"
+
+        payload = {
+            "unique_key": unique_key,
+            "symbol": request.stock_code,
+            "timesfm_version": str(request.timesfm_version),
+            "context_len": int(request.context_len),
+            "horizon_len": int(request.horizon_len),
+            "user_id": getattr(request, 'user_id', None),
+
+            "used_quantile": result.get("used_quantile"),
+            "buy_threshold_pct": float(result.get("buy_threshold_pct", 0.0)),
+            "sell_threshold_pct": float(result.get("sell_threshold_pct", 0.0)),
+            "trade_fee_rate": float(result.get("trade_fee_rate", 0.0)),
+            "total_fees_paid": float(result.get("total_fees_paid", 0.0)),
+            "actual_total_return_pct": float(result.get("actual_total_return_pct", 0.0)),
+
+            "benchmark_return_pct": float(result.get("benchmark_return_pct", 0.0)),
+            "benchmark_annualized_return_pct": float(result.get("benchmark_annualized_return_pct", 0.0)),
+            "period_days": int(result.get("period_days", 0)),
+
+            "validation_start_date": result.get("validation_start_date"),
+            "validation_end_date": result.get("validation_end_date"),
+            "validation_benchmark_return_pct": result.get("validation_benchmark_return_pct"),
+            "validation_benchmark_annualized_return_pct": result.get("validation_benchmark_annualized_return_pct"),
+            "validation_period_days": int(result.get("validation_period_days", 0)),
+
+            "position_control": result.get("position_control", {}),
+            "predicted_change_stats": result.get("predicted_change_stats", {}),
+            "per_chunk_signals": result.get("per_chunk_signals", []),
+
+            "equity_curve_values": result.get("equity_curve_values", []),
+            "equity_curve_pct": result.get("equity_curve_pct", []),
+            "equity_curve_pct_gross": result.get("equity_curve_pct_gross", []),
+            "curve_dates": result.get("curve_dates", []),
+            "actual_end_prices": result.get("actual_end_prices", []),
+            "trades": result.get("trades", []),
+        }
+
+        base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
+        url = f"{base_url}/api/v1/backtests/timesfm"
+        status_code, data, body_text = await post_gzip_json(url, payload)
+
+        if status_code == 200:
+            print(f"✅ 回测结果已保存: unique_key={unique_key}")
+        else:
+            print(f"⚠️ 回测结果保存失败: status={status_code}, body={str(body_text)[:200]}")
+    except Exception as e:
+        try:
+            print(f"⚠️ 保存回测结果到PG异常: {e}")
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     # 测试代码

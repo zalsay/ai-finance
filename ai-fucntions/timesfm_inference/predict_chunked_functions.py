@@ -70,8 +70,8 @@ def predict_single_chunk_mode1(
                 value_name="close",
                 num_jobs=1,
             )
-            rename_dict = {c: f"tsf-{c.split('timesfm-q-')[1]}" for c in forecast_df.columns if c.startswith('timesfm-q-')}
-            rename_dict["timesfm"] = "tsf"
+            rename_dict = {c: f"mtf-{c.split('timesfm-q-')[1]}" for c in forecast_df.columns if c.startswith('timesfm-q-')}
+            rename_dict["timesfm"] = "mtf"
             if rename_dict:
                 forecast_df = forecast_df.rename(columns=rename_dict)
         elif timesfm_version == "2.5":
@@ -98,7 +98,7 @@ def predict_single_chunk_mode1(
         # print(f"  实际日期前7行: {actual_dates[:7]}")
         # 获取所有预测分位数
         predictions = {}
-        forecast_columns = [col for col in forecast_chunk.columns if col.startswith('tsf-')]
+        forecast_columns = [col for col in forecast_chunk.columns if col.startswith('mtf-')]
         
         # print(f"找到的预测列: {forecast_columns}")
         
@@ -112,7 +112,7 @@ def predict_single_chunk_mode1(
         best_score = float('inf')
         best_diff_pct = float('inf') # 最优涨跌幅百分比差
         # 定义要评估的分位数范围 (0.1 到 0.9)
-        target_quantiles = [f'tsf-0.{i}' for i in range(1, 10)]
+        target_quantiles = [f'mtf-0.{i}' for i in range(1, 10)]
         
         for quantile in target_quantiles:
             if quantile in predictions:
@@ -156,7 +156,7 @@ def predict_single_chunk_mode1(
             print(f"  ⚠️ 警告: 未找到有效的分位数预测，使用默认值")
             mse = 0.0
             mae = 0.0
-            best_quantile_colname = 'tsf-0.5'
+            best_quantile_colname = 'mtf-0.5'
         else:
             # 使用最优分位数的指标
             mse = quantile_metrics[best_quantile_colname]['mse']
@@ -186,16 +186,16 @@ def predict_single_chunk_mode1(
             #         item = {
             #             "symbol": row.get("symbol"),
             #             "ds": str(row.get("ds")),
-            #             "tsf": float(row.get("tsf")) if row.get("tsf") is not None else 0.0,
-            #             "tsf_01": float(row.get("tsf-0.1")) if row.get("tsf-0.1") is not None else 0.0,
-            #             "tsf_02": float(row.get("tsf-0.2")) if row.get("tsf-0.2") is not None else 0.0,
-            #             "tsf_03": float(row.get("tsf-0.3")) if row.get("tsf-0.3") is not None else 0.0,
-            #             "tsf_04": float(row.get("tsf-0.4")) if row.get("tsf-0.4") is not None else 0.0,
-            #             "tsf_05": float(row.get("tsf-0.5")) if row.get("tsf-0.5") is not None else 0.0,
-            #             "tsf_06": float(row.get("tsf-0.6")) if row.get("tsf-0.6") is not None else 0.0,
-            #             "tsf_07": float(row.get("tsf-0.7")) if row.get("tsf-0.7") is not None else 0.0,
-            #             "tsf_08": float(row.get("tsf-0.8")) if row.get("tsf-0.8") is not None else 0.0,
-            #             "tsf_09": float(row.get("tsf-0.9")) if row.get("tsf-0.9") is not None else 0.0,
+            #             "mtf": float(row.get("mtf")) if row.get("mtf") is not None else 0.0,
+            #             "mtf_01": float(row.get("mtf-0.1")) if row.get("mtf-0.1") is not None else 0.0,
+            #             "mtf_02": float(row.get("mtf-0.2")) if row.get("mtf-0.2") is not None else 0.0,
+            #             "mtf_03": float(row.get("mtf-0.3")) if row.get("mtf-0.3") is not None else 0.0,
+            #             "mtf_04": float(row.get("mtf-0.4")) if row.get("mtf-0.4") is not None else 0.0,
+            #             "mtf_05": float(row.get("mtf-0.5")) if row.get("mtf-0.5") is not None else 0.0,
+            #             "mtf_06": float(row.get("mtf-0.6")) if row.get("mtf-0.6") is not None else 0.0,
+            #             "mtf_07": float(row.get("mtf-0.7")) if row.get("mtf-0.7") is not None else 0.0,
+            #             "mtf_08": float(row.get("mtf-0.8")) if row.get("mtf-0.8") is not None else 0.0,
+            #             "mtf_09": float(row.get("mtf-0.9")) if row.get("mtf-0.9") is not None else 0.0,
             #             "chunk_index": chunk_index,
             #             "best_quantile": str(best_quantile_colname),
             #             "best_quantile_pct": str(best_quantile_colname_pct),
@@ -259,8 +259,8 @@ def predict_single_chunk_mode1(
             metrics={
                 'mse': float('inf'), 
                 'mae': float('inf'),
-                'best_quantile_colname': 'tsf',
-                'best_quantile_colname_pct': 'tsf',
+                'best_quantile_colname': 'mtf',
+                'best_quantile_colname_pct': 'mtf',
                 'best_combined_score': float('inf'),
                 'best_diff_pct': float('inf'),
                 'all_quantile_metrics': {}
@@ -365,12 +365,12 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                     )[:len(result.actual_values)]
                 })
         
-        # 分析最佳预测项 (tsf-0.1 到 tsf-0.9)
+        # 分析最佳预测项 (mtf-0.1 到 mtf-0.9)
         best_prediction_item = None
         best_score = float('inf')
         best_metrics = {}
         
-        prediction_items = [f"tsf-0.{i}" for i in range(1, 10)]
+        prediction_items = [f"mtf-0.{i}" for i in range(1, 10)]
         
         for item in prediction_items:
             item_mse = []
@@ -606,7 +606,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                             predictions_clean[best_key] = to_float_list(preds_map.get(best_key) or [])
                         else:
                             # 回退：尝试使用默认分位或第一个可用分位
-                            fallback_key = best_key or "tsf-0.5"
+                            fallback_key = best_key or "mtf-0.5"
                             if fallback_key in preds_map:
                                 predictions_clean[fallback_key] = to_float_list(preds_map.get(fallback_key) or [])
                             else:
@@ -952,7 +952,7 @@ async def predict_validation_chunks_only(
                         if best_key and best_key in preds_map:
                             predictions_clean[best_key] = to_float_list(preds_map.get(best_key) or [])
                         else:
-                            fallback_key = best_key or "tsf-0.5"
+                            fallback_key = best_key or "mtf-0.5"
                             if fallback_key in preds_map:
                                 predictions_clean[fallback_key] = to_float_list(preds_map.get(fallback_key) or [])
                             else:

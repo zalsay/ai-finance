@@ -1,19 +1,19 @@
 package routes
 
 import (
-    "bytes"
-    "compress/gzip"
-    "io"
-    "strings"
-    "time"
+	"bytes"
+	"compress/gzip"
+	"io"
+	"strings"
+	"time"
 
 	"fintrack-api/config"
 	"fintrack-api/database"
 	"fintrack-api/handlers"
 	"fintrack-api/services"
 
-    "github.com/gin-contrib/cors"
-    "github.com/gin-gonic/gin"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 )
 
 func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
@@ -41,15 +41,15 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 	// 响应内容gzip压缩（不依赖外部包）
 	router.Use(GzipResponseMiddleware())
 
-    // CORS配置：全量放通（与 postgres-handler 保持一致）
-    router.Use(cors.New(cors.Config{
-        AllowOriginFunc: func(origin string) bool { return true },
-        AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-        AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "Content-Length"},
-        ExposeHeaders:    []string{"Content-Length"},
-        AllowCredentials: cfg.CORS.AllowCredentials,
-        MaxAge:           12 * time.Hour,
-    }))
+	// CORS配置：全量放通（与 postgres-handler 保持一致）
+	router.Use(cors.New(cors.Config{
+		AllowOriginFunc:  func(origin string) bool { return true },
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "Content-Length"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: cfg.CORS.AllowCredentials,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// 初始化服务
 	authService := services.NewAuthService(db)
@@ -100,6 +100,12 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			predictions.GET("/timesfm-best/public", watchlistHandler.ListPublicTimesfmBestWithValidation)
 			// 公开接口：按 unique_key 查询单条 best 记录
 			predictions.GET("/timesfm-best/by-unique", watchlistHandler.GetTimesfmBestByUniqueKey)
+		}
+
+		// 回测结果路由
+		backtests := v1.Group("/backtests")
+		{
+			backtests.POST("/timesfm", watchlistHandler.SaveTimesfmBacktest)
 		}
 
 		// 股票相关路由（预留）

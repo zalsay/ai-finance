@@ -136,13 +136,51 @@ type SaveTimesfmBestRequest struct {
 }
 
 type SaveTimesfmValChunkRequest struct {
-	UniqueKey   string                 `json:"unique_key" binding:"required"`
-	ChunkIndex  int                    `json:"chunk_index" binding:"gte=0"`
-	StartDate   string                 `json:"start_date" binding:"required"`
-	EndDate     string                 `json:"end_date" binding:"required"`
-	Symbol      string                 `json:"symbol"`
-	UserID      *int                   `json:"user_id"`
-	Predictions map[string]interface{} `json:"predictions" binding:"required"` // best item vector or all columns
-	Actual      []float64              `json:"actual_values" binding:"required"`
-	Dates       []string               `json:"dates" binding:"required"`
+        UniqueKey   string                 `json:"unique_key" binding:"required"`
+        ChunkIndex  int                    `json:"chunk_index" binding:"gte=0"`
+        StartDate   string                 `json:"start_date" binding:"required"`
+        EndDate     string                 `json:"end_date" binding:"required"`
+        Symbol      string                 `json:"symbol"`
+        UserID      *int                   `json:"user_id"`
+        Predictions map[string]interface{} `json:"predictions" binding:"required"` // best item vector or all columns
+        Actual      []float64              `json:"actual_values" binding:"required"`
+        Dates       []string               `json:"dates" binding:"required"`
+}
+
+// 保存 TimesFM 回测结果的请求模型
+type SaveTimesfmBacktestRequest struct {
+        UniqueKey   string                 `json:"unique_key" binding:"required"`
+        Symbol      string                 `json:"symbol" binding:"required"`
+        TimesfmVersion string              `json:"timesfm_version" binding:"required"`
+        ContextLen  int                    `json:"context_len" binding:"required"`
+        HorizonLen  int                    `json:"horizon_len" binding:"required"`
+        UserID      *int                   `json:"user_id"`
+
+        UsedQuantile string                `json:"used_quantile"`
+        BuyThresholdPct float64            `json:"buy_threshold_pct"`
+        SellThresholdPct float64           `json:"sell_threshold_pct"`
+        TradeFeeRate float64               `json:"trade_fee_rate"`
+        TotalFeesPaid float64              `json:"total_fees_paid"`
+        ActualTotalReturnPct float64       `json:"actual_total_return_pct"`
+
+        BenchmarkReturnPct float64         `json:"benchmark_return_pct"`
+        BenchmarkAnnualizedReturnPct float64 `json:"benchmark_annualized_return_pct"`
+        PeriodDays int                     `json:"period_days"`
+
+        ValidationStartDate string         `json:"validation_start_date"`
+        ValidationEndDate string           `json:"validation_end_date"`
+        ValidationBenchmarkReturnPct float64   `json:"validation_benchmark_return_pct"`
+        ValidationBenchmarkAnnualizedReturnPct float64 `json:"validation_benchmark_annualized_return_pct"`
+        ValidationPeriodDays int           `json:"validation_period_days"`
+
+        PositionControl map[string]interface{} `json:"position_control"`
+        PredictedChangeStats map[string]interface{} `json:"predicted_change_stats"`
+        PerChunkSignals []map[string]interface{}   `json:"per_chunk_signals"`
+
+        EquityCurveValues []float64        `json:"equity_curve_values"`
+        EquityCurvePct []float64           `json:"equity_curve_pct"`
+        EquityCurvePctGross []float64      `json:"equity_curve_pct_gross"`
+        CurveDates []string                `json:"curve_dates"`
+        ActualEndPrices []float64          `json:"actual_end_prices"`
+        Trades []map[string]interface{}    `json:"trades"`
 }
