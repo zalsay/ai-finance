@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
-from timesfm_inference import predict_chunked_mode_for_best
+from predict_chunked_functions import predict_chunked_mode_for_best
 from req_res_types import ChunkedPredictionRequest
 # 设置环境变量
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
@@ -150,12 +150,6 @@ async def startup_event():
     """应用启动事件"""
     logger.info(f"启动TimesFM推理服务，GPU ID: {GPU_ID}, 端口: {SERVICE_PORT}")
     
-    # 加载模型
-    success = load_timesfm_model()
-    if not success:
-        logger.error("模型加载失败，服务可能无法正常工作")
-    else:
-        logger.info("服务启动完成，模型加载成功")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
