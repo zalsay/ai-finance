@@ -13,7 +13,7 @@ services:
       - XLA_PYTHON_CLIENT_PREALLOCATE=false
       - JAX_PMAP_USE_TENSORSTORE=false
     ports:
-      - "8000:8000"
+      - "58000:8000"
     volumes:
       - ./forecast-results:/app/forecast-results
       - ./logs:/app/logs
@@ -47,7 +47,7 @@ services:
       - XLA_PYTHON_CLIENT_PREALLOCATE=false
       - JAX_PMAP_USE_TENSORSTORE=false
     ports:
-      - "8001:8001"
+      - "58001:8001"
     volumes:
       - ./forecast-results:/app/forecast-results
       - ./logs:/app/logs
