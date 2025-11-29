@@ -184,3 +184,38 @@ type SaveTimesfmBacktestRequest struct {
         ActualEndPrices []float64          `json:"actual_end_prices"`
         Trades []map[string]interface{}    `json:"trades"`
 }
+
+type TimesfmPredictRequest struct {
+    Symbol string `json:"symbol" binding:"required"`
+    Years *int `json:"years,omitempty"`
+    HorizonLen *int `json:"horizon_len,omitempty"`
+    ContextLen *int `json:"context_len,omitempty"`
+    TimeStep *int `json:"time_step,omitempty"`
+    IncludeTechnicalIndicators *bool `json:"include_technical_indicators,omitempty"`
+    FixedEndDate *string `json:"fixed_end_date,omitempty"`
+    PredictionMode *int `json:"prediction_mode,omitempty"`
+}
+
+type TimesfmBacktestRequest struct {
+    Symbol string `json:"symbol" binding:"required"`
+    StockType *string `json:"stock_type,omitempty"`
+    Years *int `json:"years,omitempty"`
+    HorizonLen *int `json:"horizon_len,omitempty"`
+    ContextLen *int `json:"context_len,omitempty"`
+    TimeStep *int `json:"time_step,omitempty"`
+    StartDate *string `json:"start_date,omitempty"`
+    EndDate *string `json:"end_date,omitempty"`
+    TimesfmVersion *string `json:"timesfm_version,omitempty"`
+    UserID *int `json:"user_id,omitempty"`
+    BuyThresholdPct *float64 `json:"buy_threshold_pct,omitempty"`
+    SellThresholdPct *float64 `json:"sell_threshold_pct,omitempty"`
+    InitialCash *float64 `json:"initial_cash,omitempty"`
+    EnableRebalance *bool `json:"enable_rebalance,omitempty"`
+    MaxPositionPct *float64 `json:"max_position_pct,omitempty"`
+    MinPositionPct *float64 `json:"min_position_pct,omitempty"`
+    SlopePositionPerPct *float64 `json:"slope_position_per_pct,omitempty"`
+    RebalanceTolerancePct *float64 `json:"rebalance_tolerance_pct,omitempty"`
+    TradeFeeRate *float64 `json:"trade_fee_rate,omitempty"`
+    TakeProfitThresholdPct *float64 `json:"take_profit_threshold_pct,omitempty"`
+    TakeProfitSellFrac *float64 `json:"take_profit_sell_frac,omitempty"`
+}
