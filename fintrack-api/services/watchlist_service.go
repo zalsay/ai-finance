@@ -1,14 +1,14 @@
 package services
 
 import (
-        "bytes"
-        "database/sql"
-        "encoding/json"
-        "fmt"
-        "log"
-        "net/http"
-        "strings"
-        "time"
+	"bytes"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
+	"time"
 
 	"fintrack-api/config"
 	"fintrack-api/database"
@@ -197,6 +197,139 @@ func (s *WatchlistService) SyncStockData(symbol string) {
 	}
 
 	log.Printf("Successfully triggered stock data sync for %s (type: %d)", cleanSymbol, stockType)
+}
+
+func (s *WatchlistService) TriggerTimesfmPredict(req *models.TimesfmPredictRequest) (int, map[string]interface{}, error) {
+	cleanSymbol := strings.TrimPrefix(strings.TrimPrefix(req.Symbol, "sh"), "sz")
+	payload := map[string]interface{}{
+		"stock_code": cleanSymbol,
+		"stock_type": "stock",
+	}
+	if req.Years != nil {
+		payload["years"] = *req.Years
+	}
+	if req.HorizonLen != nil {
+		payload["horizon_len"] = *req.HorizonLen
+	}
+	if req.ContextLen != nil {
+		payload["context_len"] = *req.ContextLen
+	}
+	if req.TimeStep != nil {
+		payload["time_step"] = *req.TimeStep
+	}
+	if req.IncludeTechnicalIndicators != nil {
+		payload["include_technical_indicators"] = *req.IncludeTechnicalIndicators
+	}
+	if req.FixedEndDate != nil {
+		payload["fixed_end_date"] = *req.FixedEndDate
+	}
+	if req.PredictionMode != nil {
+		payload["prediction_mode"] = *req.PredictionMode
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, fmt.Errorf("marshal predict payload: %v", err)
+	}
+	url := fmt.Sprintf("%s/predict_for_best", s.config.PythonService.BaseURL)
+	client := &http.Client{Timeout: time.Duration(s.config.PythonService.Timeout) * time.Second}
+	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return 0, nil, fmt.Errorf("call python predict: %v", err)
+	}
+	defer resp.Body.Close()
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return resp.StatusCode, nil, fmt.Errorf("decode python predict response: %v", err)
+	}
+	return resp.StatusCode, body, nil
+}
+
+func (s *WatchlistService) RunTimesfmBacktest(req *models.TimesfmBacktestRequest) (int, map[string]interface{}, error) {
+	cleanSymbol := strings.TrimPrefix(strings.TrimPrefix(req.Symbol, "sh"), "sz")
+	payload := map[string]interface{}{
+		"stock_code": cleanSymbol,
+		"stock_type": "stock",
+	}
+	if req.StockType != nil {
+		payload["stock_type"] = *req.StockType
+	}
+	if req.Years != nil {
+		payload["years"] = *req.Years
+	}
+	if req.HorizonLen != nil {
+		payload["horizon_len"] = *req.HorizonLen
+	}
+	if req.ContextLen != nil {
+		payload["context_len"] = *req.ContextLen
+	}
+	if req.TimeStep != nil {
+		payload["time_step"] = *req.TimeStep
+	}
+	if req.StartDate != nil {
+		payload["start_date"] = *req.StartDate
+	}
+	if req.EndDate != nil {
+		payload["end_date"] = *req.EndDate
+	}
+	if req.TimesfmVersion != nil {
+		payload["timesfm_version"] = *req.TimesfmVersion
+	} else {
+		payload["timesfm_version"] = "2.0"
+	}
+	if req.UserID != nil {
+		payload["user_id"] = *req.UserID
+	}
+	if req.BuyThresholdPct != nil {
+		payload["buy_threshold_pct"] = *req.BuyThresholdPct
+	}
+	if req.SellThresholdPct != nil {
+		payload["sell_threshold_pct"] = *req.SellThresholdPct
+	}
+	if req.InitialCash != nil {
+		payload["initial_cash"] = *req.InitialCash
+	}
+	if req.EnableRebalance != nil {
+		payload["enable_rebalance"] = *req.EnableRebalance
+	}
+	if req.MaxPositionPct != nil {
+		payload["max_position_pct"] = *req.MaxPositionPct
+	}
+	if req.MinPositionPct != nil {
+		payload["min_position_pct"] = *req.MinPositionPct
+	}
+	if req.SlopePositionPerPct != nil {
+		payload["slope_position_per_pct"] = *req.SlopePositionPerPct
+	}
+	if req.RebalanceTolerancePct != nil {
+		payload["rebalance_tolerance_pct"] = *req.RebalanceTolerancePct
+	}
+	if req.TradeFeeRate != nil {
+		payload["trade_fee_rate"] = *req.TradeFeeRate
+	}
+	if req.TakeProfitThresholdPct != nil {
+		payload["take_profit_threshold_pct"] = *req.TakeProfitThresholdPct
+	}
+	if req.TakeProfitSellFrac != nil {
+		payload["take_profit_sell_frac"] = *req.TakeProfitSellFrac
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, fmt.Errorf("marshal backtest payload: %v", err)
+	}
+	url := fmt.Sprintf("%s/backtest/run", s.config.PythonService.BaseURL)
+	client := &http.Client{Timeout: time.Duration(s.config.PythonService.Timeout) * time.Second}
+	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return 0, nil, fmt.Errorf("call python backtest: %v", err)
+	}
+	defer resp.Body.Close()
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return resp.StatusCode, nil, fmt.Errorf("decode python backtest response: %v", err)
+	}
+	return resp.StatusCode, body, nil
 }
 
 // 保存TimesFM最佳分位预测结果到PG（UPSERT by unique_key）
@@ -464,51 +597,51 @@ func (s *WatchlistService) SaveTimesfmValChunk(req *models.SaveTimesfmValChunkRe
 
 // 保存 TimesFM 回测结果到 PG（UPSERT by unique_key）
 func (s *WatchlistService) SaveTimesfmBacktest(req *models.SaveTimesfmBacktestRequest) error {
-        posJSON, err := json.Marshal(req.PositionControl)
-        if err != nil {
-            return fmt.Errorf("failed to marshal position_control: %v", err)
-        }
-        statsJSON, err := json.Marshal(req.PredictedChangeStats)
-        if err != nil {
-            return fmt.Errorf("failed to marshal predicted_change_stats: %v", err)
-        }
-        signalsJSON, err := json.Marshal(req.PerChunkSignals)
-        if err != nil {
-            return fmt.Errorf("failed to marshal per_chunk_signals: %v", err)
-        }
-        eqValsJSON, err := json.Marshal(req.EquityCurveValues)
-        if err != nil {
-            return fmt.Errorf("failed to marshal equity_curve_values: %v", err)
-        }
-        eqPctJSON, err := json.Marshal(req.EquityCurvePct)
-        if err != nil {
-            return fmt.Errorf("failed to marshal equity_curve_pct: %v", err)
-        }
-        eqPctGrossJSON, err := json.Marshal(req.EquityCurvePctGross)
-        if err != nil {
-            return fmt.Errorf("failed to marshal equity_curve_pct_gross: %v", err)
-        }
-        curveDatesJSON, err := json.Marshal(req.CurveDates)
-        if err != nil {
-            return fmt.Errorf("failed to marshal curve_dates: %v", err)
-        }
-        actualEndJSON, err := json.Marshal(req.ActualEndPrices)
-        if err != nil {
-            return fmt.Errorf("failed to marshal actual_end_prices: %v", err)
-        }
-        tradesJSON, err := json.Marshal(req.Trades)
-        if err != nil {
-            return fmt.Errorf("failed to marshal trades: %v", err)
-        }
+	posJSON, err := json.Marshal(req.PositionControl)
+	if err != nil {
+		return fmt.Errorf("failed to marshal position_control: %v", err)
+	}
+	statsJSON, err := json.Marshal(req.PredictedChangeStats)
+	if err != nil {
+		return fmt.Errorf("failed to marshal predicted_change_stats: %v", err)
+	}
+	signalsJSON, err := json.Marshal(req.PerChunkSignals)
+	if err != nil {
+		return fmt.Errorf("failed to marshal per_chunk_signals: %v", err)
+	}
+	eqValsJSON, err := json.Marshal(req.EquityCurveValues)
+	if err != nil {
+		return fmt.Errorf("failed to marshal equity_curve_values: %v", err)
+	}
+	eqPctJSON, err := json.Marshal(req.EquityCurvePct)
+	if err != nil {
+		return fmt.Errorf("failed to marshal equity_curve_pct: %v", err)
+	}
+	eqPctGrossJSON, err := json.Marshal(req.EquityCurvePctGross)
+	if err != nil {
+		return fmt.Errorf("failed to marshal equity_curve_pct_gross: %v", err)
+	}
+	curveDatesJSON, err := json.Marshal(req.CurveDates)
+	if err != nil {
+		return fmt.Errorf("failed to marshal curve_dates: %v", err)
+	}
+	actualEndJSON, err := json.Marshal(req.ActualEndPrices)
+	if err != nil {
+		return fmt.Errorf("failed to marshal actual_end_prices: %v", err)
+	}
+	tradesJSON, err := json.Marshal(req.Trades)
+	if err != nil {
+		return fmt.Errorf("failed to marshal trades: %v", err)
+	}
 
-        var uidArg interface{}
-        if req.UserID != nil {
-            uidArg = *req.UserID
-        } else {
-            uidArg = nil
-        }
+	var uidArg interface{}
+	if req.UserID != nil {
+		uidArg = *req.UserID
+	} else {
+		uidArg = nil
+	}
 
-        _, err = s.db.Conn.Exec(`
+	_, err = s.db.Conn.Exec(`
         INSERT INTO timesfm_backtests (
             unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
             used_quantile, buy_threshold_pct, sell_threshold_pct, trade_fee_rate, total_fees_paid, actual_total_return_pct,
@@ -555,15 +688,15 @@ func (s *WatchlistService) SaveTimesfmBacktest(req *models.SaveTimesfmBacktestRe
             trades = EXCLUDED.trades,
             updated_at = CURRENT_TIMESTAMP
         `,
-            req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
-            req.UsedQuantile, req.BuyThresholdPct, req.SellThresholdPct, req.TradeFeeRate, req.TotalFeesPaid, req.ActualTotalReturnPct,
-            req.BenchmarkReturnPct, req.BenchmarkAnnualizedReturnPct, req.PeriodDays,
-            req.ValidationStartDate, req.ValidationEndDate, req.ValidationBenchmarkReturnPct, req.ValidationBenchmarkAnnualizedReturnPct, req.ValidationPeriodDays,
-            string(posJSON), string(statsJSON), string(signalsJSON),
-            string(eqValsJSON), string(eqPctJSON), string(eqPctGrossJSON), string(curveDatesJSON), string(actualEndJSON), string(tradesJSON),
-        )
-        if err != nil {
-            return fmt.Errorf("failed to upsert timesfm_backtests: %v", err)
-        }
-        return nil
+		req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
+		req.UsedQuantile, req.BuyThresholdPct, req.SellThresholdPct, req.TradeFeeRate, req.TotalFeesPaid, req.ActualTotalReturnPct,
+		req.BenchmarkReturnPct, req.BenchmarkAnnualizedReturnPct, req.PeriodDays,
+		req.ValidationStartDate, req.ValidationEndDate, req.ValidationBenchmarkReturnPct, req.ValidationBenchmarkAnnualizedReturnPct, req.ValidationPeriodDays,
+		string(posJSON), string(statsJSON), string(signalsJSON),
+		string(eqValsJSON), string(eqPctJSON), string(eqPctGrossJSON), string(curveDatesJSON), string(actualEndJSON), string(tradesJSON),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to upsert timesfm_backtests: %v", err)
+	}
+	return nil
 }

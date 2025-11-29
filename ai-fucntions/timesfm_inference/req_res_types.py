@@ -9,12 +9,12 @@ class ChunkedPredictionRequest:
     stock_code: str
     years: int = 10
     horizon_len: int = 7
-    start_date: Optional[str] = "2025-06-30"
-    end_date: Optional[str] = "2025-06-30"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
     context_len: int = 2048
     time_step: int = 0
-    stock_type: str = 'stock'
-    timesfm_version: str = "2.0"
+    stock_type: str = 1
+    timesfm_version: str = "2.5"
     user_id: Optional[int] = None
 
 
