@@ -1713,7 +1713,7 @@ func main() {
 	apiToken := getEnv("API_TOKEN", "fintrack-dev-token")
 	RegisterRoutes(r, handler, apiToken)
 
-	port := getEnv("PORT", "8000")
+	port := getEnv("PORT", "58005")
 	log.Printf("Server starting on port %s", port)
 	log.Printf("API endpoints:")
 	log.Printf("  POST /api/v1/stock-data - Insert single stock data")

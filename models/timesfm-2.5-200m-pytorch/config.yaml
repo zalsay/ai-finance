@@ -1,0 +1,46 @@
+model_config: !!python/object:timesfm_2p5.timesfm_2p5_base.TimesFM_2p5_200M_Definition
+  decode_index: 5
+  input_patch_len: 32
+  output_patch_len: 128
+  output_projection_point: !!python/object:configs.ResidualBlockConfig
+    activation: swish
+    hidden_dims: 1280
+    input_dims: 1280
+    output_dims: 1280
+    use_bias: false
+  output_projection_quantiles: !!python/object:configs.ResidualBlockConfig
+    activation: swish
+    hidden_dims: 1280
+    input_dims: 1280
+    output_dims: 10240
+    use_bias: false
+  output_quantile_len: 1024
+  quantiles:
+  - 0.1
+  - 0.2
+  - 0.3
+  - 0.4
+  - 0.5
+  - 0.6
+  - 0.7
+  - 0.8
+  - 0.9
+  stacked_transformers: !!python/object:configs.StackedTransformersConfig
+    num_layers: 20
+    transformer: !!python/object:configs.TransformerConfig
+      attention_norm: rms
+      feedforward_norm: rms
+      ff_activation: swish
+      hidden_dims: 1280
+      model_dims: 1280
+      num_heads: 16
+      qk_norm: rms
+      use_bias: false
+      use_rotary_position_embeddings: true
+  tokenizer: !!python/object:configs.ResidualBlockConfig
+    activation: swish
+    hidden_dims: 1280
+    input_dims: 64
+    output_dims: 1280
+    use_bias: true
+

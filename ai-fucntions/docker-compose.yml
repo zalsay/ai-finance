@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  timesfm-gpu0:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 192.168.9.20:8500/timesfm-gpu:latest
+    container_name: timesfm-gpu0
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - GPU_ID=0
+      - SERVICE_PORT=8000
+      - XLA_PYTHON_CLIENT_PREALLOCATE=false
+      - JAX_PMAP_USE_TENSORSTORE=false
+      - FINTRACK_API_URL=http://192.168.9.10:58006
+    ports:
+      - "58000:8000"
+    volumes:
+      - ./forecast-results:/app/forecast-results
+      - ./logs:/app/logs
+      - ../models/timesfm-2.5-200m-pytorch:/app/timesfm-2.5-200m-pytorch
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - timesfm-network
+
+  timesfm-gpu1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 192.168.9.20:8500/timesfm-gpu:latest
+    container_name: timesfm-gpu1
+    environment:
+      - CUDA_VISIBLE_DEVICES=1
+      - GPU_ID=1
+      - SERVICE_PORT=8001
+      - XLA_PYTHON_CLIENT_PREALLOCATE=false
+      - JAX_PMAP_USE_TENSORSTORE=false
+      - FINTRACK_API_URL=http://192.168.9.10:58006
+    ports:
+      - "58001:8001"
+    volumes:
+      - ./forecast-results:/app/forecast-results
+      - ./logs:/app/logs
+      - ./timesfm-2.0-500m-pytorch:/app/timesfm-2.0-500m-pytorch
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - timesfm-network
+
+networks:
+  timesfm-network:
+    driver: bridge
+    name: timesfm-network
+
+volumes:
+  forecast-results:
+    driver: local
+  logs:
+    driver: local

@@ -25,8 +25,7 @@ import pandas as pd
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 ai_functions_dir = os.path.dirname(current_dir)
-finance_dir = os.path.dirname(ai_functions_dir)
-akshare__server_dir = os.path.join(finance_dir, "akshare-server")
+akshare__server_dir = os.path.join(ai_functions_dir, "akshare-server")
 
 pre_data_dir = os.path.join(ai_functions_dir, "preprocess_data")
 print(pre_data_dir)
