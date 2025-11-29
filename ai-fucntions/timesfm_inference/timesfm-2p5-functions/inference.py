@@ -5,7 +5,7 @@ import pandas as pd
 # 设置路径，确保可以导入 timesfm 源代码与数据预处理工具
 current_dir = os.path.dirname(os.path.abspath(__file__))
 timesfm_src = os.path.join(current_dir, "timesfm-2.5", "src")
-root_dir = os.path.dirname(os.path.dirname(current_dir))
+root_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
 akshare_tools_dir = os.path.join(root_dir, "akshare-tools")
 preprocess_data_dir = os.path.join(root_dir, "preprocess-data")
 sys.path.insert(0, timesfm_src)
@@ -15,8 +15,11 @@ sys.path.insert(0, preprocess_data_dir)
 from timesfm_2p5.configs import ForecastConfig
 from timesfm_2p5.timesfm_2p5.timesfm_2p5_torch import TimesFM_2p5_200M_torch
 from preprocess_timesfm_inputs import df_to_timesfm_inputs
+runtime_api = os.environ.get("RUNTIME_API", "local")
+model_dir = os.path.join(root_dir, "models", "timesfm-2.5-200m-pytorch")
+if runtime_api == "docker":
+    model_dir = os.path.join("/app", "timesfm-2.5-200m-pytorch")
 
-model_dir = os.path.join(root_dir, "timesfm_inference", "timesfm-2.5-200m-pytorch")
 weights_path = os.path.join(model_dir, "model.safetensors")
 if not os.path.exists(weights_path):
     raise SystemExit(f"missing local model weights: {weights_path}")

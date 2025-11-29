@@ -32,7 +32,7 @@ def wide_df_to_timesfm_inputs(
     sort_by: Optional[Sequence[str]] = None,
     ascending: Union[bool, Sequence[bool]] = True,
     max_context: Optional[int] = None,
-    dtype: str = "float32",
+    dtype: str = "float64",
 ) -> List[np.ndarray]:
     if sort_by:
         df = df.sort_values(by=list(sort_by), ascending=ascending)
