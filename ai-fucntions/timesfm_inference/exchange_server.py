@@ -595,6 +595,10 @@ async def run_backtest(
         status_code, data, text = await get_json(
             "/api/v1/predictions/timesfm-best/by-unique",
             params={"unique_key": unique_key},
+            headers = {
+                "Accept-Encoding": "gzip, deflate",
+                "X-Token": "fintrack-dev-token",
+            }
         )
         if status_code == 200 and data:
             pred = (data or {}).get('prediction') or {}
@@ -636,7 +640,10 @@ async def run_backtest(
     # - 如果已有固定分位数，则只预测验证集分块；
     # - 如果没有固定分位数，则进行完整分块预测以选取最佳分位。
     if response is None:
-        tfm = init_timesfm(horizon_len=request.horizon_len, context_len=request.context_len)
+        if reuest.timesfm_version == "2.0":
+            tfm = init_timesfm(horizon_len=request.horizon_len, context_len=request.context_len)
+        else:
+            tfm = None
         if fixed_quantile_key:
             print("➡️ 已有固定分位数但无缓存，开始仅预测验证集数据以供回测...")
             response = await predict_validation_chunks_only(

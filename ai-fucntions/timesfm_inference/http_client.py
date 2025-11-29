@@ -6,7 +6,7 @@ import httpx
 
 
 def get_base_url() -> str:
-    return os.environ.get("FINTRACK_API_URL", "http://localhost:8081").rstrip("/")
+    return os.environ.get("FINTRACK_API_URL", "http://go-api.meetlife.com.cn:8000").rstrip("/")
 
 
 def build_url(path_or_url: str) -> str:
@@ -34,6 +34,7 @@ async def get_json(
     backoff_factor: float = 0.5,
 ) -> Tuple[int, Optional[Dict[str, Any]], str]:
     url = build_url(path_or_url)
+    print("pos-handler: ", url)
     hdrs = {"Accept": "application/json"}
     if headers:
         hdrs.update(headers)
