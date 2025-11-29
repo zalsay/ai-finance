@@ -183,5 +183,5 @@ export const isAuthenticated = (): boolean => {
 };
 
 export const getPublicPredictions = async (): Promise<PublicPredictionResponse> => {
-  return apiRequest('/predictions/timesfm-best/public');
+  return apiRequest('/get-predictions/mtf-best/public');
 };
