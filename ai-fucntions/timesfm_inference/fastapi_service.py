@@ -83,17 +83,7 @@ class BatchPredictionResponse(BaseModel):
     total_processing_time: float
     results: List[PredictionResponse]
 
-class ChunkedPredictionRequest(BaseModel):
-    """分块预测请求模型"""
-    stock_code: str = Field(..., description="股票代码，如600398")
-    stock_type: str = Field(default="stock", description="股票类型")
-    time_step: int = Field(default=0, description="时间步长")
-    years: int = Field(default=10, description="历史数据年数")
-    horizon_len: int = Field(default=5, description="预测长度")
-    context_len: int = Field(default=2048, description="上下文长度")
-    include_technical_indicators: bool = Field(default=True, description="是否包含技术指标")
-    fixed_end_date: str = Field(default="20250630", description="固定结束日期，格式YYYYMMDD")
-    prediction_mode: int = Field(default=1, description="预测模式：1=固定训练集，2=滑动窗口（待实现）")
+
 
 class RunBacktestRequest(BaseModel):
     """运行回测的请求模型（包含预测与策略参数）"""

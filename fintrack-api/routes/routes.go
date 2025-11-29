@@ -90,22 +90,32 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 		}
 
 		// 预测保存路由：保存TimesFM最佳分位结果（无需鉴权，或按需添加鉴权）
-		predictions := v1.Group("/predictions")
+		savePredictions := v1.Group("/save-predictions")
 		{
-			predictions.POST("/timesfm-best", watchlistHandler.SaveTimesfmBest)
-			predictions.POST("/timesfm-best/val-chunk", watchlistHandler.SaveTimesfmValChunk)
-			// 需要鉴权，按当前登录用户查询其关联的best列表
-			predictions.GET("/timesfm-best", authHandler.AuthMiddleware(), watchlistHandler.ListTimesfmBestByUser)
-			// 公开查询：根据 is_public = 1 返回公开的 timesfm-best，并同步返回对应的验证集分块
-			predictions.GET("/timesfm-best/public", watchlistHandler.ListPublicTimesfmBestWithValidation)
+			savePredictions.POST("/mtf-best", watchlistHandler.SaveTimesfmBest)
+			savePredictions.POST("/mtf-best/val-chunk", watchlistHandler.SaveTimesfmValChunk)
+
 			// 公开接口：按 unique_key 查询单条 best 记录
-			predictions.GET("/timesfm-best/by-unique", watchlistHandler.GetTimesfmBestByUniqueKey)
+			savePredictions.GET("/mtf-best/by-unique", watchlistHandler.GetTimesfmBestByUniqueKey)
+			// 公开接口：按 unique_key 查询单条 best 记录的验证集分块
+			savePredictions.POST("/backtest", watchlistHandler.SaveTimesfmBacktest)
 		}
 
-		// 回测结果路由
-		backtests := v1.Group("/backtests")
+		getPredictions := v1.Group("/get-predictions")
 		{
-			backtests.POST("/timesfm", watchlistHandler.SaveTimesfmBacktest)
+			// 需要鉴权，按当前登录用户查询其关联的best列表
+			getPredictions.GET("/mtf-best", authHandler.AuthMiddleware(), watchlistHandler.ListTimesfmBestByUser)
+			// 公开查询：根据 is_public = 1 返回公开的 timesfm-best，并同步返回对应的验证集分块
+			getPredictions.GET("/mtf-best/public", watchlistHandler.ListPublicTimesfmBestWithValidation)
+		}
+
+
+
+		// TimesFM 推理与回测代理路由
+		timesfm := v1.Group("/mtf")
+		{
+			timesfm.POST("/predict", watchlistHandler.TriggerTimesfmPredict)
+			timesfm.POST("/backtest", authHandler.AuthMiddleware(), watchlistHandler.RunTimesfmBacktestProxy)
 		}
 
 		// 股票相关路由（预留）
