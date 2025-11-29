@@ -16,8 +16,13 @@ if current_device_type == "cpu":
 print(f"当前设备类型: {current_device_type}")
 # 模型路径设置
 current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(os.path.dirname(current_dir))
+runtime_api = os.environ.get("RUNTIME_API", "local")
+model_dir = os.path.join(root_dir, "models", "timesfm-2.0-500m-pytorch")
+if runtime_api == "docker":
+    model_dir = os.path.join("/app", "timesfm-2.0-500m-pytorch")
 # timesfm_dir = "/root/models/ai_tools/timesfm/senrajat_google_com/google_finetune"
-original_model = os.path.join(current_dir, "timesfm-2.0-500m-pytorch/torch_model.ckpt")
+original_model = os.path.join(model_dir, "torch_model.ckpt")
 
 
 tfm = {}
