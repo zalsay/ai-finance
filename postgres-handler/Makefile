@@ -5,11 +5,12 @@
 # 默认目标
 all: build
 
-# 构建可执行文件
+# 构建 PostgreSQL 股票数据处理服务（容器兼容版本）
 build:
-	@echo "构建 PostgreSQL 股票数据处理服务..."
-	go build -o postgres-handler .
-	@echo "构建完成！"
+	@echo "构建 PostgreSQL 股票数据处理服务（Linux 静态可执行文件）..."
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-extldflags "-static"' -o postgres-handler .
+	@chmod +x postgres-handler
+	@echo "构建完成！生成的二进制文件可在 Alpine 容器中直接运行。"
 
 # 安装依赖
 deps:

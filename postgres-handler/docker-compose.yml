@@ -1,61 +1,31 @@
 version: '3.8'
 
 services:
-  # PostgreSQL 股票数据处理服务
-  postgres-handler:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: 192.168.9.20:8500/postgres-handler:v1.0.3
-    container_name: fintrack-postgres-handler
-    restart: unless-stopped
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: ${DB_PASSWORD:-fintrack123}
-      DB_NAME: fintrack
-      PORT: ${PORT:-8080}
-    ports:
-      - "${PORT:-8080}:8080"
-    networks:
-      - fintrack-network
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+  pos-handler:
+    image: 192.168.9.20:8500/go-runtime:alpine 
+    container_name: pos-handler
+    working_dir: /app
+    
+    # 启动命令：运行挂载进来的二进制文件
+    command: ["./postgres-handler"]
 
-  # 可选：pgAdmin 数据库管理工具
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: fintrack-pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@fintrack.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    # 挂载宿主机文件和目录
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - ./postgres-handler:/app/postgres-handler:ro          # 可执行文件（只读）
+
+    # 环境变量（可从 .env 文件加载，也可在这里覆盖）
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=8080
+
+    # 端口映射
     ports:
-      - "${PGADMIN_PORT:-5050}:80"
-    networks:
-      - fintrack-network
-    depends_on:
-      - postgres
-    profiles:
-      - admin
+      - "58005:8080"
 
-volumes:
-  postgres_data:
-    driver: local
-  pgadmin_data:
-    driver: local
-
-networks:
-  fintrack-network:
-    driver: bridge
+    # # 健康检查
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:$${PORT:-8080}/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   start_period: 5s
+    #   retries: 3
