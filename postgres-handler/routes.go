@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -32,18 +33,18 @@ func RegisterRoutes(r *gin.Engine, handler *DatabaseHandler, apiToken string) {
 		api.POST("/index/daily/:code", handler.getIndexDailyHandler)
 		api.POST("/index/daily/:code/range", handler.getIndexDailyByDateRangeHandler)
 
-        api.POST("/timesfm/forecast/batch", handler.batchInsertTimesfmForecastHandler)
-        api.POST("/timesfm/forecast/query", handler.getTimesfmForecastBySymbolVersionHorizon)
+		api.POST("/timesfm/forecast/batch", handler.batchInsertTimesfmForecastHandler)
+		api.POST("/timesfm/forecast/query", handler.getTimesfmForecastBySymbolVersionHorizon)
 
-        api.POST("/stock/comment/daily/batch", handler.batchInsertAStockCommentDailyHandler)
-        api.POST("/stock/comment/daily/search", handler.getAStockCommentDailyByNameHandler)
+		api.POST("/stock/comment/daily/batch", handler.batchInsertAStockCommentDailyHandler)
+		api.POST("/stock/comment/daily/search", handler.getAStockCommentDailyByNameHandler)
 
-        // 同步 fintrack-api 路由：保存 TimesFM 最佳分位、验证块、查询以及回测
-        api.POST("/save-predictions/mtf-best", handler.saveTimesfmBestHandler)
-        api.POST("/save-predictions/mtf-best/val-chunk", handler.saveTimesfmValChunkHandler)
-        api.GET("/save-predictions/mtf-best/by-unique", handler.getTimesfmBestByUniqueKeyHandler)
-        api.POST("/save-predictions/backtest", handler.saveTimesfmBacktestHandler)
-    }
+		// 同步 fintrack-api 路由：保存 TimesFM 最佳分位、验证块、查询以及回测
+		api.POST("/save-predictions/mtf-best", handler.saveTimesfmBestHandler)
+		api.POST("/save-predictions/mtf-best/val-chunk", handler.saveTimesfmValChunkHandler)
+		api.GET("/save-predictions/mtf-best/by-unique", handler.getTimesfmBestByUniqueKeyHandler)
+		api.POST("/save-predictions/backtest", handler.saveTimesfmBacktestHandler)
+	}
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -68,4 +69,25 @@ func RegisterRoutes(r *gin.Engine, handler *DatabaseHandler, apiToken string) {
 	log.Printf("  POST /api/v1/stock/comment/daily/search - Query A-stock comment daily by name (JSON body: {name, limit, offset})")
 	log.Printf("  POST /api/v1/timesfm/forecast/batch - Batch insert TimesFM forecast")
 	log.Printf("  GET  /health - Health check")
+}
+
+func TokenAuthMiddleware(expectedToken string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.URL.Path == "/health" {
+			c.Next()
+			return
+		}
+		token := c.GetHeader("X-Token")
+		if token == "" {
+			auth := c.GetHeader("Authorization")
+			if strings.HasPrefix(auth, "Bearer ") {
+				token = strings.TrimPrefix(auth, "Bearer ")
+			}
+		}
+		if token == "" || token != expectedToken {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		c.Next()
+	}
 }
