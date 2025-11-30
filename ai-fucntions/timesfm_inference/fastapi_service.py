@@ -187,9 +187,7 @@ async def health_check():
 
 @app.post("/predict_for_best")
 async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
-    """单个股票预测接口"""
-    start_time = datetime.now()
-    
+    """单个股票预测接口"""    
     try:
         req_stock_code = str(data.get("stock_code", ""))
         request = ChunkedPredictionRequest(**data)
