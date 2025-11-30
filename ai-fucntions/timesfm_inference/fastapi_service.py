@@ -17,6 +17,7 @@ from urllib import request
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
@@ -165,6 +166,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 添加GZip中间件（对响应进行gzip压缩，客户端需带 Accept-Encoding: gzip）
+app.add_middleware(GZipMiddleware, minimum_size=512)
 
 
 
