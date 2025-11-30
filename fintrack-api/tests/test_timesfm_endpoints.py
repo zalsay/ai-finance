@@ -37,7 +37,7 @@ def login(base_url, email, password):
 
 def test_predict(base_url):
     url = base_url + "/predict_for_best"
-    payload = {"stock_code": "sh600398", "stock_type": 1, "horizon_len": 7, "context_len": 2048, "timesfm_version": "2.5", "user_id": 1}
+    payload = {"stock_code": "sh600398", "stock_type": 1, "horizon_len": 7, "context_len": 2048, "timesfm_version": "2.5", "user_id": 1, "years": 10, "time_step": 0}
     status, js, raw = http_post_json(url, payload)
     print("predict status:", status)
     print("predict body:", js if js is not None else raw)
@@ -53,13 +53,14 @@ def test_backtest(base_url, token):
     return status, js, raw
 
 def main():
-    base_url = os.environ.get("FIN_API_URL", "http://office.pardmind.top:58000")
+    base_url = os.environ.get("FIN_API_URL", "http://localhost:58003")
+    predict_base_url = os.environ.get("PREDICT_API_URL", "http://localhost:58888")
     email = "zalsay@qq.com"
     password = "Cqlzy@1277"
 
     s2, js2, _ = login(base_url, email, password)
     token = js2["token"] if s2 == 200 and js2 and "token" in js2 else ""
-    test_predict(base_url)
+    test_predict(predict_base_url)
     
 
 if __name__ == "__main__":
