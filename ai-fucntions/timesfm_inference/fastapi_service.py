@@ -15,7 +15,7 @@ from datetime import datetime
 from urllib import request
 
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, background
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -186,20 +186,21 @@ async def health_check():
     )
 
 @app.post("/predict_for_best")
-async def predict_stock(data: Dict):
+async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
     """单个股票预测接口"""
     start_time = datetime.now()
     
     try:
+        req_stock_code = str(data.get("stock_code", ""))
         request = ChunkedPredictionRequest(**data)
-        print(request)
-        background_task = asyncio.create_task(predict_chunked_mode_for_best(request))
-        BackgroundTasks.add_task(background_task)
+        req_stock_code = request.stock_code
+        logger.info(f"predict_for_best received: {request}")
+        background_tasks.add_task(predict_chunked_mode_for_best, request)
         return JSONResponse(
             status_code=200,
             content={
             "success": True,
-            "stock_code": request.stock_code,
+            "stock_code": req_stock_code,
             "gpu_id": GPU_ID,
             "message": "开始推理",
         })
@@ -210,7 +211,7 @@ async def predict_stock(data: Dict):
             status_code=500,
             content={
             "success": False,
-            "stock_code": request.stock_code,
+            "stock_code": str(data.get("stock_code", "")),
             "gpu_id": GPU_ID,
             "message": "预测失败",
             "error": str(e),
