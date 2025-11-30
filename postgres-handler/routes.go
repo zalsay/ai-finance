@@ -1,16 +1,20 @@
 package main
 
 import (
+	"bytes"
+	cgzip "compress/gzip"
+	"io"
 	"log"
 	"net/http"
 	"strings"
 
-	"github.com/gin-contrib/gzip"
+	gzing "github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterRoutes(r *gin.Engine, handler *DatabaseHandler, apiToken string) {
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
+	r.Use(gzing.Gzip(gzing.DefaultCompression))
+	r.Use(RequestGzipDecodeMiddleware())
 	r.Use(TokenAuthMiddleware(apiToken))
 
 	api := r.Group("/api/v1")
@@ -87,6 +91,21 @@ func TokenAuthMiddleware(expectedToken string) gin.HandlerFunc {
 		if token == "" || token != expectedToken {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
+		}
+		c.Next()
+	}
+}
+
+func RequestGzipDecodeMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.EqualFold(c.GetHeader("Content-Encoding"), "gzip") {
+			if gzReader, err := cgzip.NewReader(c.Request.Body); err == nil {
+				defer gzReader.Close()
+				if body, err := io.ReadAll(gzReader); err == nil {
+					c.Request.Body = io.NopCloser(bytes.NewReader(body))
+					c.Request.Header.Del("Content-Encoding")
+				}
+			}
 		}
 		c.Next()
 	}
