@@ -1,0 +1,11 @@
+{
+  "stock_code": "sh600398",
+  "best_prediction_item": "mtf-0.5",
+  "timesfm_version": "2.5",
+  "best_metrics": {
+    "mse": 0.10732192086591331,
+    "mae": 0.20841050182578408,
+    "return_diff": 5.075087904681404,
+    "composite_score": 2.124754888680071
+  }
+}
