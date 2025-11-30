@@ -593,7 +593,7 @@ async def run_backtest(
     try:
         unique_key = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}"
         status_code, data, text = await get_json(
-            "/api/v1/predictions/timesfm-best/by-unique",
+            "/api/v1/save-predictions/mtf-best/by-unique",
             params={"unique_key": unique_key},
             headers = {
                 "Accept-Encoding": "gzip, deflate",
@@ -800,7 +800,7 @@ async def save_backtest_result_to_pg(request, response, result):
         }
 
         base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
-        url = f"{base_url}/api/v1/backtests/timesfm"
+        url = f"{base_url}/api/v1/save-predictions/backtest"
         status_code, data, body_text = await post_gzip_json(url, payload)
 
         if status_code == 200:

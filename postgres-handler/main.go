@@ -134,7 +134,7 @@ type ApiResponse struct {
 func NewDatabaseHandler() (*DatabaseHandler, error) {
 	// 从环境变量获取数据库连接信息
 	dbHost := getEnv("DB_HOST", "8.163.5.7")
-	dbPort := getEnv("DB_PORT", "5432")
+	dbPort := getEnv("DB_PORT", "50432")
 	dbUser := getEnv("DB_USER", "user_THtJYy")
 	dbPassword := getEnv("DB_PASSWORD", "password_CnKYP8")
 	dbName := getEnv("DB_NAME", "fintrack")
@@ -2131,7 +2131,7 @@ func main() {
 	apiToken := getEnv("API_TOKEN", "fintrack-dev-token")
 	RegisterRoutes(r, handler, apiToken)
 
-	port := getEnv("PORT", "58005")
+	port := getEnv("PORT", "58004")
 	log.Printf("Server starting on port %s", port)
 	log.Printf("API endpoints:")
 	log.Printf("  POST /api/v1/stock-data - Insert single stock data")
