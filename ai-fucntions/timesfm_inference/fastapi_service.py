@@ -12,6 +12,7 @@ import logging
 import traceback
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from urllib import request
 
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, background
@@ -38,9 +39,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # 全局变量
-TIMESFM_MODEL = None
-MODEL_PATH = "/root/workers/finance/timesfm/timesfm-2.0-500m-pytorch/torch_model.ckpt"
+from dotenv import load_dotenv
+load_dotenv()
+
 GPU_ID = os.environ.get('GPU_ID', '0')
 SERVICE_PORT = int(os.environ.get('SERVICE_PORT', '8000'))
 
@@ -183,11 +186,13 @@ async def health_check():
     )
 
 @app.post("/predict_for_best")
-async def predict_stock(request: ChunkedPredictionRequest):
+async def predict_stock(data: Dict):
     """单个股票预测接口"""
     start_time = datetime.now()
     
     try:
+        request = ChunkedPredictionRequest(**data)
+        print(request)
         background_task = asyncio.create_task(predict_chunked_mode_for_best(request))
         BackgroundTasks.add_task(background_task)
         return JSONResponse(
