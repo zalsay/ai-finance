@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -355,6 +356,107 @@ func (h *DatabaseHandler) initializeDatabase() error {
 	_, _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_symbol_ds ON timesfm_forecast (symbol, ds);`)
 	_, _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_svhl_ds ON timesfm_forecast (symbol, version, horizon_len, ds);`)
 
+	// TimesFM Best Predictions table
+	createTimesfmBestSQL := `
+    CREATE TABLE IF NOT EXISTS timesfm_best_predictions (
+        id SERIAL PRIMARY KEY,
+        unique_key TEXT NOT NULL UNIQUE,
+        symbol VARCHAR(20) NOT NULL,
+        timesfm_version VARCHAR(20) NOT NULL,
+        best_prediction_item VARCHAR(50) NOT NULL,
+        best_metrics JSONB NOT NULL,
+        is_public SMALLINT NOT NULL DEFAULT 0,
+        train_start_date DATE NOT NULL,
+        train_end_date DATE NOT NULL,
+        test_start_date DATE NOT NULL,
+        test_end_date DATE NOT NULL,
+        val_start_date DATE NOT NULL,
+        val_end_date DATE NOT NULL,
+        context_len INTEGER NOT NULL,
+        horizon_len INTEGER NOT NULL,
+        short_name TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_timesfm_best_predictions_symbol ON timesfm_best_predictions(symbol);
+    `
+	if _, err := h.db.Exec(createTimesfmBestSQL); err != nil {
+		return fmt.Errorf("failed to create timesfm_best_predictions table: %v", err)
+	}
+
+	// TimesFM Best Validation Chunks table
+	createTimesfmValChunksSQL := `
+    CREATE TABLE IF NOT EXISTS timesfm_best_validation_chunks (
+        id SERIAL PRIMARY KEY,
+        unique_key TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        user_id INT4,
+        symbol VARCHAR(20),
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        predictions JSONB NOT NULL,
+        actual_values JSONB NOT NULL,
+        dates JSONB NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_timesfm_best FOREIGN KEY (unique_key)
+            REFERENCES timesfm_best_predictions (unique_key) ON DELETE CASCADE,
+        CONSTRAINT uq_timesfm_best_chunk UNIQUE (unique_key, chunk_index)
+    );
+    CREATE INDEX IF NOT EXISTS idx_timesfm_best_validation_chunks_user_id ON timesfm_best_validation_chunks(user_id);
+    CREATE INDEX IF NOT EXISTS idx_timesfm_best_validation_chunks_symbol ON timesfm_best_validation_chunks(symbol);
+    `
+	if _, err := h.db.Exec(createTimesfmValChunksSQL); err != nil {
+		return fmt.Errorf("failed to create timesfm_best_validation_chunks table: %v", err)
+	}
+
+	// TimesFM Backtests table
+	createTimesfmBacktestsSQL := `
+    CREATE TABLE IF NOT EXISTS timesfm_backtests (
+        id SERIAL PRIMARY KEY,
+        unique_key VARCHAR(255) NOT NULL UNIQUE,
+        user_id INTEGER,
+        symbol VARCHAR(20) NOT NULL,
+        timesfm_version VARCHAR(20) NOT NULL,
+        context_len INTEGER NOT NULL,
+        horizon_len INTEGER NOT NULL,
+
+        used_quantile VARCHAR(50),
+        buy_threshold_pct DOUBLE PRECISION,
+        sell_threshold_pct DOUBLE PRECISION,
+        trade_fee_rate DOUBLE PRECISION,
+        total_fees_paid DOUBLE PRECISION,
+        actual_total_return_pct DOUBLE PRECISION,
+
+        benchmark_return_pct DOUBLE PRECISION,
+        benchmark_annualized_return_pct DOUBLE PRECISION,
+        period_days INTEGER,
+
+        validation_start_date DATE,
+        validation_end_date DATE,
+        validation_benchmark_return_pct DOUBLE PRECISION,
+        validation_benchmark_annualized_return_pct DOUBLE PRECISION,
+        validation_period_days INTEGER,
+
+        position_control JSONB,
+        predicted_change_stats JSONB,
+        per_chunk_signals JSONB,
+
+        equity_curve_values JSONB,
+        equity_curve_pct JSONB,
+        equity_curve_pct_gross JSONB,
+        curve_dates JSONB,
+        actual_end_prices JSONB,
+        trades JSONB,
+
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    `
+	if _, err := h.db.Exec(createTimesfmBacktestsSQL); err != nil {
+		return fmt.Errorf("failed to create timesfm_backtests table: %v", err)
+	}
+
 	return nil
 }
 
@@ -629,6 +731,322 @@ func (h *DatabaseHandler) getTimesfmForecastBySymbolVersionHorizon(c *gin.Contex
 		list = append(list, v)
 	}
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: list})
+}
+
+// saveTimesfmBestHandler 保存 TimesFM 最佳分位结果（UPSERT by unique_key）
+func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
+	var req struct {
+		UniqueKey          string                 `json:"unique_key"`
+		Symbol             string                 `json:"symbol"`
+		TimesfmVersion     string                 `json:"timesfm_version"`
+		BestPredictionItem string                 `json:"best_prediction_item"`
+		BestMetrics        map[string]interface{} `json:"best_metrics"`
+		IsPublic           *int                   `json:"is_public"`
+		TrainStartDate     string                 `json:"train_start_date"`
+		TrainEndDate       string                 `json:"train_end_date"`
+		TestStartDate      string                 `json:"test_start_date"`
+		TestEndDate        string                 `json:"test_end_date"`
+		ValStartDate       string                 `json:"val_start_date"`
+		ValEndDate         string                 `json:"val_end_date"`
+		ContextLen         int                    `json:"context_len"`
+		HorizonLen         int                    `json:"horizon_len"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	if strings.TrimSpace(req.UniqueKey) == "" || strings.TrimSpace(req.Symbol) == "" || strings.TrimSpace(req.TimesfmVersion) == "" || strings.TrimSpace(req.BestPredictionItem) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key, symbol, timesfm_version, best_prediction_item are required"})
+		return
+	}
+	metricsJSON, err := json.Marshal(req.BestMetrics)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "best_metrics must be JSON object"})
+		return
+	}
+	isPublic := 0
+	if req.IsPublic != nil {
+		isPublic = *req.IsPublic
+	}
+	_, err = h.db.Exec(`
+        INSERT INTO timesfm_best_predictions (
+            unique_key, symbol, timesfm_version, best_prediction_item, best_metrics,
+            is_public,
+            train_start_date, train_end_date,
+            test_start_date, test_end_date,
+            val_start_date, val_end_date,
+            context_len, horizon_len
+        ) VALUES (
+            $1, $2, $3, $4, $5::jsonb,
+            $6,
+            $7::date, $8::date,
+            $9::date, $10::date,
+            $11::date, $12::date,
+            $13, $14
+        )
+        ON CONFLICT (unique_key) DO UPDATE SET
+            symbol = EXCLUDED.symbol,
+            timesfm_version = EXCLUDED.timesfm_version,
+            best_prediction_item = EXCLUDED.best_prediction_item,
+            best_metrics = EXCLUDED.best_metrics,
+            is_public = EXCLUDED.is_public,
+            train_start_date = EXCLUDED.train_start_date,
+            train_end_date = EXCLUDED.train_end_date,
+            test_start_date = EXCLUDED.test_start_date,
+            test_end_date = EXCLUDED.test_end_date,
+            val_start_date = EXCLUDED.val_start_date,
+            val_end_date = EXCLUDED.val_end_date,
+            context_len = EXCLUDED.context_len,
+            horizon_len = EXCLUDED.horizon_len,
+            updated_at = CURRENT_TIMESTAMP
+    `,
+		req.UniqueKey, req.Symbol, req.TimesfmVersion, req.BestPredictionItem, string(metricsJSON),
+		isPublic,
+		req.TrainStartDate, req.TrainEndDate,
+		req.TestStartDate, req.TestEndDate,
+		req.ValStartDate, req.ValEndDate,
+		req.ContextLen, req.HorizonLen,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_best_predictions: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{"unique_key": req.UniqueKey}})
+}
+
+// saveTimesfmValChunkHandler 保存 TimesFM 验证集分块（UPSERT by unique_key+chunk_index）
+func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
+	var req struct {
+		UniqueKey   string                 `json:"unique_key"`
+		ChunkIndex  int                    `json:"chunk_index"`
+		StartDate   string                 `json:"start_date"`
+		EndDate     string                 `json:"end_date"`
+		Symbol      string                 `json:"symbol"`
+		UserID      *int                   `json:"user_id"`
+		Predictions map[string]interface{} `json:"predictions"`
+		Actual      []float64              `json:"actual_values"`
+		Dates       []string               `json:"dates"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	if strings.TrimSpace(req.UniqueKey) == "" || req.ChunkIndex < 0 || strings.TrimSpace(req.StartDate) == "" || strings.TrimSpace(req.EndDate) == "" || req.Predictions == nil || req.Actual == nil || req.Dates == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing required fields"})
+		return
+	}
+	predsJSON, err := json.Marshal(req.Predictions)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "predictions must be JSON object"})
+		return
+	}
+	actualJSON, _ := json.Marshal(req.Actual)
+	datesJSON, _ := json.Marshal(req.Dates)
+	var uidArg interface{}
+	if req.UserID != nil {
+		uidArg = *req.UserID
+	} else {
+		uidArg = nil
+	}
+	_, err = h.db.Exec(`
+        INSERT INTO timesfm_best_validation_chunks (
+            unique_key, chunk_index, user_id, symbol, start_date, end_date, predictions, actual_values, dates
+        ) VALUES (
+            $1, $2, $3, $4, $5::date, $6::date, $7::jsonb, $8::jsonb, $9::jsonb
+        )
+        ON CONFLICT (unique_key, chunk_index) DO UPDATE SET
+            start_date = EXCLUDED.start_date,
+            end_date = EXCLUDED.end_date,
+            predictions = EXCLUDED.predictions,
+            actual_values = EXCLUDED.actual_values,
+            dates = EXCLUDED.dates,
+            updated_at = CURRENT_TIMESTAMP
+    `,
+		req.UniqueKey, req.ChunkIndex, uidArg, req.Symbol, req.StartDate, req.EndDate, string(predsJSON), string(actualJSON), string(datesJSON),
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_best_validation_chunks: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success"})
+}
+
+// getTimesfmBestByUniqueKeyHandler 查询单条 TimesFM best by unique_key
+func (h *DatabaseHandler) getTimesfmBestByUniqueKeyHandler(c *gin.Context) {
+	uniqueKey := c.Query("unique_key")
+	if strings.TrimSpace(uniqueKey) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+		return
+	}
+	row := h.db.QueryRow(`
+        SELECT id, unique_key, symbol, timesfm_version, best_prediction_item, best_metrics,
+               is_public,
+               train_start_date, train_end_date,
+               test_start_date, test_end_date,
+               val_start_date, val_end_date,
+               context_len, horizon_len,
+               created_at, updated_at
+        FROM timesfm_best_predictions
+        WHERE unique_key = $1
+        LIMIT 1
+    `, uniqueKey)
+	var item struct {
+		ID                 int
+		UniqueKey          string
+		Symbol             string
+		TimesfmVersion     string
+		BestPredictionItem string
+		BestMetrics        string
+		IsPublic           int
+		TrainStartDate     time.Time
+		TrainEndDate       time.Time
+		TestStartDate      time.Time
+		TestEndDate        time.Time
+		ValStartDate       time.Time
+		ValEndDate         time.Time
+		ContextLen         int
+		HorizonLen         int
+		CreatedAt          time.Time
+		UpdatedAt          time.Time
+	}
+	if err := row.Scan(
+		&item.ID, &item.UniqueKey, &item.Symbol, &item.TimesfmVersion, &item.BestPredictionItem, &item.BestMetrics,
+		&item.IsPublic,
+		&item.TrainStartDate, &item.TrainEndDate,
+		&item.TestStartDate, &item.TestEndDate,
+		&item.ValStartDate, &item.ValEndDate,
+		&item.ContextLen, &item.HorizonLen,
+		&item.CreatedAt, &item.UpdatedAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: item})
+}
+
+// saveTimesfmBacktestHandler 保存回测结果（UPSERT by unique_key）
+func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {
+	var req struct {
+		UniqueKey      string `json:"unique_key"`
+		Symbol         string `json:"symbol"`
+		TimesfmVersion string `json:"timesfm_version"`
+		ContextLen     int    `json:"context_len"`
+		HorizonLen     int    `json:"horizon_len"`
+		UserID         *int   `json:"user_id"`
+
+		UsedQuantile         string  `json:"used_quantile"`
+		BuyThresholdPct      float64 `json:"buy_threshold_pct"`
+		SellThresholdPct     float64 `json:"sell_threshold_pct"`
+		TradeFeeRate         float64 `json:"trade_fee_rate"`
+		TotalFeesPaid        float64 `json:"total_fees_paid"`
+		ActualTotalReturnPct float64 `json:"actual_total_return_pct"`
+
+		BenchmarkReturnPct           float64 `json:"benchmark_return_pct"`
+		BenchmarkAnnualizedReturnPct float64 `json:"benchmark_annualized_return_pct"`
+		PeriodDays                   int     `json:"period_days"`
+
+		ValidationStartDate                    string  `json:"validation_start_date"`
+		ValidationEndDate                      string  `json:"validation_end_date"`
+		ValidationBenchmarkReturnPct           float64 `json:"validation_benchmark_return_pct"`
+		ValidationBenchmarkAnnualizedReturnPct float64 `json:"validation_benchmark_annualized_return_pct"`
+		ValidationPeriodDays                   int     `json:"validation_period_days"`
+
+		PositionControl      map[string]interface{}   `json:"position_control"`
+		PredictedChangeStats map[string]interface{}   `json:"predicted_change_stats"`
+		PerChunkSignals      map[string]interface{}   `json:"per_chunk_signals"`
+		EquityCurveValues    []float64                `json:"equity_curve_values"`
+		EquityCurvePct       []float64                `json:"equity_curve_pct"`
+		EquityCurvePctGross  []float64                `json:"equity_curve_pct_gross"`
+		CurveDates           []string                 `json:"curve_dates"`
+		ActualEndPrices      []float64                `json:"actual_end_prices"`
+		Trades               []map[string]interface{} `json:"trades"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	if strings.TrimSpace(req.UniqueKey) == "" || strings.TrimSpace(req.Symbol) == "" || strings.TrimSpace(req.TimesfmVersion) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key, symbol, timesfm_version are required"})
+		return
+	}
+	posJSON, _ := json.Marshal(req.PositionControl)
+	statsJSON, _ := json.Marshal(req.PredictedChangeStats)
+	signalsJSON, _ := json.Marshal(req.PerChunkSignals)
+	eqValsJSON, _ := json.Marshal(req.EquityCurveValues)
+	eqPctJSON, _ := json.Marshal(req.EquityCurvePct)
+	eqPctGrossJSON, _ := json.Marshal(req.EquityCurvePctGross)
+	curveDatesJSON, _ := json.Marshal(req.CurveDates)
+	actualEndJSON, _ := json.Marshal(req.ActualEndPrices)
+	tradesJSON, _ := json.Marshal(req.Trades)
+	var uidArg interface{}
+	if req.UserID != nil {
+		uidArg = *req.UserID
+	} else {
+		uidArg = nil
+	}
+	_, err := h.db.Exec(`
+        INSERT INTO timesfm_backtests (
+            unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+            used_quantile, buy_threshold_pct, sell_threshold_pct, trade_fee_rate, total_fees_paid, actual_total_return_pct,
+            benchmark_return_pct, benchmark_annualized_return_pct, period_days,
+            validation_start_date, validation_end_date, validation_benchmark_return_pct, validation_benchmark_annualized_return_pct, validation_period_days,
+            position_control, predicted_change_stats, per_chunk_signals,
+            equity_curve_values, equity_curve_pct, equity_curve_pct_gross, curve_dates, actual_end_prices, trades
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10, $11, $12,
+            $13, $14, $15,
+            $16::date, $17::date, $18, $19, $20,
+            $21::jsonb, $22::jsonb, $23::jsonb,
+            $24::jsonb, $25::jsonb, $26::jsonb, $27::jsonb, $28::jsonb, $29::jsonb
+        )
+        ON CONFLICT (unique_key) DO UPDATE SET
+            user_id = EXCLUDED.user_id,
+            symbol = EXCLUDED.symbol,
+            timesfm_version = EXCLUDED.timesfm_version,
+            context_len = EXCLUDED.context_len,
+            horizon_len = EXCLUDED.horizon_len,
+            used_quantile = EXCLUDED.used_quantile,
+            buy_threshold_pct = EXCLUDED.buy_threshold_pct,
+            sell_threshold_pct = EXCLUDED.sell_threshold_pct,
+            trade_fee_rate = EXCLUDED.trade_fee_rate,
+            total_fees_paid = EXCLUDED.total_fees_paid,
+            actual_total_return_pct = EXCLUDED.actual_total_return_pct,
+            benchmark_return_pct = EXCLUDED.benchmark_return_pct,
+            benchmark_annualized_return_pct = EXCLUDED.benchmark_annualized_return_pct,
+            period_days = EXCLUDED.period_days,
+            validation_start_date = EXCLUDED.validation_start_date,
+            validation_end_date = EXCLUDED.validation_end_date,
+            validation_benchmark_return_pct = EXCLUDED.validation_benchmark_return_pct,
+            validation_benchmark_annualized_return_pct = EXCLUDED.validation_benchmark_annualized_return_pct,
+            validation_period_days = EXCLUDED.validation_period_days,
+            position_control = EXCLUDED.position_control,
+            predicted_change_stats = EXCLUDED.predicted_change_stats,
+            per_chunk_signals = EXCLUDED.per_chunk_signals,
+            equity_curve_values = EXCLUDED.equity_curve_values,
+            equity_curve_pct = EXCLUDED.equity_curve_pct,
+            equity_curve_pct_gross = EXCLUDED.equity_curve_pct_gross,
+            curve_dates = EXCLUDED.curve_dates,
+            actual_end_prices = EXCLUDED.actual_end_prices,
+            trades = EXCLUDED.trades,
+            updated_at = CURRENT_TIMESTAMP
+    `,
+		req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
+		req.UsedQuantile, req.BuyThresholdPct, req.SellThresholdPct, req.TradeFeeRate, req.TotalFeesPaid, req.ActualTotalReturnPct,
+		req.BenchmarkReturnPct, req.BenchmarkAnnualizedReturnPct, req.PeriodDays,
+		req.ValidationStartDate, req.ValidationEndDate, req.ValidationBenchmarkReturnPct, req.ValidationBenchmarkAnnualizedReturnPct, req.ValidationPeriodDays,
+		string(posJSON), string(statsJSON), string(signalsJSON),
+		string(eqValsJSON), string(eqPctJSON), string(eqPctGrossJSON), string(curveDatesJSON), string(actualEndJSON), string(tradesJSON),
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_backtests: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{"unique_key": req.UniqueKey}})
 }
 
 // BatchUpsertEtfDaily 批量 upsert ETF每日数据（独立表）
