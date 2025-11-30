@@ -6,6 +6,7 @@ import sys
 import pandas as pd
 import numpy as np
 import json
+from tqdm import tqdm
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 finance_dir = parent_dir
@@ -63,7 +64,7 @@ def predict_single_chunk_mode1(
     try:
         if timesfm_version == "2.0":
             # 使用新数据集进行预测
-            print(f"正在使用TimesFM-2.0模型对测试集分块 {chunk_index} 进行预测...")
+            # print(f"正在使用TimesFM-2.0模型对测试集分块 {chunk_index} 进行预测...")
             forecast_df = tfm.forecast_on_df(
                 inputs=df_train,
                 freq="D",
@@ -75,7 +76,7 @@ def predict_single_chunk_mode1(
             if rename_dict:
                 forecast_df = forecast_df.rename(columns=rename_dict)
         elif timesfm_version == "2.5":
-            print(f"正在使用TimesFM-2.5模型对测试集分块 {chunk_index} 进行预测...")
+            # print(f"正在使用TimesFM-2.5模型对测试集分块 {chunk_index} 进行预测...")
             predict_2p5_func = import_predict_2p5()
             forecast_df = predict_2p5_func(df_train, max_context=context_len, pred_horizon=len(df_test), unique_id=symbol)
 
@@ -165,10 +166,10 @@ def predict_single_chunk_mode1(
             # print(f"  📊 分位数评估结果:")
             # for q, metrics in quantile_metrics.items():
             #     print(f"    {q}: MSE={metrics['mse']:.2f}, MAE={metrics['mae']:.2f}, 综合得分={metrics['combined_score']:.2f}, 预测涨跌幅={metrics['pred_pct']:.2f}, 实际涨跌幅={metrics['actual_pct']:.2f}, 百分比差={metrics['diff_pct']:.2f}")
-            print(f"  🏆 最优分位数: {best_quantile_colname} (综合得分: {best_score:.6f})")
-            print(f"  🏆 最优分位数(涨跌幅): {best_quantile_colname_pct} (百分比差: {best_diff_pct:.2f})")
-            print(f"  最优(涨跌幅)预测值: {quantile_metrics[best_quantile_colname_pct]['pred_values']}")
-            print(f"  最优(涨跌幅)实际值: {quantile_metrics[best_quantile_colname_pct]['actual_values']}")
+            # print(f"  🏆 最优分位数: {best_quantile_colname} (综合得分: {best_score:.6f})")
+            # print(f"  🏆 最优分位数(涨跌幅): {best_quantile_colname_pct} (百分比差: {best_diff_pct:.2f})")
+            # print(f"  最优(涨跌幅)预测值: {quantile_metrics[best_quantile_colname_pct]['pred_values']}")
+            # print(f"  最优(涨跌幅)实际值: {quantile_metrics[best_quantile_colname_pct]['actual_values']}")
             forecast_chunk["best_quantile_colname_pct"] = best_quantile_colname_pct
             forecast_chunk["best_quantile_colname"] = best_quantile_colname
             forecast_chunk["best_diff_pct"] = best_diff_pct
@@ -267,7 +268,7 @@ def predict_single_chunk_mode1(
             }
         )
 
-async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm = None, timesfm_version = "2.0") -> ChunkedPredictionResponse:
+async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> ChunkedPredictionResponse:
     """
     模式1分块预测主函数 - 支持分块预测、最佳分数选择和在验证集上验证
     
@@ -280,7 +281,6 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
     """
     import time
     start_time = time.time()
-    
     try:
         # 数据预处理
         df_original, df_train, df_test, df_val = await df_preprocess(
@@ -326,9 +326,28 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
         all_mse = []
         all_mae = []
         all_predictions = []  # 存储所有分块的所有预测结果
-                
+        
+        if len(active_chunks) == 0:
+            print(f"❌ 股票 {request.stock_code} 测试集分块为空，无法进行预测")
+            return ChunkedPredictionResponse(
+                stock_code=request.stock_code,
+                total_chunks=0,
+                horizon_len=request.horizon_len,
+                chunk_results=[],
+                overall_metrics={
+                    'avg_mse': float('inf'),
+                    'avg_mae': float('inf'),
+                    'error': 'Empty test chunks'
+                },
+                processing_time=time.time() - start_time
+            )
+        if request.timesfm_version == "2.5":
+            tfm = None
+        if request.timesfm_version == "2.0":
+            tfm = init_timesfm(request.horizon_len, request.context_len)
+        tqdm_bar = tqdm(total=len(active_chunks), desc="处理测试集分块")
         for i, chunk in enumerate(active_chunks):
-            print(f"正在处理测试集分块 {i+1}/{len(active_chunks)}...")
+            tqdm_bar.update(1)
             history_len = i * request.horizon_len
             if history_len > 0:
                 df_train_current = pd.concat([df_train, df_test.iloc[:history_len, :]], axis=0)
@@ -340,7 +359,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                 df_test=chunk,
                 tfm=tfm,
                 chunk_index=i,
-                timesfm_version=timesfm_version,
+                timesfm_version=request.timesfm_version,
                 symbol=request.stock_code,
                 context_len=request.context_len,
             )
@@ -419,6 +438,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                 f"涨跌幅差异={best_metrics.get('return_diff', 'N/A'):.2f}%")
         
         # 在验证集上使用最佳预测项进行验证
+        saved_best_ok = False
         validation_results = None
         val_results: List[ChunkPredictionResult] = []
         if best_prediction_item and len(df_val) >= request.horizon_len:
@@ -427,10 +447,12 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
             # 对验证集进行分块
             val_chunks = create_chunks_from_test_data(df_val, request.horizon_len)
             val_results = []
-            
+            tqdm_bar = tqdm(total=len(val_chunks), desc="处理验证集分块")
             for i, val_chunk in enumerate(val_chunks):
                 # 使用与测试集相同的处理方式：随着分块数据平移
-                print(f"正在处理验证集分块 {i+1}/{len(val_chunks)}...")
+                # print(f"正在处理验证集分块 {i+1}/{len(val_chunks)}...")
+                tqdm_bar.update(1)
+
                 history_len = i * request.horizon_len
                 if history_len > 0:
                     # 使用训练集+测试集+验证集的前history_len行数据
@@ -444,7 +466,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                     df_test=val_chunk,
                     tfm=tfm,
                     chunk_index=i,
-                    timesfm_version=timesfm_version,
+                    timesfm_version=request.timesfm_version,
                     symbol=request.stock_code,
                     context_len=request.context_len,
                 )
@@ -500,11 +522,11 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
         try:
             out_dir = os.path.join(finance_dir, "forecast-results")
             os.makedirs(out_dir, exist_ok=True)
-            out_path = os.path.join(out_dir, f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}.json")
+            out_path = os.path.join(out_dir, f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}.json")
             payload = {
                 "stock_code": request.stock_code,
                 "best_prediction_item": best_prediction_item,
-                "timesfm_version": timesfm_version,
+                "timesfm_version": request.timesfm_version,
                 "best_metrics": best_metrics,
             }
             with open(out_path, "w", encoding="utf-8") as f:
@@ -527,12 +549,12 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                 val_start_date = to_date_str(df_val['ds'].min())
                 val_end_date = to_date_str(df_val['ds'].max())
 
-                unique_key = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
+                unique_key = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}"
 
                 go_payload = {
                     "unique_key": unique_key,
                     "symbol": request.stock_code,
-                    "timesfm_version": timesfm_version,
+                    "timesfm_version": request.timesfm_version,
                     "best_prediction_item": best_prediction_item,
                     "best_metrics": best_metrics,
                     "train_start_date": train_start_date,
@@ -546,13 +568,14 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
                     "user_id": request.user_id,
                 }
 
-                base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
-                url = f"{base_url}/api/v1/predictions/timesfm-best"
+                base_url = os.environ.get('POST_API', 'http://localhost:58004')
+                url = f"{base_url}/api/v1/save-predictions/mtf-best"
 
                 status_code = None
-                saved_best_ok = False
+                
                 body_text = ""
-                status_code, data, body_text = await post_gzip_json(url, go_payload)
+                headers = {"Authorization": "Bearer fintrack-dev-token"}
+                status_code, data, body_text = await post_gzip_json(url, go_payload, headers)
 
                 if status_code == 200:
                     print(f"✅ 已通过Go后端保存到PG: unique_key={unique_key}")
@@ -567,8 +590,8 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
         # 将验证集分块的预测与实际值逐块写入后端（与timesfm-best关联）
         try:
             if val_results and saved_best_ok:
-                base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
-                url = f"{base_url}/api/v1/predictions/timesfm-best/val-chunk"
+                base_url = os.environ.get('POST_API', 'http://localhost:58004')
+                url = f"{base_url}/api/v1/save-predictions/mtf-best/val-chunk"
                 unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
 
                 for vcr in val_results:
@@ -630,7 +653,8 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest, tfm =
 
                         status_code = None
                         body_text = ""
-                        status_code, data, body_text = await post_gzip_json(url, chunk_payload)
+                        headers = {"Authorization": "Bearer fintrack-dev-token"}
+                        status_code, data, body_text = await post_gzip_json(url, chunk_payload, headers)
                         if status_code == 0:
                             print(f"⚠️ 验证分块写入失败(chunk={vcr.chunk_index})，网络异常")
                             continue
