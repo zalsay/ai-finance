@@ -146,7 +146,6 @@ class HealthResponse(BaseModel):
     """健康检查响应模型"""
     status: str
     gpu_id: str
-    model_loaded: bool
     timestamp: str
 
 # FastAPI 应用初始化
@@ -179,22 +178,31 @@ async def startup_event():
     logger.info(f"启动TimesFM推理服务，GPU ID: {GPU_ID}, 端口: {SERVICE_PORT}")
     
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 async def health_check():
     """健康检查接口"""
-    return HealthResponse(
-        status="healthy" if TIMESFM_MODEL is not None else "unhealthy",
-        gpu_id=GPU_ID,
-        model_loaded=TIMESFM_MODEL is not None,
-        timestamp=datetime.now().isoformat()
-    )
+    return JSONResponse(
+        status_code=200,
+        content={
+        "status": "healthy",
+        "gpu_id": GPU_ID,
+        "timestamp": datetime.now().isoformat()
+    })
 
 @app.post("/predict_for_best")
 async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
     """单个股票预测接口"""    
     try:
+        logger.info(f"predict_for_best received: {data}")
         req_stock_code = str(data.get("stock_code", ""))
-        request = ChunkedPredictionRequest(**data)
+        request = ChunkedPredictionRequest(
+            stock_code=req_stock_code,
+            stock_type=data.get("stock_type", 1),
+            time_step=data.get("time_step", 0),
+            years=data.get("years", 10),
+            horizon_len=data.get("horizon_len", 7),
+            context_len=data.get("context_len", 2048),
+        )
         req_stock_code = request.stock_code
         logger.info(f"predict_for_best received: {request}")
         background_tasks.add_task(predict_chunked_mode_for_best, request)
@@ -221,22 +229,22 @@ async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
 
 
 @app.post("/backtest/run")
-async def run_backtest_api(req: RunBacktestRequest):
+async def run_backtest_api(data: Dict):
     """交易策略回测接口：基于 TimesFM 分块预测并执行策略回测"""
     try:
         # 构造 exchange_server 需要的 dataclass 请求体
         from req_res_types import ChunkedPredictionRequest as TfmRequest
         tfm_req = TfmRequest(
-            stock_code=req.stock_code,
-            years=req.years,
-            horizon_len=req.horizon_len,
-            start_date=req.start_date,
-            end_date=req.end_date,
-            context_len=req.context_len,
-            time_step=req.time_step,
-            stock_type=req.stock_type,
-            timesfm_version=req.timesfm_version,
-            user_id=req.user_id,
+            stock_code=data.get("stock_code", ""),
+            years=data.get("years", 10),
+            horizon_len=data.get("horizon_len", 7),
+            start_date=data.get("start_date", None),
+            end_date=data.get("end_date", None),
+            context_len=data.get("context_len", 2048),
+            time_step=data.get("time_step", 0),
+            stock_type=data.get("stock_type", 1),
+            timesfm_version=data.get("timesfm_version", "2.5"),
+            user_id=data.get("user_id", None),
         )
 
         result = await run_backtest(
@@ -286,7 +294,6 @@ async def root():
     return {
         "message": "TimesFM 股票预测服务",
         "gpu_id": GPU_ID,
-        "model_loaded": TIMESFM_MODEL is not None,
         "docs": "/docs",
         "health": "/health"
     }
