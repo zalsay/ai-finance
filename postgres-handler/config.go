@@ -5,6 +5,7 @@ import (
     "fmt"
     "log"
     "os"
+    _ "github.com/lib/pq"
 )
 
 func getEnv(key, defaultValue string) string {
@@ -16,7 +17,7 @@ func getEnv(key, defaultValue string) string {
 
 func NewDatabaseHandler() (*DatabaseHandler, error) {
     dbHost := getEnv("DB_HOST", "8.163.5.7")
-    dbPort := getEnv("DB_PORT", "5432")
+    dbPort := getEnv("DB_PORT", "50432")
     dbUser := getEnv("DB_USER", "user_THtJYy")
     dbPassword := getEnv("DB_PASSWORD", "password_CnKYP8")
     dbName := getEnv("DB_NAME", "fintrack")

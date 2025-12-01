@@ -568,7 +568,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                     "user_id": request.user_id,
                 }
 
-                base_url = os.environ.get('POST_API', 'http://localhost:58004')
+                base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
                 url = f"{base_url}/api/v1/save-predictions/mtf-best"
 
                 status_code = None
@@ -590,7 +590,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
         # 将验证集分块的预测与实际值逐块写入后端（与timesfm-best关联）
         try:
             if val_results and saved_best_ok:
-                base_url = os.environ.get('POST_API', 'http://localhost:58004')
+                base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
                 url = f"{base_url}/api/v1/save-predictions/mtf-best/val-chunk"
                 unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
 
@@ -772,11 +772,11 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
         )
 
 async def predict_validation_chunks_only(
-    request: ChunkedPredictionRequest,
-    tfm = None,
-    timesfm_version: str = "2.0",
-    fixed_best_prediction_item: Optional[str] = None,
-) -> ChunkedPredictionResponse:
+        request: ChunkedPredictionRequest,
+        tfm = None,
+        timesfm_version: str = "2.0",
+        fixed_best_prediction_item: Optional[str] = None,
+    ) -> ChunkedPredictionResponse:
     """
     仅预测验证集分块，并使用已知的最佳分位数（来自JSON或环境变量）。
 
@@ -924,8 +924,8 @@ async def predict_validation_chunks_only(
                     "user_id": getattr(request, 'user_id', None),
                 }
 
-                base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
-                url_best = f"{base_url}/api/v1/predictions/timesfm-best"
+                base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
+                url_best = f"{base_url}/api/v1/save-predictions/mtf-best"
 
                 status_code = None
                 body_text = ""
@@ -941,8 +941,8 @@ async def predict_validation_chunks_only(
         # 将验证集分块逐块写入后端（仅验证模式也持久化）
         try:
             if val_results:
-                base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
-                url = f"{base_url}/api/v1/predictions/timesfm-best/val-chunk"
+                base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
+                url = f"{base_url}/api/v1/save-predictions/mtf-best/val-chunk"
                 unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
 
                 for vcr in val_results:
@@ -1117,9 +1117,9 @@ if __name__ == "__main__":
     )
     if test_request.timesfm_version == "2.0":
         tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
-        response = asyncio.run(predict_chunked_mode_for_best(test_request, tfm, timesfm_version=test_request.timesfm_version))
+        response = asyncio.run(predict_chunked_mode_for_best(test_request))
     else:
-        response = asyncio.run(predict_chunked_mode_for_best(test_request, tfm=None, timesfm_version=test_request.timesfm_version))
+        response = asyncio.run(predict_chunked_mode_for_best(test_request))
     # print(response)
     # 输出结果
     print(f"\n=== 分块预测结果 ===")

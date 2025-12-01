@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -149,6 +150,7 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		HorizonLen         int                    `json:"horizon_len"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		slog.Error("Error binding JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
 		return
 	}
