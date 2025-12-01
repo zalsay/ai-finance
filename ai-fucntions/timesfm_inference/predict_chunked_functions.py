@@ -659,9 +659,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                             print(f"⚠️ 验证分块写入失败(chunk={vcr.chunk_index})，网络异常")
                             continue
 
-                        if status_code == 200:
-                            print(f"✅ 验证分块已保存: unique_key={unique_key_val}, chunk_index={vcr.chunk_index}")
-                        else:
+                        if status_code != 200:
                             print(f"⚠️ 验证分块保存失败: chunk={vcr.chunk_index}, status={status_code}, body={body_text}")
                     except Exception as e:
                         print(f"⚠️ 处理验证分块写入异常(chunk={getattr(vcr,'chunk_index', '?')}): {e}")
