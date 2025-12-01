@@ -1,7 +1,11 @@
 import { PublicPredictionResponse } from '../types';
 
 // API服务 - 连接fintrack-api后端
-const API_BASE_URL = 'http://localhost:8080/api/v1';
+const DEV_BASE = (import.meta.env as any).VITE_API_BASE_URL_DEV as string | undefined;
+const PROD_BASE = (import.meta.env as any).VITE_API_BASE_URL_PROD as string | undefined;
+const API_BASE_URL = (import.meta.env as any).DEV
+  ? (DEV_BASE || 'http://localhost:9000/api/v1')
+  : (PROD_BASE || 'http://go-api.meetlife.com.cn:9000/api/v1');
 
 // 存储认证token
 let authToken: string | null = null;
