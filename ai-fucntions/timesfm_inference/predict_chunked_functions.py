@@ -130,9 +130,12 @@ def predict_single_chunk_mode1(
                 # 计算MSE和MAE
                 mse_q = mean_squared_error(np.array(pred_values_trimmed), np.array(actual_values_trimmed))
                 mae_q = mean_absolute_error(np.array(pred_values_trimmed), np.array(actual_values_trimmed))
-                pct_q = (pred_values_trimmed[-1] / actual_values_trimmed[0] - 1) * 100
-                actual_pct = (actual_values_trimmed[-1] / actual_values_trimmed[0] - 1) * 100
-                diff_pct = abs(pct_q - actual_pct) / actual_pct # 预测涨跌幅与实际涨跌幅的百分比差
+                pct_q = (pred_values_trimmed[-1] / base_price - 1) * 100
+                actual_pct = (actual_values_trimmed[-1] / base_price - 1) * 100
+                if actual_pct > 0:
+                    diff_pct = abs(pct_q - actual_pct) / actual_pct # 预测涨跌幅与实际涨跌幅的百分比差
+                else:
+                    diff_pct = 1 # 实际涨跌幅为0时，设置为无穷大
                 # 计算综合得分 (MSE和MAE各占50%权重)
                 # 为了统一量纲，对MSE和MAE进行标准化处理
                 combined_score = 0.5 * mse_q + 0.5 * mae_q
@@ -252,7 +255,7 @@ def predict_single_chunk_mode1(
         )
         
     except Exception as e:
-        print(f"分块 {chunk_index} 预测失败: {str(e)}")
+        print(f"分块 {chunk_index} 预测失败: {str(e)} 第{e.__traceback__.tb_lineno}行")
         # 返回空结果
         return ChunkPredictionResult(
             chunk_index=chunk_index,
@@ -573,6 +576,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                     "context_len": int(request.context_len),
                     "horizon_len": int(request.horizon_len),
                     "user_id": request.user_id,
+                    "is_public": 1 if request.user_id == 1 else 0,
                 }
 
                 base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
