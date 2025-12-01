@@ -592,7 +592,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             if val_results and saved_best_ok:
                 base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
                 url = f"{base_url}/api/v1/save-predictions/mtf-best/val-chunk"
-                unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
+                unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}"
 
                 for vcr in val_results:
                     try:
@@ -1109,7 +1109,7 @@ if __name__ == "__main__":
         horizon_len=7,
         start_date="20100101",
         end_date="20251114",
-        context_len=2048,
+        context_len=4096,
         time_step=0,
         stock_type=2,
         timesfm_version="2.5",
