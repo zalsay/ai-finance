@@ -75,7 +75,7 @@ func LoadConfig() (*Config, error) {
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		Server: ServerConfig{
-			Port:        getEnv("SERVER_PORT", "58006"),
+			Port:        getEnv("SERVER_PORT", "9000"),
 			Environment: getEnv("ENVIRONMENT", "development"),
 		},
 		JWT: JWTConfig{
