@@ -3,9 +3,9 @@
   "best_prediction_item": "mtf-0.5",
   "timesfm_version": "2.5",
   "best_metrics": {
-    "mse": 0.10776177892301621,
-    "mae": 0.20851316822108942,
-    "return_diff": 5.088512963686952,
-    "composite_score": 2.1302876696180126
+    "mse": 0.1047595521416938,
+    "mae": 0.20402462325481152,
+    "return_diff": 4.9468465956345655,
+    "composite_score": 2.071373890872778
   }
 }
