@@ -80,7 +80,7 @@ def predict_single_chunk_mode1(
             predict_2p5_func = import_predict_2p5()
             forecast_df = predict_2p5_func(df_train, max_context=context_len, pred_horizon=len(df_test), unique_id=symbol)
 
-        
+        df_train_last_one = df_train.iloc[-1]
         # 获取预测结果的前horizon_len条记录
         horizon_len = len(df_test)
         forecast_chunk = forecast_df.head(horizon_len)
@@ -123,7 +123,10 @@ def predict_single_chunk_mode1(
                 min_len = min(len(pred_values), len(actual_values))
                 pred_values_trimmed = pred_values[:min_len]
                 actual_values_trimmed = actual_values[:min_len]
-                
+                # 确保预测值和实际值长度一致
+                base_price = float(df_train_last_one['close']) if 'close' in df_train_last_one else actual_values_trimmed[0]
+                if not base_price or base_price == 0:
+                    base_price = actual_values_trimmed[0]
                 # 计算MSE和MAE
                 mse_q = mean_squared_error(np.array(pred_values_trimmed), np.array(actual_values_trimmed))
                 mae_q = mean_absolute_error(np.array(pred_values_trimmed), np.array(actual_values_trimmed))
@@ -348,6 +351,8 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
         tqdm_bar = tqdm(total=len(active_chunks), desc="处理测试集分块")
         for i, chunk in enumerate(active_chunks):
             tqdm_bar.update(1)
+            tqdm_bar.set_description(f"处理测试集分块 {i+1}/{len(active_chunks)}")
+            tqdm_bar.refresh()
             history_len = i * request.horizon_len
             if history_len > 0:
                 df_train_current = pd.concat([df_train, df_test.iloc[:history_len, :]], axis=0)
@@ -410,6 +415,8 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                     # 计算涨跌幅：统一以 df_train_last_one 的收盘价为起点
                     if len(pred_values) >= 1 and len(actual_values) >= 1:
                         base_price = float(df_train_last_one['close']) if 'close' in df_train_last_one else actual_values[0]
+                        if not base_price or base_price == 0:
+                            base_price = actual_values[0]
                         pred_return = (pred_values[-1] - base_price) / base_price * 100
                         actual_return = (actual_values[-1] - base_price) / base_price * 100
                         item_returns.append(abs(pred_return - actual_return))
@@ -449,9 +456,9 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             val_results = []
             tqdm_bar = tqdm(total=len(val_chunks), desc="处理验证集分块")
             for i, val_chunk in enumerate(val_chunks):
-                # 使用与测试集相同的处理方式：随着分块数据平移
-                # print(f"正在处理验证集分块 {i+1}/{len(val_chunks)}...")
                 tqdm_bar.update(1)
+                tqdm_bar.set_description(f"处理验证集分块 {i+1}/{len(val_chunks)}")
+                tqdm_bar.refresh()
 
                 history_len = i * request.horizon_len
                 if history_len > 0:
