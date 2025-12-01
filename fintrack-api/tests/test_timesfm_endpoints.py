@@ -37,7 +37,7 @@ def login(base_url, email, password):
 
 def test_predict(base_url):
     url = base_url + "/predict_for_best"
-    payload = {"stock_code": "sh600398", "stock_type": 1, "horizon_len": 7, "context_len": 2048, "timesfm_version": "2.5", "user_id": 1, "years": 10, "time_step": 0}
+    payload = {"stock_code": "sh600398", "stock_type": 1, "horizon_len": 7, "context_len": 4096, "timesfm_version": "2.5", "user_id": 1, "years": 10, "time_step": 0}
     status, js, raw = http_post_json(url, payload)
     print("predict status:", status)
     print("predict body:", js if js is not None else raw)
@@ -45,7 +45,7 @@ def test_predict(base_url):
 
 def test_backtest(base_url, token):
     url = base_url + "/api/v1/timesfm/backtest"
-    payload = {"symbol": "sh600398", "horizon_len": 7, "context_len": 2048, "buy_threshold_pct": 3.0, "sell_threshold_pct": -1.0, "trade_fee_rate": 0.006}
+    payload = {"symbol": "sh600398", "horizon_len": 7, "context_len": 4096, "buy_threshold_pct": 3.0, "sell_threshold_pct": -1.0, "trade_fee_rate": 0.006}
     headers = {"Authorization": "Bearer " + token}
     status, js, raw = http_post_json(url, payload, headers=headers)
     print("backtest status:", status)
@@ -53,8 +53,8 @@ def test_backtest(base_url, token):
     return status, js, raw
 
 def main():
-    base_url = os.environ.get("FIN_API_URL", "http://localhost:58003")
-    predict_base_url = os.environ.get("PREDICT_API_URL", "http://localhost:58888")
+    base_url = os.environ.get("FIN_API_URL", "http://go-api.meetlife.com.cn:9000")
+    predict_base_url = os.environ.get("PREDICT_API_URL", "http://office.pardmind.top:58000")
     email = "zalsay@qq.com"
     password = "Cqlzy@1277"
 

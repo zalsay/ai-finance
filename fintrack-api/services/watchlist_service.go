@@ -479,7 +479,7 @@ func (s *WatchlistService) ListPublicTimesfmBest() ([]models.TimesfmBestPredicti
             test_start_date, test_end_date,
             val_start_date, val_end_date,
             context_len, horizon_len,
-            created_at, updated_at, short_name
+            created_at, updated_at, COALESCE(short_name, '') AS short_name
         FROM timesfm_best_predictions
         WHERE is_public = 1
         ORDER BY updated_at DESC
