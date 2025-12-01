@@ -13,6 +13,7 @@ services:
       - SERVICE_PORT=8000
       - XLA_PYTHON_CLIENT_PREALLOCATE=false
       - JAX_PMAP_USE_TENSORSTORE=false
+      - RUNTIME_API=docker
       - FINTRACK_API_URL=http://go-api.meetlife.com.cn:9000
       - POSTGRES_API=http://go-api.meetlife.com.cn:8000
     ports:
@@ -50,6 +51,7 @@ services:
       - SERVICE_PORT=8001
       - XLA_PYTHON_CLIENT_PREALLOCATE=false
       - JAX_PMAP_USE_TENSORSTORE=false
+      - RUNTIME_API=docker
       - FINTRACK_API_URL=http://go-api.meetlife.com.cn:9000
       - POSTGRES_API=http://go-api.meetlife.com.cn:8000
     ports:
