@@ -202,6 +202,7 @@ async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
             years=data.get("years", 10),
             horizon_len=data.get("horizon_len", 7),
             context_len=data.get("context_len", 2048),
+            timesfm_version=data.get("timesfm_version", "2.5"),
         )
         req_stock_code = request.stock_code
         logger.info(f"predict_for_best received: {request}")
