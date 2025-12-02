@@ -111,6 +111,18 @@ class PostgresHandler:
             data = None
         return resp.status_code, data, resp.text
 
+    async def get_best_by_unique(self, unique_key: str) -> tuple:
+        await self.open()
+        assert self._client is not None
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        params = {"unique_key": unique_key}
+        resp = await self._client.get("/api/v1/save-predictions/mtf-best/by-unique", params=params, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        return resp.status_code, data, resp.text
+
     async def save_best_val_chunk(self, payload: Dict) -> tuple:
         await self.open()
         assert self._client is not None

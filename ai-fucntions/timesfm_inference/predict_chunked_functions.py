@@ -843,6 +843,7 @@ async def predict_validation_chunks_only(
 
         # 仅验证模式下的持久化：预先写入timesfm-best，避免分块外键失败
         pg = None
+        saved_best_ok = False
         try:
             base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
             pg = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
@@ -889,6 +890,7 @@ async def predict_validation_chunks_only(
                 status_code, data, body_text = await pg.save_best_prediction(go_payload)
                 if status_code == 200:
                     print(f"✅ 已通过Go后端保存timesfm-best(仅验证模式): unique_key={unique_key_best}")
+                    saved_best_ok = True
                 else:
                     print(f"⚠️ 保存timesfm-best失败(仅验证模式): status={status_code}, body={body_text}")
         except Exception as go_err:
@@ -898,7 +900,20 @@ async def predict_validation_chunks_only(
         try:
             if val_results and persist_val_chunks and pg is not None:
                 base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
-                unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
+                timesfm_version_str = timesfm_version
+                unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version_str}"
+
+                best_confirmed = saved_best_ok
+                if not best_confirmed:
+                    try:
+                        status_code, data, body_text = await pg.get_best_by_unique(unique_key_val)
+                        best_confirmed = (status_code == 200)
+                    except Exception as chk_err:
+                        best_confirmed = False
+                if not best_confirmed:
+                    print(f"⚠️ 跳过验证分块写入：未找到timesfm-best(unique_key={unique_key_val})，避免外键冲突")
+                    # 直接跳过持久化，仍返回预测结果
+                    raise Exception("missing_best_record_for_val_chunks")
 
                 for vcr in val_results:
                     try:
