@@ -25,6 +25,7 @@ const AppContent: React.FC = () => {
     const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
 
     const [showLogin, setShowLogin] = useState<boolean>(false);
+    const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
 
     // 检查用户是否已登录
     useEffect(() => {
@@ -64,10 +65,10 @@ const AppContent: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (isAuthenticated) {
+        if (isAuthenticated || isDemoMode) {
             fetchPredictions();
         }
-    }, [isAuthenticated, fetchPredictions]);
+    }, [isAuthenticated, isDemoMode, fetchPredictions]);
 
     const handleLogin = () => {
         setIsAuthenticated(true);
@@ -114,11 +115,11 @@ const AppContent: React.FC = () => {
         );
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !isDemoMode) {
         if (showLogin) {
             return <Login onLogin={handleLogin} onBack={() => setShowLogin(false)} />;
         }
-        return <LandingPage onLogin={() => setShowLogin(true)} onRegister={() => setShowLogin(true)} />;
+        return <LandingPage onLogin={() => setShowLogin(true)} onRegister={() => setShowLogin(true)} onDemo={() => setIsDemoMode(true)} />;
     }
 
     return (

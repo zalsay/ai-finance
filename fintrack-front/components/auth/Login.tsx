@@ -130,7 +130,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onBack }) => {
                 <div className="w-full md:w-1/2 bg-background-dark p-8 sm:p-12 flex flex-col justify-center">
                     <div className="flex items-center gap-4 text-white mb-8">
                         <LogoIcon className="size-8" />
-                        <h2 className="text-white text-2xl font-bold leading-tight tracking-[-0.015em]">FinTrack AI</h2>
+                        <h2 className="text-white text-2xl font-bold leading-tight tracking-[-0.015em]">MeetLife AI</h2>
                     </div>
                     <h1 className="text-white tracking-tight text-4xl font-bold leading-tight mb-4">{t('login.title')}</h1>
                     <p className="text-[#91caae] text-base font-normal leading-normal">

@@ -437,6 +437,118 @@ func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{"unique_key": req.UniqueKey}})
 }
 
+func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
+    var req struct {
+        UniqueKey              string   `json:"unique_key"`
+        UserID                 *int     `json:"user_id"`
+        Symbol                 string   `json:"symbol"`
+        TimesfmVersion         string   `json:"timesfm_version"`
+        ContextLen             int      `json:"context_len"`
+        HorizonLen             int      `json:"horizon_len"`
+        BuyThresholdPct        float64  `json:"buy_threshold_pct"`
+        SellThresholdPct       float64  `json:"sell_threshold_pct"`
+        InitialCash            float64  `json:"initial_cash"`
+        EnableRebalance        bool     `json:"enable_rebalance"`
+        MaxPositionPct         float64  `json:"max_position_pct"`
+        MinPositionPct         float64  `json:"min_position_pct"`
+        SlopePositionPerPct    float64  `json:"slope_position_per_pct"`
+        RebalanceTolerancePct  float64  `json:"rebalance_tolerance_pct"`
+        TradeFeeRate           float64  `json:"trade_fee_rate"`
+        TakeProfitThresholdPct float64  `json:"take_profit_threshold_pct"`
+        TakeProfitSellFrac     float64  `json:"take_profit_sell_frac"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+        return
+    }
+    if strings.TrimSpace(req.UniqueKey) == "" || strings.TrimSpace(req.Symbol) == "" || strings.TrimSpace(req.TimesfmVersion) == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key, symbol, timesfm_version are required"})
+        return
+    }
+    var uidArg interface{}
+    if req.UserID != nil { uidArg = *req.UserID } else { uidArg = nil }
+    _, err := h.db.Exec(`
+        INSERT INTO timesfm_strategy_params (
+            unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+            buy_threshold_pct, sell_threshold_pct, initial_cash,
+            enable_rebalance, max_position_pct, min_position_pct,
+            slope_position_per_pct, rebalance_tolerance_pct,
+            trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9,
+            $10, $11, $12,
+            $13, $14,
+            $15, $16, $17
+        )
+        ON CONFLICT (unique_key) DO UPDATE SET
+            user_id = EXCLUDED.user_id,
+            symbol = EXCLUDED.symbol,
+            timesfm_version = EXCLUDED.timesfm_version,
+            context_len = EXCLUDED.context_len,
+            horizon_len = EXCLUDED.horizon_len,
+            buy_threshold_pct = EXCLUDED.buy_threshold_pct,
+            sell_threshold_pct = EXCLUDED.sell_threshold_pct,
+            initial_cash = EXCLUDED.initial_cash,
+            enable_rebalance = EXCLUDED.enable_rebalance,
+            max_position_pct = EXCLUDED.max_position_pct,
+            min_position_pct = EXCLUDED.min_position_pct,
+            slope_position_per_pct = EXCLUDED.slope_position_per_pct,
+            rebalance_tolerance_pct = EXCLUDED.rebalance_tolerance_pct,
+            trade_fee_rate = EXCLUDED.trade_fee_rate,
+            take_profit_threshold_pct = EXCLUDED.take_profit_threshold_pct,
+            take_profit_sell_frac = EXCLUDED.take_profit_sell_frac,
+            updated_at = CURRENT_TIMESTAMP`,
+        req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
+        req.BuyThresholdPct, req.SellThresholdPct, req.InitialCash,
+        req.EnableRebalance, req.MaxPositionPct, req.MinPositionPct,
+        req.SlopePositionPerPct, req.RebalanceTolerancePct,
+        req.TradeFeeRate, req.TakeProfitThresholdPct, req.TakeProfitSellFrac,
+    )
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_strategy_params: %v", err)})
+        return
+    }
+    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{"unique_key": req.UniqueKey}})
+}
+
+func (h *DatabaseHandler) getStrategyParamsByUniqueKeyHandler(c *gin.Context) {
+    uniqueKey := c.Query("unique_key")
+    if strings.TrimSpace(uniqueKey) == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+        return
+    }
+    row := h.db.QueryRow(`
+        SELECT unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+               buy_threshold_pct, sell_threshold_pct, initial_cash,
+               enable_rebalance, max_position_pct, min_position_pct,
+               slope_position_per_pct, rebalance_tolerance_pct,
+               trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac,
+               created_at, updated_at
+        FROM timesfm_strategy_params
+        WHERE unique_key = $1
+        LIMIT 1`, uniqueKey)
+    var item StrategyParams
+    var uid sql.NullInt64
+    if err := row.Scan(
+        &item.UniqueKey, &uid, &item.Symbol, &item.TimesfmVersion, &item.ContextLen, &item.HorizonLen,
+        &item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
+        &item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
+        &item.SlopePositionPerPct, &item.RebalanceTolerancePct,
+        &item.TradeFeeRate, &item.TakeProfitThresholdPct, &item.TakeProfitSellFrac,
+        &item.CreatedAt, &item.UpdatedAt,
+    ); err != nil {
+        if err == sql.ErrNoRows {
+            c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    if uid.Valid { v := int(uid.Int64); item.UserID = &v } else { item.UserID = nil }
+    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: item})
+}
+
 func (h *DatabaseHandler) insertStockDataHandler(c *gin.Context) {
 	var data StockData
 	if err := c.ShouldBindJSON(&data); err != nil {
