@@ -19,9 +19,8 @@ sys.path.append(ak_tools_dir)
 from chunks_functions import create_chunks_from_test_data
 from processor import df_preprocess
 from math_functions import mean_squared_error, mean_absolute_error
-from http_client import post_gzip_json
 from postgres import PostgresHandler
-
+from timesfm_init import init_timesfm
 # 在需要时才导入timesfm-2.5版本的inference模块
 def import_predict_2p5():
     # 保存原始sys.path
