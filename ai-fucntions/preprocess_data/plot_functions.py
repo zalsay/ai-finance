@@ -198,6 +198,7 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
             table_data.append(['Composite Score', f"{best_metrics.get('composite_score', 0):.4f}"])
             table_data.append(['MSE', f"{best_metrics.get('mse', 0):.4f}"])
             table_data.append(['MAE', f"{best_metrics.get('mae', 0):.4f}"])
+            table_data.append(['MLE', f"{best_metrics.get('mle', 0):.4f}"])
             table_data.append(['Return Difference', f"{best_metrics.get('return_diff', 0):.2f}%"])
             table_data.append(['', ''])
         
@@ -209,6 +210,7 @@ def plot_chunked_prediction_results(response: ChunkedPredictionResponse, save_pa
             table_data.append(['Validation MSE', f"{validation_results.get('validation_mse', 0):.4f}"])
             table_data.append(['Validation MAE', f"{validation_results.get('validation_mae', 0):.4f}"])
             table_data.append(['Validation Return Difference', f"{validation_results.get('validation_return_diff', 0):.2f}%"])
+            table_data.append(['Validation MLE', f"{validation_results.get('validation_mle', 0):.4f}"])
         
         # Create table
         if table_data:
