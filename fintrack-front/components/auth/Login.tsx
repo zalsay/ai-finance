@@ -7,80 +7,80 @@ import { authAPI } from '../../services/apiService';
 
 interface LoginProps {
     onLogin: () => void;
+    onBack?: () => void;
 }
 
 type FormType = 'login' | 'register';
 
-// 将InputField组件移到外部以避免重新渲染时重新创建
-const InputField: React.FC<{
+interface InputFieldProps {
     id: string;
     label: string;
     type: string;
     placeholder: string;
     value: string;
     onChange: (value: string) => void;
-    required?: boolean;
     disabled?: boolean;
-}> = ({ id, label, type, placeholder, value, onChange, required = true, disabled = false }) => (
-    <div className="flex flex-col">
-        <label className="text-[#E0E0E0] text-sm font-medium leading-normal pb-2" htmlFor={id}>{label}</label>
+}
+
+const InputField: React.FC<InputFieldProps> = ({ id, label, type, placeholder, value, onChange, disabled }) => (
+    <div className="flex flex-col gap-1.5">
+        <label htmlFor={id} className="text-sm font-medium text-white">
+            {label}
+        </label>
         <input
-            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-[#444] bg-[#2a2a2a] h-12 placeholder:text-[#757575] p-3 text-base font-normal leading-normal"
             id={id}
-            placeholder={placeholder}
             type={type}
+            className="flex h-12 w-full rounded-lg border border-[#444] bg-[#2a2a2a] px-3 py-2 text-sm text-white placeholder:text-[#666] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+            placeholder={placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            required={required}
             disabled={disabled}
-            autoComplete={type === 'password' ? 'current-password' : type === 'email' ? 'email' : 'off'}
+            required
         />
     </div>
 );
 
-// 将CheckboxField组件移到外部以避免重新渲染时重新创建
-const CheckboxField: React.FC<{
+interface CheckboxFieldProps {
     id: string;
     label: string;
     checked: boolean;
     onChange: (checked: boolean) => void;
     disabled?: boolean;
-}> = ({ id, label, checked, onChange, disabled = false }) => (
-    <div className="flex items-center gap-3">
+}
+
+const CheckboxField: React.FC<CheckboxFieldProps> = ({ id, label, checked, onChange, disabled }) => (
+    <div className="flex items-center space-x-2">
         <input
             type="checkbox"
             id={id}
+            className="h-4 w-4 rounded border-gray-600 bg-[#2a2a2a] text-primary focus:ring-primary/50 focus:ring-offset-[#1E1E1E]"
             checked={checked}
             onChange={(e) => onChange(e.target.checked)}
-            className="w-4 h-4 text-primary bg-[#2a2a2a] border-[#444] rounded focus:ring-primary/50 focus:ring-2"
             disabled={disabled}
         />
-        <label htmlFor={id} className="text-[#E0E0E0] text-sm font-medium leading-normal cursor-pointer">
+        <label
+            htmlFor={id}
+            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-[#9E9E9E]"
+        >
             {label}
         </label>
     </div>
 );
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, onBack }) => {
     const [formType, setFormType] = useState<FormType>('login');
+    const { t } = useLanguage();
+
+    const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [username, setUsername] = useState('');
     const [rememberPassword, setRememberPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const { t } = useLanguage();
 
-    // 组件加载时检查是否有保存的邮箱
     useEffect(() => {
-        const savedEmail = localStorage.getItem('rememberedEmail');
-        const shouldRemember = localStorage.getItem('rememberPassword') === 'true';
-
-        if (savedEmail && shouldRemember) {
-            setEmail(savedEmail);
-            setRememberPassword(true);
-        }
-    }, []);
+        setError(null);
+    }, [formType]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -89,45 +89,43 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         try {
             if (formType === 'login') {
-                const response = await authAPI.login(email, password);
-                // 如果用户选择保存密码，将凭据保存到localStorage
-                if (rememberPassword) {
-                    localStorage.setItem('rememberedEmail', email);
-                    localStorage.setItem('rememberPassword', 'true');
-                } else {
-                    localStorage.removeItem('rememberedEmail');
-                    localStorage.removeItem('rememberPassword');
-                }
+                await authAPI.login(email, password);
             } else {
                 await authAPI.register(email, username, password);
-                // Force reload after registration to pick up auth state
-                // Small delay to ensure localStorage write completes
-                await new Promise(resolve => setTimeout(resolve, 100));
-                window.location.reload();
-                return; // Prevent onLogin() from being called
             }
-            // Force reload after login to pick up auth state
-            // Small delay to ensure localStorage write completes
-            await new Promise(resolve => setTimeout(resolve, 100));
-            window.location.reload();
+            onLogin();
         } catch (err: any) {
-            setError(err.message);
+            console.error('Auth error:', err);
+            setError(err.message || 'An error occurred during authentication');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const TabButton: React.FC<{ type: FormType; label: string }> = ({ type, label }) => (
+    const TabButton = ({ type, label }: { type: FormType; label: string }) => (
         <button
-            onClick={(e) => { e.preventDefault(); setFormType(type); setError(null); }}
-            className={`flex flex-col flex-1 items-center justify-center border-b-[3px] pb-[13px] pt-4 ${formType === type ? 'border-b-primary text-white' : 'border-b-transparent text-[#9E9E9E]'}`}
+            className={`flex-1 pb-4 text-sm font-medium transition-all relative ${formType === type ? 'text-white' : 'text-[#666] hover:text-[#999]'
+                }`}
+            onClick={() => setFormType(type)}
         >
-            <p className="text-sm font-bold leading-normal tracking-[0.015em]">{label}</p>
+            {label}
+            {formType === type && (
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-t-full" />
+            )}
         </button>
     );
 
     return (
         <div className="relative flex min-h-screen w-full flex-col items-center justify-center bg-container-dark text-[#E0E0E0] p-4 sm:p-6 lg:p-8">
+            {onBack && (
+                <button
+                    onClick={onBack}
+                    className="absolute top-8 left-8 flex items-center gap-2 text-white/60 hover:text-white transition-colors"
+                >
+                    <span className="material-symbols-outlined">arrow_back</span>
+                    <span>Back</span>
+                </button>
+            )}
             <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-[#1E1E1E] shadow-2xl flex flex-col md:flex-row">
                 <div className="w-full md:w-1/2 bg-background-dark p-8 sm:p-12 flex flex-col justify-center">
                     <div className="flex items-center gap-4 text-white mb-8">
