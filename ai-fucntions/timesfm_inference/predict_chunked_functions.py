@@ -513,6 +513,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                 print(
                     f"✅ 验证结果: MSE={validation_results.get('validation_mse', float('inf')):.4f}, "
                     f"MAE={validation_results.get('validation_mae', float('inf')):.4f}, "
+                    f"MLE={validation_results.get('validation_mle', float('inf')):.4f}, "
                     f"涨跌幅差异={validation_results.get('validation_return_diff', float('inf')):.2f}%"
                 )
         
@@ -578,6 +579,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                     "horizon_len": int(request.horizon_len),
                     "user_id": request.user_id,
                     "is_public": 1 if request.user_id == 1 else 0,
+                    "stock_type": int(request.stock_type),
                 }
 
                 status_code, data, body_text = await pg.save_best_prediction(go_payload)
@@ -1080,12 +1082,12 @@ if __name__ == "__main__":
     import asyncio
     from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
-        stock_code="sh510050",
+        stock_code="sh510300",
         years=10,
         horizon_len=7,
         start_date="20100101",
         end_date="20251114",
-        context_len=2048,
+        context_len=4096,
         time_step=0,
         stock_type=2,
         timesfm_version="2.5",
