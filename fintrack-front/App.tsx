@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Login from './components/auth/Login';
+import LandingPage from './components/landing/LandingPage';
 import Sidebar from './components/layout/Sidebar';
 import Dashboard from './components/dashboard/Dashboard';
 import Watchlist from './components/watchlist/Watchlist';
@@ -22,6 +23,8 @@ const AppContent: React.FC = () => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
+
+    const [showLogin, setShowLogin] = useState<boolean>(false);
 
     // 检查用户是否已登录
     useEffect(() => {
@@ -79,6 +82,7 @@ const AppContent: React.FC = () => {
             localStorage.removeItem('authToken');  // 修复：使用正确的 key
             setIsAuthenticated(false);
             setCurrentView('dashboard');
+            setShowLogin(false); // Reset to landing page on logout
         }
     };
 
@@ -111,7 +115,10 @@ const AppContent: React.FC = () => {
     }
 
     if (!isAuthenticated) {
-        return <Login onLogin={handleLogin} />;
+        if (showLogin) {
+            return <Login onLogin={handleLogin} onBack={() => setShowLogin(false)} />;
+        }
+        return <LandingPage onLogin={() => setShowLogin(true)} onRegister={() => setShowLogin(true)} />;
     }
 
     return (
