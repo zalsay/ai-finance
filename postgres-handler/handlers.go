@@ -441,10 +441,6 @@ func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
     var req struct {
         UniqueKey              string   `json:"unique_key"`
         UserID                 *int     `json:"user_id"`
-        Symbol                 string   `json:"symbol"`
-        TimesfmVersion         string   `json:"timesfm_version"`
-        ContextLen             int      `json:"context_len"`
-        HorizonLen             int      `json:"horizon_len"`
         BuyThresholdPct        float64  `json:"buy_threshold_pct"`
         SellThresholdPct       float64  `json:"sell_threshold_pct"`
         InitialCash            float64  `json:"initial_cash"`
@@ -461,7 +457,7 @@ func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
         return
     }
-    if strings.TrimSpace(req.UniqueKey) == "" || strings.TrimSpace(req.Symbol) == "" || strings.TrimSpace(req.TimesfmVersion) == "" {
+    if strings.TrimSpace(req.UniqueKey) == ""  {
         c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key, symbol, timesfm_version are required"})
         return
     }
@@ -483,10 +479,6 @@ func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             user_id = EXCLUDED.user_id,
-            symbol = EXCLUDED.symbol,
-            timesfm_version = EXCLUDED.timesfm_version,
-            context_len = EXCLUDED.context_len,
-            horizon_len = EXCLUDED.horizon_len,
             buy_threshold_pct = EXCLUDED.buy_threshold_pct,
             sell_threshold_pct = EXCLUDED.sell_threshold_pct,
             initial_cash = EXCLUDED.initial_cash,
@@ -499,7 +491,7 @@ func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
             take_profit_threshold_pct = EXCLUDED.take_profit_threshold_pct,
             take_profit_sell_frac = EXCLUDED.take_profit_sell_frac,
             updated_at = CURRENT_TIMESTAMP`,
-        req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
+        req.UniqueKey, uidArg,
         req.BuyThresholdPct, req.SellThresholdPct, req.InitialCash,
         req.EnableRebalance, req.MaxPositionPct, req.MinPositionPct,
         req.SlopePositionPerPct, req.RebalanceTolerancePct,
@@ -514,12 +506,12 @@ func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
 
 func (h *DatabaseHandler) getStrategyParamsByUniqueKeyHandler(c *gin.Context) {
     uniqueKey := c.Query("unique_key")
-    if strings.TrimSpace(uniqueKey) == "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+    if strings.TrimSpace(uniqueKey) == "" || c.Query("user_id") == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key and user_id are required"})
         return
     }
     row := h.db.QueryRow(`
-        SELECT unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+        SELECT unique_key, user_id,
                buy_threshold_pct, sell_threshold_pct, initial_cash,
                enable_rebalance, max_position_pct, min_position_pct,
                slope_position_per_pct, rebalance_tolerance_pct,
@@ -531,7 +523,7 @@ func (h *DatabaseHandler) getStrategyParamsByUniqueKeyHandler(c *gin.Context) {
     var item StrategyParams
     var uid sql.NullInt64
     if err := row.Scan(
-        &item.UniqueKey, &uid, &item.Symbol, &item.TimesfmVersion, &item.ContextLen, &item.HorizonLen,
+        &item.UniqueKey, &uid,
         &item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
         &item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
         &item.SlopePositionPerPct, &item.RebalanceTolerancePct,
