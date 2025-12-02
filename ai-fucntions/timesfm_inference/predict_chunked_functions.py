@@ -12,12 +12,15 @@ parent_dir = os.path.dirname(current_dir)
 finance_dir = parent_dir
 pre_data_dir = os.path.join(parent_dir, 'preprocess_data')
 sys.path.append(pre_data_dir)
+ak_tools_dir = os.path.join(parent_dir, 'akshare-tools')
+sys.path.append(ak_tools_dir)
 
 # 导入其他模块
 from chunks_functions import create_chunks_from_test_data
 from processor import df_preprocess
 from math_functions import mean_squared_error, mean_absolute_error
 from http_client import post_gzip_json
+from postgres import PostgresHandler
 
 # 在需要时才导入timesfm-2.5版本的inference模块
 def import_predict_2p5():
@@ -139,6 +142,18 @@ def predict_single_chunk_mode1(
                 # 计算综合得分 (MSE和MAE各占50%权重)
                 # 为了统一量纲，对MSE和MAE进行标准化处理
                 combined_score = 0.5 * mse_q + 0.5 * mae_q
+
+                # 计算该分位数的MLE与平均负对数似然
+                try:
+                    residuals_q = np.array(actual_values_trimmed, dtype=float) - np.array(pred_values_trimmed, dtype=float)
+                    sigma_hat_q = float(np.sqrt(np.mean(residuals_q ** 2)))
+                    eps_q = 1e-8 if sigma_hat_q <= 0 else 0.0
+                    sigma_eff_q = sigma_hat_q + eps_q
+                    avg_nll_q = float(0.5 * np.mean(np.log(2 * np.pi * (sigma_eff_q ** 2)) + (residuals_q ** 2) / (sigma_eff_q ** 2)))
+                except Exception as e:
+                    print(f"  计算分位数 {quantile} 的MLE和平均负对数似然时出错: {str(e)} 第{e.__traceback__.tb_lineno}行")
+                    sigma_hat_q = None
+                    avg_nll_q = None
                 
                 quantile_metrics[quantile] = {
                     'mse': mse_q,
@@ -148,7 +163,9 @@ def predict_single_chunk_mode1(
                     'actual_pct': actual_pct,
                     'diff_pct': diff_pct,
                     'pred_values': pred_values_trimmed,
-                    'actual_values': actual_values_trimmed
+                    'actual_values': actual_values_trimmed,
+                    'mle': sigma_hat_q,
+                    'avg_nll': avg_nll_q
                 }
                 
                 # 找到最优分位数
@@ -236,6 +253,7 @@ def predict_single_chunk_mode1(
         # 保持原有的分块日期范围作为备用
         chunk_start_date = prediction_start_date
         chunk_end_date = prediction_end_date
+
         
         return ChunkPredictionResult(
             chunk_index=chunk_index,
@@ -246,11 +264,13 @@ def predict_single_chunk_mode1(
             metrics={
                 'mse': mse, 
                 'mae': mae,
+                'mle': avg_nll_q if avg_nll_q is not None else float('inf'),
                 'best_quantile_colname': best_quantile_colname,
                 'best_quantile_colname_pct': best_quantile_colname_pct,
                 'best_combined_score': best_score,
                 'best_diff_pct': best_diff_pct,
-                'all_quantile_metrics': quantile_metrics
+                'all_quantile_metrics': quantile_metrics,
+
             }
         )
         
@@ -306,6 +326,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                 stock_code=request.stock_code,
                 total_chunks=0,
                 horizon_len=request.horizon_len,
+                context_len=request.context_len,
                 chunk_results=[],
                 overall_metrics={
                     'avg_mse': float('inf'),
@@ -403,6 +424,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             item_mse = []
             item_mae = []
             item_returns = []  # 涨跌幅
+            item_mle = []
             
             for pred_data in all_predictions:
                 if item in pred_data['predictions']:
@@ -423,14 +445,32 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                         pred_return = (pred_values[-1] - base_price) / base_price * 100
                         actual_return = (actual_values[-1] - base_price) / base_price * 100
                         item_returns.append(abs(pred_return - actual_return))
+
+                    try:
+                        chunk_idx = pred_data['chunk_index']
+                        cr = chunk_results[chunk_idx]
+                        qm = (cr.metrics or {}).get('all_quantile_metrics', {})
+                        mle_val = None
+                        if item in qm:
+                            mle_val = qm[item].get('mle')
+                        if mle_val is None:
+                            min_len_q = min(len(pred_values), len(actual_values))
+                            if min_len_q > 0:
+                                residuals_q = np.array(actual_values[:min_len_q], dtype=float) - np.array(pred_values[:min_len_q], dtype=float)
+                                mle_val = float(np.sqrt(np.mean(residuals_q ** 2)))
+                        if mle_val is not None:
+                            item_mle.append(mle_val)
+                    except Exception:
+                        pass
             
             if item_mse:
                 avg_mse = np.mean(item_mse)
                 avg_mae = np.mean(item_mae)
                 avg_return_diff = np.mean(item_returns) if item_returns else float('inf')
-                
+                avg_mle = np.mean(item_mle) if item_mle else float('inf')
                 # 综合评分 (MSE权重0.3, MAE权重0.3, 涨跌幅差异权重0.4)
-                composite_score = 0.3 * avg_mse + 0.3 * avg_mae + 0.4 * avg_return_diff
+                # composite_score = 0.3 * avg_mse + 0.3 * avg_mae + 0.4 * avg_return_diff
+                composite_score = 0.25 * avg_mse + 0.25 * avg_mae + 0.25 * avg_return_diff + 0.25 * avg_mle
                 
                 if composite_score < best_score:
                     best_score = composite_score
@@ -439,13 +479,16 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                         'mse': avg_mse,
                         'mae': avg_mae,
                         'return_diff': avg_return_diff,
+                        'mle': avg_mle,
                         'composite_score': composite_score
                     }
         
         print(f"🎯 最佳预测项: {best_prediction_item}")
         print(f"📊 最佳指标: MSE={best_metrics.get('mse', 'N/A'):.4f}, "
                 f"MAE={best_metrics.get('mae', 'N/A'):.4f}, "
-                f"涨跌幅差异={best_metrics.get('return_diff', 'N/A'):.2f}%")
+                f"涨跌幅差异={best_metrics.get('return_diff', 'N/A'):.2f}%, "
+                f"MLE={best_metrics.get('mle', 'N/A'):.4f}, "
+                f"综合评分={best_metrics.get('composite_score', 'N/A'):.4f}")
         
         # 在验证集上使用最佳预测项进行验证
         saved_best_ok = False
@@ -453,69 +496,26 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
         val_results: List[ChunkPredictionResult] = []
         if best_prediction_item and len(df_val) >= request.horizon_len:
             print(f"🔍 使用最佳预测项 {best_prediction_item} 在验证集上进行验证...")
-            
-            # 对验证集进行分块
-            val_chunks = create_chunks_from_test_data(df_val, request.horizon_len)
-            val_results = []
-            tqdm_bar = tqdm(total=len(val_chunks), desc="处理验证集分块")
-            for i, val_chunk in enumerate(val_chunks):
-                tqdm_bar.update(1)
-                tqdm_bar.set_description(f"处理验证集分块 {i+1}/{len(val_chunks)}")
-                tqdm_bar.refresh()
-
-                history_len = i * request.horizon_len
-                if history_len > 0:
-                    # 使用训练集+测试集+验证集的前history_len行数据
-                    cumulative_train_data = pd.concat([df_train, df_test, df_val.iloc[:history_len, :]], axis=0)
-                else:
-                    # 如果没有历史数据，只使用训练集+测试集
-                    cumulative_train_data = pd.concat([df_train, df_test], axis=0)
-                
-                val_result = predict_single_chunk_mode1(
-                    df_train=cumulative_train_data,  # 使用训练集+测试集+之前验证分块
-                    df_test=val_chunk,
-                    tfm=tfm,
-                    chunk_index=i,
-                    timesfm_version=request.timesfm_version,
-                    symbol=request.stock_code,
-                    context_len=request.context_len,
+            val_resp = await predict_validation_chunks_only(
+                request,
+                tfm=tfm,
+                timesfm_version=request.timesfm_version,
+                fixed_best_prediction_item=best_prediction_item,
+                persist_best=False,
+                persist_val_chunks=True,
+            )
+            val_results = val_resp.validation_chunk_results or []
+            try:
+                vr = val_resp.overall_metrics.get('validation_results') if isinstance(val_resp.overall_metrics, dict) else None
+            except Exception:
+                vr = None
+            validation_results = vr
+            if validation_results:
+                print(
+                    f"✅ 验证结果: MSE={validation_results.get('validation_mse', float('inf')):.4f}, "
+                    f"MAE={validation_results.get('validation_mae', float('inf')):.4f}, "
+                    f"涨跌幅差异={validation_results.get('validation_return_diff', float('inf')):.2f}%"
                 )
-                val_results.append(val_result)
-            
-            # 计算验证集指标
-            val_mse = []
-            val_mae = []
-            val_returns = []
-            
-            for result in val_results:
-                if best_prediction_item in result.predictions:
-                    pred_values = result.predictions[best_prediction_item]
-                    actual_values = result.actual_values
-                    
-                    mse = mean_squared_error(actual_values, pred_values)
-                    mae = mean_absolute_error(actual_values, pred_values)
-                    val_mse.append(mse)
-                    val_mae.append(mae)
-                    
-                    # 计算涨跌幅：统一以训练集最后一条的收盘价为起点
-                    if len(pred_values) >= 1 and len(actual_values) >= 1:
-                        base_price = float(df_train_last_one['close']) if 'close' in df_train_last_one else actual_values[0]
-                        pred_return = (pred_values[-1] - base_price) / base_price * 100
-                        actual_return = (actual_values[-1] - base_price) / base_price * 100
-                        val_returns.append(abs(pred_return - actual_return))
-            
-            validation_results = {
-                'best_prediction_item': best_prediction_item,
-                'validation_mse': np.mean(val_mse) if val_mse else float('inf'),
-                'validation_mae': np.mean(val_mae) if val_mae else float('inf'),
-                'validation_return_diff': np.mean(val_returns) if val_returns else float('inf'),
-                'validation_chunks': len(val_results),
-                'successful_validation_chunks': len(val_mse)
-            }
-            
-            print(f"✅ 验证结果: MSE={validation_results['validation_mse']:.4f}, "
-                  f"MAE={validation_results['validation_mae']:.4f}, "
-                  f"涨跌幅差异={validation_results['validation_return_diff']:.2f}%")
         
         # 计算总体指标
         overall_metrics = {
@@ -527,6 +527,10 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             'best_metrics': best_metrics,
             'validation_results': validation_results
         }
+
+        base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+        pg = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
+        await pg.open()
 
         # 将最佳分位数按股票代码写入 JSON，便于回测直接读取
         try:
@@ -543,9 +547,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                 json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f"✅ 最佳分位数已保存: {out_path} -> {best_prediction_item}")
 
-            # 追加：同时调用Go后端接口保存到PostgreSQL
             try:
-                # 计算训练/测试/验证集的开始结束日期（使用df_preprocess生成的数据帧）
                 def to_date_str(x):
                     try:
                         return pd.to_datetime(x).strftime('%Y-%m-%d')
@@ -579,15 +581,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                     "is_public": 1 if request.user_id == 1 else 0,
                 }
 
-                base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
-                url = f"{base_url}/api/v1/save-predictions/mtf-best"
-
-                status_code = None
-                
-                body_text = ""
-                headers = {"Authorization": "Bearer fintrack-dev-token"}
-                status_code, data, body_text = await post_gzip_json(url, go_payload, headers)
-
+                status_code, data, body_text = await pg.save_best_prediction(go_payload)
                 if status_code == 200:
                     print(f"✅ 已通过Go后端保存到PG: unique_key={unique_key}")
                     saved_best_ok = True
@@ -598,86 +592,14 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
         except Exception as save_err:
             print(f"⚠️ 保存最佳分位 JSON 失败: {save_err}")
 
-        # 将验证集分块的预测与实际值逐块写入后端（与timesfm-best关联）
-        try:
-            if val_results and saved_best_ok:
-                base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
-                url = f"{base_url}/api/v1/save-predictions/mtf-best/val-chunk"
-                unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}"
-
-                for vcr in val_results:
-                    try:
-                        start_date = str(vcr.chunk_start_date)
-                        end_date = str(vcr.chunk_end_date)
-                        size = len(vcr.actual_values)
-                        if size <= 0:
-                            continue
-
-                        chunk_dates = pd.date_range(
-                            start=pd.to_datetime(start_date, errors='coerce'),
-                            end=pd.to_datetime(end_date, errors='coerce'),
-                            freq='D'
-                        )[:size]
-                        dates_str = [d.strftime('%Y-%m-%d') for d in chunk_dates]
-
-                        def to_float_list(arr):
-                            out = []
-                            for x in arr:
-                                try:
-                                    out.append(float(x))
-                                except Exception:
-                                    out.append(None)
-                            return out
-
-                        # 仅保存最佳分位的预测数组，而不是所有分位
-                        predictions_clean = {}
-                        try:
-                            best_key = best_prediction_item
-                        except Exception:
-                            best_key = None
-                        preds_map = (vcr.predictions or {})
-                        if best_key and best_key in preds_map:
-                            predictions_clean[best_key] = to_float_list(preds_map.get(best_key) or [])
-                        else:
-                            # 回退：尝试使用默认分位或第一个可用分位
-                            fallback_key = best_key or "mtf-0.5"
-                            if fallback_key in preds_map:
-                                predictions_clean[fallback_key] = to_float_list(preds_map.get(fallback_key) or [])
-                            else:
-                                for k, arr in preds_map.items():
-                                    predictions_clean[k] = to_float_list(arr or [])
-                                    break
-                        actual_clean = to_float_list(vcr.actual_values or [])
-
-                        chunk_payload = {
-                            "unique_key": unique_key_val,
-                            "chunk_index": int(vcr.chunk_index),
-                            "start_date": start_date,
-                            "end_date": end_date,
-                            "predictions": predictions_clean,
-                            "actual_values": actual_clean,
-                            "dates": dates_str,
-                            "symbol": request.stock_code,
-                            "is_public": 1,
-                            "user_id": request.user_id,
-                        }
-
-                        status_code = None
-                        body_text = ""
-                        headers = {"Authorization": "Bearer fintrack-dev-token"}
-                        status_code, data, body_text = await post_gzip_json(url, chunk_payload, headers)
-                        if status_code == 0:
-                            print(f"⚠️ 验证分块写入失败(chunk={vcr.chunk_index})，网络异常")
-                            continue
-
-                        if status_code != 200:
-                            print(f"⚠️ 验证分块保存失败: chunk={vcr.chunk_index}, status={status_code}, body={body_text}")
-                    except Exception as e:
-                        print(f"⚠️ 处理验证分块写入异常(chunk={getattr(vcr,'chunk_index', '?')}): {e}")
-        except Exception as e:
-            print(f"⚠️ 验证分块写入后端过程异常: {e}")
+        # 验证分块的持久化由 predict_validation_chunks_only 处理；此处仅在未保存best时提示
         if val_results and not saved_best_ok:
             print("⚠️ 跳过验证分块写入：未成功保存timesfm-best，避免外键冲突")
+
+        try:
+            await pg.close()
+        except Exception:
+            pass
         
         # 拼接所有分块的预测结果
         concatenated_predictions = {}
@@ -717,6 +639,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             stock_code=request.stock_code,
             total_chunks=len(chunks),
             horizon_len=request.horizon_len,
+            context_len=request.context_len,
             chunk_results=chunk_results,
             overall_metrics=overall_metrics,
             processing_time=processing_time,
@@ -774,6 +697,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             stock_code=request.stock_code,
             total_chunks=0,
             horizon_len=request.horizon_len,
+            context_len=request.context_len,
             chunk_results=[],
             overall_metrics={'avg_mse': float('inf'), 'avg_mae': float('inf'), 'error': str(e)},
             processing_time=processing_time,
@@ -785,6 +709,8 @@ async def predict_validation_chunks_only(
         tfm = None,
         timesfm_version: str = "2.0",
         fixed_best_prediction_item: Optional[str] = None,
+        persist_best: bool = True,
+        persist_val_chunks: bool = True,
     ) -> ChunkedPredictionResponse:
     """
     仅预测验证集分块，并使用已知的最佳分位数（来自JSON或环境变量）。
@@ -836,9 +762,11 @@ async def predict_validation_chunks_only(
         # 对验证集进行分块
         val_chunks = create_chunks_from_test_data(df_val, request.horizon_len)
         val_results: List[ChunkPredictionResult] = []
-
+        tqdm_bar = tqdm(total=len(val_chunks), desc="处理验证集分块")
         for i, val_chunk in enumerate(val_chunks):
-            print(f"正在处理验证集分块 {i+1}/{len(val_chunks)}...")
+            tqdm_bar.update(1)
+            tqdm_bar.set_description(f"处理验证集分块 {i+1}/{len(val_chunks)}")
+            tqdm_bar.refresh()
             history_len = i * request.horizon_len
             if history_len > 0:
                 cumulative_train_data = pd.concat([df_train, df_test, df_val.iloc[:history_len, :]], axis=0)
@@ -862,6 +790,13 @@ async def predict_validation_chunks_only(
             val_mse = []
             val_mae = []
             val_returns = []
+            val_mle = []
+
+            # 使用训练集最后一条的收盘价作为收益对比的基准，与主流程一致
+            try:
+                df_train_last_one = df_train.iloc[-1, :]
+            except Exception:
+                df_train_last_one = None
 
             for result in val_results:
                 if fixed_best_prediction_item in result.predictions:
@@ -873,30 +808,47 @@ async def predict_validation_chunks_only(
                     val_mse.append(mse)
                     val_mae.append(mae)
 
-                    if len(pred_values) >= 2 and len(actual_values) >= 2:
-                        pred_return = (pred_values[-1] - pred_values[0]) / pred_values[0] * 100
-                        actual_return = (actual_values[-1] - actual_values[0]) / actual_values[0] * 100
+                    if len(pred_values) >= 1 and len(actual_values) >= 1:
+                        try:
+                            base_price = float(df_train_last_one['close']) if (df_train_last_one is not None and 'close' in df_train_last_one) else actual_values[0]
+                        except Exception:
+                            base_price = actual_values[0]
+                        if not base_price or base_price == 0:
+                            base_price = actual_values[0]
+                        pred_return = (pred_values[-1] - base_price) / base_price * 100
+                        actual_return = (actual_values[-1] - base_price) / base_price * 100
                         val_returns.append(abs(pred_return - actual_return))
+
+                    min_len = min(len(pred_values), len(actual_values))
+                    if min_len > 0:
+                        residuals = np.array(actual_values[:min_len], dtype=float) - np.array(pred_values[:min_len], dtype=float)
+                        mle_val = float(np.sqrt(np.mean(residuals ** 2)))
+                        val_mle.append(mle_val)
 
             validation_results = {
                 'best_prediction_item': fixed_best_prediction_item,
                 'validation_mse': np.mean(val_mse) if val_mse else float('inf'),
                 'validation_mae': np.mean(val_mae) if val_mae else float('inf'),
                 'validation_return_diff': np.mean(val_returns) if val_returns else float('inf'),
+                'validation_mle': np.mean(val_mle) if val_mle else float('inf'),
                 'validation_chunks': len(val_results),
                 'successful_validation_chunks': len(val_mse),
             }
             print(
                 f"✅ 验证结果: MSE={validation_results['validation_mse']:.4f}, "
                 f"MAE={validation_results['validation_mae']:.4f}, "
+                f"MLE={validation_results['validation_mle']:.4f}, "
                 f"涨跌幅差异={validation_results['validation_return_diff']:.2f}%"
             )
 
-        # 先在仅验证模式下写入timesfm-best主表，避免分块外键失败
+        # 仅验证模式下的持久化：预先写入timesfm-best，避免分块外键失败
+        pg = None
         try:
-            if fixed_best_prediction_item:
+            base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+            pg = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
+            await pg.open()
+            if fixed_best_prediction_item and persist_best:
                 timesfm_version_str = timesfm_version
-                # 提取各数据集的起止日期
                 def to_date_str(val):
                     try:
                         dt = pd.to_datetime(val, errors='coerce')
@@ -913,15 +865,15 @@ async def predict_validation_chunks_only(
 
                 unique_key_best = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version_str}"
 
-                best_metrics = validation_results if validation_results else {
+                best_metrics_payload = validation_results if validation_results else {
                     'best_prediction_item': fixed_best_prediction_item
                 }
                 go_payload = {
                     "unique_key": unique_key_best,
-                    "stock_code": request.stock_code,
+                    "symbol": request.stock_code,
                     "timesfm_version": timesfm_version_str,
                     "best_prediction_item": fixed_best_prediction_item,
-                    "best_metrics": best_metrics,
+                    "best_metrics": best_metrics_payload,
                     "train_start_date": train_start_date,
                     "train_end_date": train_end_date,
                     "test_start_date": test_start_date,
@@ -931,15 +883,10 @@ async def predict_validation_chunks_only(
                     "context_len": int(request.context_len),
                     "horizon_len": int(request.horizon_len),
                     "user_id": getattr(request, 'user_id', None),
+                    "is_public": 1 if getattr(request, 'user_id', None) == 1 else 0,
                 }
 
-                base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
-                url_best = f"{base_url}/api/v1/save-predictions/mtf-best"
-
-                status_code = None
-                body_text = ""
-                status_code, data, body_text = await post_gzip_json(url_best, go_payload)
-
+                status_code, data, body_text = await pg.save_best_prediction(go_payload)
                 if status_code == 200:
                     print(f"✅ 已通过Go后端保存timesfm-best(仅验证模式): unique_key={unique_key_best}")
                 else:
@@ -949,9 +896,8 @@ async def predict_validation_chunks_only(
 
         # 将验证集分块逐块写入后端（仅验证模式也持久化）
         try:
-            if val_results:
-                base_url = os.environ.get('POSTGRES_API', 'http://localhost:58005')
-                url = f"{base_url}/api/v1/save-predictions/mtf-best/val-chunk"
+            if val_results and persist_val_chunks and pg is not None:
+                base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
                 unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version}"
 
                 for vcr in val_results:
@@ -978,7 +924,6 @@ async def predict_validation_chunks_only(
                                     out.append(None)
                             return out
 
-                        # 仅保存固定最佳分位的预测数组（仅验证模式）
                         predictions_clean = {}
                         preds_map = (vcr.predictions or {})
                         best_key = fixed_best_prediction_item
@@ -1003,12 +948,11 @@ async def predict_validation_chunks_only(
                             "actual_values": actual_clean,
                             "dates": dates_str,
                             "symbol": request.stock_code,
+                            "is_public": 1 if getattr(request, 'user_id', None) == 1 else 0,
                             "user_id": getattr(request, 'user_id', None),
                         }
 
-                        status_code = None
-                        body_text = ""
-                        status_code, data, body_text = await post_gzip_json(url, chunk_payload)
+                        status_code, data, body_text = await pg.save_best_val_chunk(chunk_payload)
                         if status_code == 0:
                             print(f"⚠️ 验证分块写入失败(chunk={vcr.chunk_index})，网络异常")
                             continue
@@ -1021,7 +965,13 @@ async def predict_validation_chunks_only(
                         print(f"⚠️ 处理验证分块写入异常(chunk={getattr(vcr,'chunk_index', '?')}): {e}")
         except Exception as e:
             print(f"⚠️ 验证分块写入后端过程异常: {e}")
-        else:
+        finally:
+            try:
+                if pg is not None:
+                    await pg.close()
+            except Exception:
+                pass
+        if not fixed_best_prediction_item:
             print("⚠️ 未提供固定最佳分位数，验证集指标无法计算，overall_metrics仅包含验证分块数量")
 
         overall_metrics = {
@@ -1037,6 +987,7 @@ async def predict_validation_chunks_only(
             stock_code=request.stock_code,
             total_chunks=len(val_chunks),
             horizon_len=request.horizon_len,
+            context_len=request.context_len,
             chunk_results=[],
             overall_metrics=overall_metrics,
             processing_time=processing_time,
@@ -1090,6 +1041,7 @@ async def predict_validation_chunks_only(
             stock_code=request.stock_code,
             total_chunks=0,
             horizon_len=request.horizon_len,
+            context_len=request.context_len,
             chunk_results=[],
             overall_metrics={'avg_mse': float('inf'), 'avg_mae': float('inf'), 'error': str(e)},
             processing_time=processing_time,
@@ -1104,6 +1056,7 @@ async def predict_validation_chunks_only(
             stock_code=request.stock_code,
             total_chunks=0,
             horizon_len=request.horizon_len,
+            context_len=request.context_len,
             chunk_results=[],
             overall_metrics={'avg_mse': float('inf'), 'avg_mae': float('inf'), 'error': str(e)},
             processing_time=processing_time
@@ -1118,7 +1071,7 @@ if __name__ == "__main__":
         horizon_len=7,
         start_date="20100101",
         end_date="20251114",
-        context_len=4096,
+        context_len=2048,
         time_step=0,
         stock_type=2,
         timesfm_version="2.5",
@@ -1135,15 +1088,14 @@ if __name__ == "__main__":
     print(f"股票代码: {response.stock_code}")
     print(f"总分块数: {response.total_chunks}")
     print(f"预测长度: {response.horizon_len}")
+    print(f"上下文长度: {response.context_len}")
     print(f"处理时间: {response.processing_time:.2f} 秒")
     print(f"处理结果: {response.overall_metrics}")
     # 生成绘图
     from plot_functions import plot_chunked_prediction_results
-    print(f"\n正在生成结果图表...")
     plot_save_path = os.path.join(finance_dir, f"forecast-results/{test_request.stock_code}_prediction_plot.png")
     try:
         plot_path = plot_chunked_prediction_results(response, plot_save_path)
-        print(f"图表已保存到: {plot_path}")
     except Exception as plot_error:
         print(f"⚠️ 绘图失败: {str(plot_error)}")
     

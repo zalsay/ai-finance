@@ -2,8 +2,8 @@
 回测区间: 20100101 到 20251114
 
 === 预测结果摘要 ===
-总分块数: 110
-处理时间: 159.04 秒
+总分块数: 55
+处理时间: 50.44 秒
 
 === 回测结果摘要（验证集）===
 初始资金: 100000.00
@@ -35,15 +35,15 @@ take_profit_sell_frac: 0.80
 
 === 预测变化分布统计 ===
 分块数: 55
-均值: -0.80%
-中位数: -0.81%
-75分位数: -0.35%
-90分位数: 0.26%
-高于买入阈值的分块数: 11
+均值: -0.74%
+中位数: -0.80%
+75分位数: -0.15%
+90分位数: 0.29%
+高于买入阈值的分块数: 10
 低于卖出阈值的分块数: 0
 
 === Figures ===
-Validation actual price (chunk end) vs backtest cumulative return: /root/workers/finance/ai-fucntions/forecast-results/sh510050_backtest_val_equity_vs_actual.png
+Validation actual price (chunk end) vs backtest cumulative return: /Users/yingzhang/Documents/dev/ai-finance/ai-fucntions/forecast-results/sh510050_backtest_val_equity_vs_actual.png
 
 === Trade details ===
 Date: 2024-10-15, Action: buy, Price: 2.76, Size: 36042, Reason: pred_pct>=0.0

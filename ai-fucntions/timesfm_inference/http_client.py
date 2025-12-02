@@ -34,7 +34,7 @@ async def get_json(
     backoff_factor: float = 0.5,
 ) -> Tuple[int, Optional[Dict[str, Any]], str]:
     url = build_url(path_or_url)
-    print("pos-handler: ", url)
+    # print("pos-handler: ", url)
     hdrs = {"Accept": "application/json"}
     if headers:
         hdrs.update(headers)

@@ -100,6 +100,39 @@ class PostgresHandler:
         resp.raise_for_status()
         return resp.json()
 
+    async def save_best_prediction(self, payload: Dict) -> tuple:
+        await self.open()
+        assert self._client is not None
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        resp = await self._client.post("/api/v1/save-predictions/mtf-best", json=payload, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        return resp.status_code, data, resp.text
+
+    async def save_best_val_chunk(self, payload: Dict) -> tuple:
+        await self.open()
+        assert self._client is not None
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        resp = await self._client.post("/api/v1/save-predictions/mtf-best/val-chunk", json=payload, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        return resp.status_code, data, resp.text
+
+    async def save_backtest_result(self, payload: Dict) -> tuple:
+        await self.open()
+        assert self._client is not None
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        resp = await self._client.post("/api/v1/save-predictions/backtest", json=payload, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        return resp.status_code, data, resp.text
+
     # --------------------------- 健康检查 ---------------------------
     async def health_check(self) -> bool:
         try:
@@ -736,11 +769,7 @@ class SyncDataHanlder:
         
         return None
     def update_stock(self, symbol: str, stock_type: int = 1, batch_size: int = 1000) -> Dict:
-        """
-        增量同步该股票：读取PG最新日期 -> 使用SCF获取从下一交易日到end_date的数据 -> 转换 -> 批量写入PG
-        返回执行统计信息
-        """
-        return self.pg_handler.sync_stock(symbol, stock_type, batch_size)
+        return {}
 
 
 async def _demo():
