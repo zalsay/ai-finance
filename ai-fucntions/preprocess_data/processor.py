@@ -35,7 +35,7 @@ def to_symbol(stock_code: str, stock_type: int = 1) -> str:
             return f"sz{stock_code}"
     return stock_code
 
-async def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_step=0, years=10, horizon_len=7):
+async def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, time_step=0, years=12, horizon_len=7):
     """
     预处理股票数据
     
@@ -64,7 +64,7 @@ async def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, 
         symbol = to_symbol(stock_code, stock_type)
         logger.info(f"获取股票{symbol} 数据，时间范围：{start_date} 到 {end_date} ，股票类型：{stock_type}")
         df = await pg_client.ensure_date_range_df(symbol=symbol, start_date=start_date, end_date=end_date, stock_type=stock_type)
-        
+        print(df.head(1))
         # 检查数据是否成功获取
         if df is None:
             print(f"❌ 无法获取股票 {stock_code} 的数据")
@@ -78,7 +78,7 @@ async def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, 
         if len(df) < horizon_len * 2:
             print(f"❌ 股票 {stock_code} 数据量不足 (仅有 {len(df)} 条记录，需要至少 {horizon_len * 2} 条)")
             return None, None, None
-        df.drop(columns=['type', 'created_at', 'updated_at', "id"], inplace=True)
+        
         # 检查必要的列是否存在
         required_columns = ['close']
         missing_columns = [col for col in required_columns if col not in df.columns]
@@ -87,7 +87,10 @@ async def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, 
             return None, None, None
         
         df.rename(columns={'symbol': 'stock_code'}, inplace=True)
-    
+        # 删除多余列
+        del_columns = ["type", "symbol", "created_at", "updated_at", "id", "percentage_change", "amount_change", "turnover_rate"]
+        df.drop(columns=del_columns, inplace=True)
+        
         # 确保datetime列是正确的日期格式
         try:
             if 'datetime' in df.columns:

@@ -1,11 +1,11 @@
 package main
 
 import (
-    "database/sql"
     "fmt"
     "log"
     "os"
-    _ "github.com/lib/pq"
+    "gorm.io/driver/postgres"
+    "gorm.io/gorm"
 )
 
 func getEnv(key, defaultValue string) string {
@@ -22,17 +22,14 @@ func NewDatabaseHandler() (*DatabaseHandler, error) {
     dbPassword := getEnv("DB_PASSWORD", "password_CnKYP8")
     dbName := getEnv("DB_NAME", "fintrack")
 
-    connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+    dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
         dbHost, dbPort, dbUser, dbPassword, dbName)
 
-    db, err := sql.Open("postgres", connStr)
+    gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
     if err != nil {
         return nil, fmt.Errorf("failed to connect to database: %v", err)
     }
-    if err := db.Ping(); err != nil {
-        return nil, fmt.Errorf("failed to ping database: %v", err)
-    }
-    handler := &DatabaseHandler{db: db}
+    handler := &DatabaseHandler{db: gdb}
     if err := handler.initializeDatabase(); err != nil {
         return nil, fmt.Errorf("failed to initialize database: %v", err)
     }
@@ -60,7 +57,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id, type)
     ) PARTITION BY RANGE (type);`
-    if _, err := h.db.Exec(createMainTableSQL); err != nil {
+    if err := h.db.Exec(createMainTableSQL).Error; err != nil {
         return fmt.Errorf("failed to create main table: %v", err)
     }
 
@@ -78,14 +75,14 @@ func (h *DatabaseHandler) initializeDatabase() error {
         createPartitionSQL := fmt.Sprintf(`
         CREATE TABLE IF NOT EXISTS %s PARTITION OF stock_data
         FOR VALUES FROM (%d) TO (%d);`, p.name, p.minValue, p.maxValue)
-        if _, err := h.db.Exec(createPartitionSQL); err != nil {
+        if err := h.db.Exec(createPartitionSQL).Error; err != nil {
             return fmt.Errorf("failed to create partition %s: %v", p.name, err)
         }
         createIndexSQL := fmt.Sprintf(`
         CREATE INDEX IF NOT EXISTS idx_%s_datetime ON %s (datetime);
         CREATE INDEX IF NOT EXISTS idx_%s_symbol ON %s (symbol);
         CREATE INDEX IF NOT EXISTS idx_%s_symbol_datetime ON %s (symbol, datetime);`, p.name, p.name, p.name, p.name, p.name, p.name)
-        if _, err := h.db.Exec(createIndexSQL); err != nil {
+        if err := h.db.Exec(createIndexSQL).Error; err != nil {
             log.Printf("Warning: failed to create index for %s: %v", p.name, err)
         }
     }
@@ -112,7 +109,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     CREATE INDEX IF NOT EXISTS idx_etf_daily_trading_date ON etf_daily (trading_date);
     CREATE INDEX IF NOT EXISTS idx_etf_daily_code ON etf_daily (code);
     `
-    if _, err := h.db.Exec(createEtfDailySQL); err != nil {
+    if err := h.db.Exec(createEtfDailySQL).Error; err != nil {
         return fmt.Errorf("failed to create etf_daily table: %v", err)
     }
 
@@ -125,7 +122,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     );
     CREATE INDEX IF NOT EXISTS idx_index_info_display_name ON index_info (display_name);
     `
-    if _, err := h.db.Exec(createIndexInfoSQL); err != nil {
+    if err := h.db.Exec(createIndexInfoSQL).Error; err != nil {
         return fmt.Errorf("failed to create index_info table: %v", err)
     }
 
@@ -146,7 +143,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     CREATE INDEX IF NOT EXISTS idx_index_daily_code ON index_daily (code);
     CREATE INDEX IF NOT EXISTS idx_index_daily_trading_date ON index_daily (trading_date);
     `
-    if _, err := h.db.Exec(createIndexDailySQL); err != nil {
+    if err := h.db.Exec(createIndexDailySQL).Error; err != nil {
         return fmt.Errorf("failed to create index_daily table: %v", err)
     }
 
@@ -172,7 +169,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     CREATE INDEX IF NOT EXISTS idx_a_stock_comment_daily_trading_date ON a_stock_comment_daily (trading_date);
     CREATE INDEX IF NOT EXISTS idx_a_stock_comment_daily_name ON a_stock_comment_daily (name);
     `
-    if _, err := h.db.Exec(createAStockCommentDailySQL); err != nil {
+    if err := h.db.Exec(createAStockCommentDailySQL).Error; err != nil {
         return fmt.Errorf("failed to create a_stock_comment_daily table: %v", err)
     }
 
@@ -205,7 +202,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
         user_id INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );`
-    if _, err := h.db.Exec(createForecastTableSQL); err != nil {
+    if err := h.db.Exec(createForecastTableSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_forecast table: %v", err)
     }
 
@@ -230,11 +227,11 @@ func (h *DatabaseHandler) initializeDatabase() error {
     );
     CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(user_id);
     `
-    if _, err := h.db.Exec(createStrategyParamsSQL); err != nil {
+    if err := h.db.Exec(createStrategyParamsSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_strategy_params table: %v", err)
     }
-    _, _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_symbol_ds ON timesfm_forecast (symbol, ds);`)
-    _, _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_svhl_ds ON timesfm_forecast (symbol, version, horizon_len, ds);`)
+    _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_symbol_ds ON timesfm_forecast (symbol, ds);`).Error
+    _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_svhl_ds ON timesfm_forecast (symbol, version, horizon_len, ds);`).Error
 
     createTimesfmBestSQL := `
     CREATE TABLE IF NOT EXISTS timesfm_best_predictions (
@@ -259,7 +256,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     );
     CREATE INDEX IF NOT EXISTS idx_timesfm_best_predictions_symbol ON timesfm_best_predictions(symbol);
     `
-    if _, err := h.db.Exec(createTimesfmBestSQL); err != nil {
+    if err := h.db.Exec(createTimesfmBestSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_best_predictions table: %v", err)
     }
 
@@ -284,7 +281,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     CREATE INDEX IF NOT EXISTS idx_timesfm_best_validation_chunks_user_id ON timesfm_best_validation_chunks(user_id);
     CREATE INDEX IF NOT EXISTS idx_timesfm_best_validation_chunks_symbol ON timesfm_best_validation_chunks(symbol);
     `
-    if _, err := h.db.Exec(createTimesfmValChunksSQL); err != nil {
+    if err := h.db.Exec(createTimesfmValChunksSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_best_validation_chunks table: %v", err)
     }
 
@@ -324,8 +321,11 @@ func (h *DatabaseHandler) initializeDatabase() error {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     `
-    if _, err := h.db.Exec(createTimesfmBacktestsSQL); err != nil {
+    if err := h.db.Exec(createTimesfmBacktestsSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_backtests table: %v", err)
+    }
+    if err := h.db.AutoMigrate(&EtfDailyData{}, &IndexInfo{}, &IndexDailyData{}, &StockCommentDaily{}, &TimesfmForecast{}, &StrategyParams{}); err != nil {
+        log.Printf("AutoMigrate warning: %v", err)
     }
     return nil
 }
