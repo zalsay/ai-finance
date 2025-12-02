@@ -25,7 +25,7 @@ const FilterChip: React.FC<{ label: string; active?: boolean; onClick: () => voi
 
 
 const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: propIsLoading, error: propError, onRefresh }) => {
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
     const [activeFilter, setActiveFilter] = useState('All');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const filters = ['All', 'Highest Confidence', 'Potential Growth', 'Bullish', 'Bearish'];
@@ -68,30 +68,49 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                         // If no actual data (future forecast), use pred as current? Or 0?
                         // Let's assume there is some actual data, or we use pred as "Target"
                         const price = lastActual || lastPred;
-                        // Calculate change based on the last chunk or overall trend? 
-                        // Typically daily change or change from previous day.
-                        // Let's use the last two actuals if available, or last actual vs last pred.
-                        // Existing logic: const change = lastActual > 0 ? ((lastPred - lastActual) / lastActual) * 100 : 0;
-                        // This compares last prediction with last actual. This implies the prediction is "next step" relative to actual?
-                        // But in the chunks, actual and prediction are for the same dates (validation).
-                        // So `lastPred` corresponds to `lastActual` in time (roughly).
-                        // The user wants to show "Trend".
-                        // Let's stick to the previous logic for `changePercent` for now to avoid breaking UI logic, 
-                        // but maybe we should compare last actual with previous actual for "daily change"?
-                        // For now, I'll keep the logic: ((lastPred - lastActual) / lastActual) * 100
-                        const change = lastActual > 0 ? ((lastPred - lastActual) / lastActual) * 100 : 0;
+                        
+                        // Calculate change based on first and last actual values of the chunks
+                        let startPrice = 0;
+                        if (allActuals.length > 0) {
+                            startPrice = allActuals[0];
+                        }
+                        const endPrice = lastActual;
+                        const change = startPrice > 0 ? ((endPrice - startPrice) / startPrice) * 100 : 0;
+
+                        // Calculate predicted change
+                        let startPred = 0;
+                        if (allPreds.length > 0) {
+                            startPred = allPreds[0];
+                        }
+                        const endPred = lastPred;
+                        const predictedChange = startPred > 0 ? ((endPred - startPred) / startPred) * 100 : 0;
+
+                        // Calculate confidence from best_metrics
+                        let confidence = 85;
+                        try {
+                            const metrics = JSON.parse(item.best.best_metrics);
+                            if (metrics && typeof metrics.composite_score === 'number') {
+                                confidence = 100 - metrics.composite_score;
+                            }
+                        } catch (e) {
+                            // Keep default
+                        }
 
                         return {
                             symbol: item.best.symbol,
                             companyName: item.best.short_name || item.best.symbol,
                             currentPrice: price,
                             changePercent: change,
+                            predictedChangePercent: predictedChange,
                             prediction: {
                                 predicted_high: lastPred,
                                 predicted_low: lastPred,
-                                confidence: 85,
+                                confidence: parseFloat(confidence.toFixed(4)),
                                 sentiment: change > 0 ? 'Bullish' : 'Bearish',
-                                analysis: `Forecast for ${lastDate} (Best: ${bestItemKey})`,
+                                analysis: language === 'zh' 
+                                    ? `最佳模型: ${bestItemKey}`
+                                    : `Best: ${bestItemKey}`,
+                                maxDeviationPercent: item.max_deviation_percent,
                                 chartData: {
                                     dates: allDates,
                                     actuals: allActuals,
@@ -110,7 +129,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
             }
         };
         fetchPublic();
-    }, []);
+    }, [language]);
 
     const handleAddStock = async (symbol: string) => {
         await watchlistAPI.addToWatchlist(symbol);

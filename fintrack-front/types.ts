@@ -12,6 +12,7 @@ export interface StockPrediction {
     actuals: number[];
     predictions: number[];
   };
+  maxDeviationPercent?: number;
 }
 
 export interface StockData {
@@ -19,6 +20,7 @@ export interface StockData {
   companyName: string;
   currentPrice: number;
   changePercent: number;
+  predictedChangePercent?: number;
   prediction?: StockPrediction;
 }
 
@@ -46,6 +48,7 @@ export interface TimesfmChunk {
 export interface PublicPredictionItem {
   best: TimesfmBest;
   chunks: TimesfmChunk[];
+  max_deviation_percent?: number;
 }
 
 export interface PublicPredictionResponse {

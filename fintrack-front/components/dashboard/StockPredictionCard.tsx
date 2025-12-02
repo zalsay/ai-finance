@@ -122,6 +122,9 @@ const Chart: React.FC<{ change: number; language: any; chartData?: { dates: stri
 
             const getY = (val: number) => chartHeight - ((val - min) / range) * (chartHeight - 20) - 10;
 
+            const actualLabel = language === 'zh' ? '实际' : 'Actual';
+            const predLabel = language === 'zh' ? '预测' : 'Pred';
+
             return (
                 <div ref={containerRef} className="relative w-full h-full" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
                     <svg fill="none" height="100%" preserveAspectRatio="none" viewBox="-5 0 490 150" width="100%" xmlns="http://www.w3.org/2000/svg">
@@ -183,13 +186,13 @@ const Chart: React.FC<{ change: number; language: any; chartData?: { dates: stri
                             {actuals[hoverIndex] !== undefined && actuals[hoverIndex] !== null && (
                                 <div className="flex items-center gap-2">
                                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }}></div>
-                                    <span className="text-white">Actual: {actuals[hoverIndex].toFixed(2)}</span>
+                                    <span className="text-white">{actualLabel}: {actuals[hoverIndex].toFixed(2)}</span>
                                 </div>
                             )}
                             {predictions[hoverIndex] !== undefined && predictions[hoverIndex] !== null && (
                                 <div className="flex items-center gap-2">
                                     <div className="w-2 h-2 rounded-full bg-primary"></div>
-                                    <span className="text-primary font-medium">Pred: {predictions[hoverIndex].toFixed(2)}</span>
+                                    <span className="text-primary font-medium">{predLabel}: {predictions[hoverIndex].toFixed(2)}</span>
                                 </div>
                             )}
                         </div>
@@ -226,20 +229,34 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
     const { language } = useLanguage();
     const isPositive = stock.changePercent >= 0;
     const { textClass, hexColor } = getChangeColors(isPositive, language); // Destructure hexColor
+    
+    const isPredPositive = (stock.predictedChangePercent || 0) >= 0;
+    const { textClass: predTextClass } = getChangeColors(isPredPositive, language);
+
     const confidenceColor = stock.prediction?.confidence ?? 0 > 85 ? 'text-primary' : (stock.prediction?.confidence ?? 0) > 70 ? 'text-yellow-400' : 'text-red-400';
+
+    // Localization helper
+    const t = (en: string, zh: string) => language === 'zh' ? zh : en;
 
     return (
         <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-card-dark p-6">
             <div className="flex justify-between items-start">
                 <div>
-                    <p className="text-white text-lg font-bold leading-normal">{stock.symbol}</p>
-                    <p className="text-white/60 text-sm truncate max-w-[150px]">{stock.companyName}</p>
+                    <p className="text-white text-lg font-bold leading-normal">{stock.companyName}</p>
+                    <p className="text-white/60 text-sm truncate max-w-[150px]">{stock.symbol}</p>
                 </div>
-                <div>
+                <div className="flex items-center gap-3">
                     <p className="text-white text-2xl font-bold leading-tight">{stock.currentPrice.toFixed(2)}</p>
-                    <p className={`text-sm font-medium leading-normal text-right ${textClass}`}>
-                        {isPositive ? '+' : ''}{Math.abs(stock.changePercent).toFixed(2)}%
-                    </p>
+                    <div className="flex flex-col items-end gap-0.5">
+                        <span className={`${textClass} text-xs`} style={{ fontFamily: '"PingFang SC", sans-serif' }}>
+                           {t('Act', '实际')}: {isPositive ? '+' : ''}{Math.abs(stock.changePercent).toFixed(2)}%
+                        </span>
+                        {stock.predictedChangePercent !== undefined && (
+                            <span className="text-primary text-xs" style={{ fontFamily: '"PingFang SC", sans-serif' }}>
+                               {t('Pred', '预测')}: {isPredPositive ? '+' : ''}{Math.abs(stock.predictedChangePercent).toFixed(2)}%
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
             <div className="flex min-h-[150px] md:min-h-[180px] flex-1 flex-col gap-4 py-4">
@@ -251,11 +268,11 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
                 <div className="flex justify-end gap-4 text-xs text-white/60 -mt-2 mb-2">
                     <div className="flex items-center gap-1.5">
                         <div className="w-3 h-0.5 rounded-full" style={{ backgroundColor: hexColor }}></div>
-                        <span>Actual</span>
+                        <span>{t('Actual', '实际')}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-3 h-0.5 rounded-full bg-primary"></div>
-                        <span>Prediction</span>
+                        <span>{t('Prediction', '预测')}</span>
                     </div>
                 </div>
             )}
@@ -263,15 +280,15 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
             {stock.prediction ? (
                 <>
                     <p className="text-sm text-white/80">{stock.prediction.analysis}</p>
-                    <div className="flex justify-between items-center text-white/60 text-xs">
-                        <span>Predicted High: <strong className="text-white/80">${stock.prediction.predicted_high.toFixed(2)}</strong></span>
-                        <span>Confidence: <strong className={confidenceColor}>{stock.prediction.confidence}%</strong></span>
+                    <div className="flex flex-wrap justify-between items-center text-white/60 text-xs gap-y-1">
+                        <span>{t('Max Deviation %', '最大偏差')}: <strong className="text-white/80">{stock.prediction.maxDeviationPercent?.toFixed(2) ?? '0.00'}%</strong></span>
+                        <span>{t('Best Score', '最佳得分')}: <strong className={confidenceColor}>{stock.prediction.confidence.toFixed(4)}</strong></span>
                     </div>
                 </>
             ) : (
                  <div className="flex flex-col items-center justify-center text-center gap-2">
                     <div className="w-5 h-5 border-2 border-dashed rounded-full animate-spin border-primary"></div>
-                    <span className="text-xs text-white/60">Awaiting AI prediction...</span>
+                    <span className="text-xs text-white/60">{t('Awaiting AI prediction...', '等待 AI 预测...')}</span>
                 </div>
             )}
         </div>
