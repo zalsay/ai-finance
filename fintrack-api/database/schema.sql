@@ -94,10 +94,6 @@ CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
     id SERIAL PRIMARY KEY,
     unique_key VARCHAR(255) NOT NULL UNIQUE,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    symbol VARCHAR(20) NOT NULL,
-    timesfm_version VARCHAR(20) NOT NULL,
-    context_len INTEGER NOT NULL,
-    horizon_len INTEGER NOT NULL,
     buy_threshold_pct DOUBLE PRECISION,
     sell_threshold_pct DOUBLE PRECISION,
     initial_cash DOUBLE PRECISION,
@@ -112,5 +108,4 @@ CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_strategy_params_symbol ON timesfm_strategy_params(symbol);
 CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(user_id);
