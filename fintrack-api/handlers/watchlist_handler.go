@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -123,45 +124,6 @@ func (h *WatchlistHandler) UpdateWatchlistItem(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
-// 保存TimesFM最佳分位预测结果
-func (h *WatchlistHandler) SaveTimesfmBest(c *gin.Context) {
-	// 可选鉴权：如果需要用户身份控制，可打开以下代码
-	// userID, exists := c.Get("user_id")
-	// if !exists {
-	//     c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-	//     return
-	// }
-
-	var req models.SaveTimesfmBestRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.watchlistService.SaveTimesfmBest(&req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Saved TimesFM best prediction", "unique_key": req.UniqueKey})
-}
-
-// 保存验证集分块的预测与实际
-func (h *WatchlistHandler) SaveTimesfmValChunk(c *gin.Context) {
-	var req models.SaveTimesfmValChunkRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.watchlistService.SaveTimesfmValChunk(&req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Saved validation chunk", "unique_key": req.UniqueKey, "chunk_index": req.ChunkIndex})
-}
-
 // 查询某用户的TimesFM最佳分位预测列表
 func (h *WatchlistHandler) ListTimesfmBestByUser(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -250,9 +212,43 @@ func (h *WatchlistHandler) ListPublicTimesfmBestWithValidation(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		var maxDevPercent float64 = 0
+		for _, chunk := range chunks {
+			// chunk.Predictions is map[string]interface{}
+			// We need to find the prediction array corresponding to it.BestPredictionItem
+			if val, ok := chunk.Predictions[it.BestPredictionItem]; ok {
+				if predArr, ok := val.([]interface{}); ok {
+					for i, p := range predArr {
+						if i < len(chunk.Actual) {
+							actual := chunk.Actual[i]
+							var predicted float64
+							// JSON numbers are float64
+							switch v := p.(type) {
+							case float64:
+								predicted = v
+							case float32:
+								predicted = float64(v)
+							case int:
+								predicted = float64(v)
+							}
+
+							if actual != 0 {
+								dev := math.Abs((predicted-actual)/actual) * 100
+								if dev > maxDevPercent {
+									maxDevPercent = dev
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
 		result = append(result, gin.H{
-			"best":   it,
-			"chunks": chunks,
+			"best":                  it,
+			"chunks":                chunks,
+			"max_deviation_percent": maxDevPercent,
 		})
 	}
 
@@ -306,4 +302,32 @@ func (h *WatchlistHandler) RunTimesfmBacktestProxy(c *gin.Context) {
 		return
 	}
 	c.JSON(status, body)
+}
+
+// SaveTimesfmBest
+func (h *WatchlistHandler) SaveTimesfmBest(c *gin.Context) {
+	var req models.SaveTimesfmBestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.watchlistService.SaveTimesfmBest(&req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "unique_key": req.UniqueKey})
+}
+
+// SaveTimesfmValChunk
+func (h *WatchlistHandler) SaveTimesfmValChunk(c *gin.Context) {
+	var req models.SaveTimesfmValChunkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.watchlistService.SaveTimesfmValChunk(&req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "unique_key": req.UniqueKey, "chunk_index": req.ChunkIndex})
 }

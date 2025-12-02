@@ -89,18 +89,6 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			watchlist.PUT("/:id", watchlistHandler.UpdateWatchlistItem)
 		}
 
-		// 预测保存路由：保存TimesFM最佳分位结果（无需鉴权，或按需添加鉴权）
-		savePredictions := v1.Group("/save-predictions")
-		{
-			savePredictions.POST("/mtf-best", watchlistHandler.SaveTimesfmBest)
-			savePredictions.POST("/mtf-best/val-chunk", watchlistHandler.SaveTimesfmValChunk)
-
-			// 公开接口：按 unique_key 查询单条 best 记录
-			savePredictions.GET("/mtf-best/by-unique", watchlistHandler.GetTimesfmBestByUniqueKey)
-			// 公开接口：按 unique_key 查询单条 best 记录的验证集分块
-			savePredictions.POST("/backtest", watchlistHandler.SaveTimesfmBacktest)
-		}
-
 		getPredictions := v1.Group("/get-predictions")
 		{
 			// 需要鉴权，按当前登录用户查询其关联的best列表
