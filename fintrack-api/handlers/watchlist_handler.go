@@ -203,6 +203,37 @@ func (h *WatchlistHandler) GetTimesfmBestByUniqueKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"prediction": item})
 }
 
+func (h *WatchlistHandler) SaveStrategyParams(c *gin.Context) {
+	var req models.SaveStrategyParamsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.watchlistService.SaveStrategyParams(&req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Saved strategy params", "unique_key": req.UniqueKey})
+}
+
+func (h *WatchlistHandler) GetStrategyParamsByUniqueKey(c *gin.Context) {
+	uniqueKey := c.Query("unique_key")
+	if uniqueKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+		return
+	}
+	item, err := h.watchlistService.GetStrategyParamsByUniqueKey(uniqueKey)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 // 公开查询：返回 is_public = 1 的 timesfm-best，并联查对应的验证分块数据
 func (h *WatchlistHandler) ListPublicTimesfmBestWithValidation(c *gin.Context) {
 	items, err := h.watchlistService.ListPublicTimesfmBest()

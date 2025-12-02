@@ -33,7 +33,7 @@ const translations = {
     'dashboard.subtitle': 'AI-powered forecasts for your favorite stocks.',
     'dashboard.predictions': 'AI Predictions',
     'dashboard.performance': 'Performance',
-    'dashboard.addStock': 'Add Stock',
+    'dashboard.addStock': 'Add Tracking',
     'dashboard.errorTitle': 'An Error Occurred',
     'dashboard.filters.all': 'All',
     'dashboard.filters.highestConfidence': 'Highest Confidence',
@@ -45,7 +45,7 @@ const translations = {
     'watchlist.title': 'My Watchlist',
     'watchlist.subtitle': 'Track your favorite stocks and monitor their performance.',
     'watchlist.searchPlaceholder': 'Search stocks...',
-    'watchlist.addStock': 'Add Stock',
+    'watchlist.addStock': 'Add Tracking',
     'watchlist.ticker': 'Ticker / Company',
     'watchlist.lastPrice': 'Last Price',
     'watchlist.todayChange': 'Today\'s Change',
@@ -110,6 +110,8 @@ const translations = {
     'login.registerTab': 'Register',
     'login.or': 'OR',
     'login.continueWithGoogle': 'Continue with Google',
+    'login.loginButton': 'Login',
+    'login.registerButton': 'Register',
     
     // Language
     'language.switch': 'Language',
@@ -214,6 +216,8 @@ const translations = {
     'login.registerTab': '注册',
     'login.or': '或',
     'login.continueWithGoogle': '使用Google继续',
+    'login.loginButton': '登录',
+    'login.registerButton': '注册',
     
     // Language
     'language.switch': '语言',

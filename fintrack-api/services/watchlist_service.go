@@ -700,3 +700,90 @@ func (s *WatchlistService) SaveTimesfmBacktest(req *models.SaveTimesfmBacktestRe
 	}
 	return nil
 }
+
+func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequest) error {
+	var uidArg interface{}
+	if req.UserID != nil {
+		uidArg = *req.UserID
+	} else {
+		uidArg = nil
+	}
+	_, err := s.db.Conn.Exec(`
+        INSERT INTO timesfm_strategy_params (
+            unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+            buy_threshold_pct, sell_threshold_pct, initial_cash,
+            enable_rebalance, max_position_pct, min_position_pct,
+            slope_position_per_pct, rebalance_tolerance_pct,
+            trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9,
+            $10, $11, $12,
+            $13, $14,
+            $15, $16, $17
+        )
+        ON CONFLICT (unique_key) DO UPDATE SET
+            user_id = EXCLUDED.user_id,
+            symbol = EXCLUDED.symbol,
+            timesfm_version = EXCLUDED.timesfm_version,
+            context_len = EXCLUDED.context_len,
+            horizon_len = EXCLUDED.horizon_len,
+            buy_threshold_pct = EXCLUDED.buy_threshold_pct,
+            sell_threshold_pct = EXCLUDED.sell_threshold_pct,
+            initial_cash = EXCLUDED.initial_cash,
+            enable_rebalance = EXCLUDED.enable_rebalance,
+            max_position_pct = EXCLUDED.max_position_pct,
+            min_position_pct = EXCLUDED.min_position_pct,
+            slope_position_per_pct = EXCLUDED.slope_position_per_pct,
+            rebalance_tolerance_pct = EXCLUDED.rebalance_tolerance_pct,
+            trade_fee_rate = EXCLUDED.trade_fee_rate,
+            take_profit_threshold_pct = EXCLUDED.take_profit_threshold_pct,
+            take_profit_sell_frac = EXCLUDED.take_profit_sell_frac,
+            updated_at = CURRENT_TIMESTAMP
+    `,
+		req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
+		req.BuyThresholdPct, req.SellThresholdPct, req.InitialCash,
+		req.EnableRebalance, req.MaxPositionPct, req.MinPositionPct,
+		req.SlopePositionPerPct, req.RebalanceTolerancePct,
+		req.TradeFeeRate, req.TakeProfitThresholdPct, req.TakeProfitSellFrac,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to upsert timesfm_strategy_params: %v", err)
+	}
+	return nil
+}
+
+func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*models.StrategyParams, error) {
+	row := s.db.Conn.QueryRow(`
+        SELECT unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+               buy_threshold_pct, sell_threshold_pct, initial_cash,
+               enable_rebalance, max_position_pct, min_position_pct,
+               slope_position_per_pct, rebalance_tolerance_pct,
+               trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac
+        FROM timesfm_strategy_params
+        WHERE unique_key = $1
+        LIMIT 1
+    `, uniqueKey)
+	var item models.StrategyParams
+	var uid sql.NullInt64
+	err := row.Scan(
+		&item.UniqueKey, &uid, &item.Symbol, &item.TimesfmVersion, &item.ContextLen, &item.HorizonLen,
+		&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
+		&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
+		&item.SlopePositionPerPct, &item.RebalanceTolerancePct,
+		&item.TradeFeeRate, &item.TakeProfitThresholdPct, &item.TakeProfitSellFrac,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, sql.ErrNoRows
+		}
+		return nil, fmt.Errorf("failed to query strategy params by unique_key: %v", err)
+	}
+	if uid.Valid {
+		v := int(uid.Int64)
+		item.UserID = &v
+	} else {
+		item.UserID = nil
+	}
+	return &item, nil
+}

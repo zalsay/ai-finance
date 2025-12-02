@@ -208,6 +208,36 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if _, err := h.db.Exec(createForecastTableSQL); err != nil {
         return fmt.Errorf("failed to create timesfm_forecast table: %v", err)
     }
+
+    createStrategyParamsSQL := `
+    CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
+        id SERIAL PRIMARY KEY,
+        unique_key VARCHAR(255) NOT NULL UNIQUE,
+        user_id INTEGER,
+        symbol VARCHAR(20) NOT NULL,
+        timesfm_version VARCHAR(20) NOT NULL,
+        context_len INTEGER NOT NULL,
+        horizon_len INTEGER NOT NULL,
+        buy_threshold_pct DOUBLE PRECISION,
+        sell_threshold_pct DOUBLE PRECISION,
+        initial_cash DOUBLE PRECISION,
+        enable_rebalance BOOLEAN,
+        max_position_pct DOUBLE PRECISION,
+        min_position_pct DOUBLE PRECISION,
+        slope_position_per_pct DOUBLE PRECISION,
+        rebalance_tolerance_pct DOUBLE PRECISION,
+        trade_fee_rate DOUBLE PRECISION,
+        take_profit_threshold_pct DOUBLE PRECISION,
+        take_profit_sell_frac DOUBLE PRECISION,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_strategy_params_symbol ON timesfm_strategy_params(symbol);
+    CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(user_id);
+    `
+    if _, err := h.db.Exec(createStrategyParamsSQL); err != nil {
+        return fmt.Errorf("failed to create timesfm_strategy_params table: %v", err)
+    }
     _, _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_symbol_ds ON timesfm_forecast (symbol, ds);`)
     _, _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_svhl_ds ON timesfm_forecast (symbol, version, horizon_len, ds);`)
 
@@ -304,4 +334,3 @@ func (h *DatabaseHandler) initializeDatabase() error {
     }
     return nil
 }
-
