@@ -149,6 +149,8 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		ValEndDate         string                 `json:"val_end_date"`
 		ContextLen         int                    `json:"context_len"`
 		HorizonLen         int                    `json:"horizon_len"`
+		ShortName          string                 `json:"short_name"`
+		StockType          int                    `json:"stock_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		slog.Error("Error binding JSON: %v", err)
@@ -168,6 +170,19 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 	if req.IsPublic != nil {
 		isPublic = *req.IsPublic
 	}
+	if strings.TrimSpace(req.ShortName) == "" {
+		if req.StockType == 2 {
+			// Try getting ETF data to fill ShortName. Use offset 0 to get the latest record.
+			etfData, errEtf := h.GetEtfDaily(req.Symbol, 1, 0)
+
+			slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
+			if errEtf == nil {
+				if len(etfData) > 0 {
+					req.ShortName = etfData[0].Name
+				}
+			}
+		}
+	}
 	err = h.db.Exec(`
         INSERT INTO timesfm_best_predictions (
             unique_key, symbol, timesfm_version, best_prediction_item, best_metrics,
@@ -175,14 +190,14 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
             train_start_date, train_end_date,
             test_start_date, test_end_date,
             val_start_date, val_end_date,
-            context_len, horizon_len
+            context_len, horizon_len, short_name
         ) VALUES (
             $1, $2, $3, $4, $5::jsonb,
             $6,
             $7::date, $8::date,
             $9::date, $10::date,
             $11::date, $12::date,
-            $13, $14
+            $13, $14, $15
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             symbol = EXCLUDED.symbol,
@@ -198,13 +213,14 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
             val_end_date = EXCLUDED.val_end_date,
             context_len = EXCLUDED.context_len,
             horizon_len = EXCLUDED.horizon_len,
+            short_name = EXCLUDED.short_name,
             updated_at = CURRENT_TIMESTAMP`,
 		req.UniqueKey, req.Symbol, req.TimesfmVersion, req.BestPredictionItem, string(metricsJSON),
 		isPublic,
 		req.TrainStartDate, req.TrainEndDate,
 		req.TestStartDate, req.TestEndDate,
 		req.ValStartDate, req.ValEndDate,
-		req.ContextLen, req.HorizonLen,
+		req.ContextLen, req.HorizonLen, req.ShortName,
 	).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_best_predictions: %v", err)})
