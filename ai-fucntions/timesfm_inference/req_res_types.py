@@ -35,6 +35,7 @@ class ChunkedPredictionResponse:
     stock_code: str
     total_chunks: int
     horizon_len: int
+    context_len: int
     chunk_results: List[ChunkPredictionResult]
     overall_metrics: Dict[str, Any]
     processing_time: float

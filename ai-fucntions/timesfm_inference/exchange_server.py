@@ -27,6 +27,10 @@ from req_res_types import ChunkedPredictionRequest, ChunkedPredictionResponse, C
 from http_client import get_json, post_gzip_json
 import os
 import json
+ak_tools_dir = os.path.join(finance_dir, 'akshare-tools')
+if ak_tools_dir not in sys.path:
+    sys.path.append(ak_tools_dir)
+from postgres import PostgresHandler
 
 @dataclass
 class BacktestTrade:
@@ -445,6 +449,7 @@ def backtest_on_results(
         stock_code=response.stock_code,
         total_chunks=len(chunk_results),
         horizon_len=response.horizon_len,
+        context_len=response.context_len,
         chunk_results=chunk_results,
         overall_metrics=response.overall_metrics,
         processing_time=response.processing_time,
@@ -640,7 +645,7 @@ async def run_backtest(
     # - 如果已有固定分位数，则只预测验证集分块；
     # - 如果没有固定分位数，则进行完整分块预测以选取最佳分位。
     if response is None:
-        if reuest.timesfm_version == "2.0":
+        if request.timesfm_version == "2.0":
             tfm = init_timesfm(horizon_len=request.horizon_len, context_len=request.context_len)
         else:
             tfm = None
@@ -762,47 +767,70 @@ async def save_backtest_result_to_pg(request, response, result):
     try:
         unique_key = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{str(request.timesfm_version)}"
 
+        signals_list = result.get("per_chunk_signals", []) or []
+        signals_map = {}
+        try:
+            for i, item in enumerate(signals_list):
+                key = str(item.get("chunk_index", i))
+                signals_map[key] = item
+        except Exception:
+            signals_map = {}
+
+        def _round4(x):
+            try:
+                return round(float(x), 4)
+            except Exception:
+                return x
+
+        def _round_obj(o):
+            if isinstance(o, float):
+                return _round4(o)
+            if isinstance(o, list):
+                return [_round_obj(v) for v in o]
+            if isinstance(o, dict):
+                return {k: _round_obj(v) for k, v in o.items()}
+            return o
+
         payload = {
             "unique_key": unique_key,
             "symbol": request.stock_code,
             "timesfm_version": str(request.timesfm_version),
             "context_len": int(request.context_len),
             "horizon_len": int(request.horizon_len),
-            "user_id": getattr(request, 'user_id', None),
+            "user_id": int(request.user_id),
 
             "used_quantile": result.get("used_quantile"),
-            "buy_threshold_pct": float(result.get("buy_threshold_pct", 0.0)),
-            "sell_threshold_pct": float(result.get("sell_threshold_pct", 0.0)),
-            "trade_fee_rate": float(result.get("trade_fee_rate", 0.0)),
-            "total_fees_paid": float(result.get("total_fees_paid", 0.0)),
-            "actual_total_return_pct": float(result.get("actual_total_return_pct", 0.0)),
+            "buy_threshold_pct": _round4(result.get("buy_threshold_pct", 0.0)),
+            "sell_threshold_pct": _round4(result.get("sell_threshold_pct", 0.0)),
+            "trade_fee_rate": _round4(result.get("trade_fee_rate", 0.0)),
+            "total_fees_paid": _round4(result.get("total_fees_paid", 0.0)),
+            "actual_total_return_pct": _round4(result.get("actual_total_return_pct", 0.0)),
 
-            "benchmark_return_pct": float(result.get("benchmark_return_pct", 0.0)),
-            "benchmark_annualized_return_pct": float(result.get("benchmark_annualized_return_pct", 0.0)),
+            "benchmark_return_pct": _round4(result.get("benchmark_return_pct", 0.0)),
+            "benchmark_annualized_return_pct": _round4(result.get("benchmark_annualized_return_pct", 0.0)),
             "period_days": int(result.get("period_days", 0)),
 
             "validation_start_date": result.get("validation_start_date"),
             "validation_end_date": result.get("validation_end_date"),
-            "validation_benchmark_return_pct": result.get("validation_benchmark_return_pct"),
-            "validation_benchmark_annualized_return_pct": result.get("validation_benchmark_annualized_return_pct"),
+            "validation_benchmark_return_pct": _round4(result.get("validation_benchmark_return_pct")),
+            "validation_benchmark_annualized_return_pct": _round4(result.get("validation_benchmark_annualized_return_pct")),
             "validation_period_days": int(result.get("validation_period_days", 0)),
 
-            "position_control": result.get("position_control", {}),
-            "predicted_change_stats": result.get("predicted_change_stats", {}),
-            "per_chunk_signals": result.get("per_chunk_signals", []),
+            "position_control": _round_obj(result.get("position_control", {})),
+            "predicted_change_stats": _round_obj(result.get("predicted_change_stats", {})),
+            "per_chunk_signals": _round_obj(signals_map),
 
-            "equity_curve_values": result.get("equity_curve_values", []),
-            "equity_curve_pct": result.get("equity_curve_pct", []),
-            "equity_curve_pct_gross": result.get("equity_curve_pct_gross", []),
+            "equity_curve_values": _round_obj(result.get("equity_curve_values", [])),
+            "equity_curve_pct": _round_obj(result.get("equity_curve_pct", [])),
+            "equity_curve_pct_gross": _round_obj(result.get("equity_curve_pct_gross", [])),
             "curve_dates": result.get("curve_dates", []),
-            "actual_end_prices": result.get("actual_end_prices", []),
-            "trades": result.get("trades", []),
+            "actual_end_prices": _round_obj(result.get("actual_end_prices", [])),
+            "trades": _round_obj(result.get("trades", [])),
         }
 
-        base_url = os.environ.get('FINTRACK_API_URL', 'http://localhost:8081')
-        url = f"{base_url}/api/v1/save-predictions/backtest"
-        status_code, data, body_text = await post_gzip_json(url, payload)
-
+        base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+        async with PostgresHandler(base_url=base_url, api_token="fintrack-dev-token") as pg:
+            status_code, data, body_text = await pg.save_backtest_result(payload)
         if status_code == 200:
             print(f"✅ 回测结果已保存: unique_key={unique_key}")
         else:
@@ -816,12 +844,13 @@ async def save_backtest_result_to_pg(request, response, result):
 if __name__ == "__main__":
     # 测试代码
     test_request = ChunkedPredictionRequest(
+        user_id=1,
         stock_code="sh510050",
         years=10,
         horizon_len=7,
         start_date="20100101",
         end_date="20251114",
-        context_len=4096,
+        context_len=2048,
         time_step=0,
         stock_type=2,
         timesfm_version="2.5",
