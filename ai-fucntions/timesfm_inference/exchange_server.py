@@ -94,21 +94,21 @@ def _select_closest_pct_quantile(chunk_result: ChunkPredictionResult) -> Optiona
 
 def backtest_from_chunked_response(
     response: ChunkedPredictionResponse,
-    buy_threshold_pct: float = 10.0,
-    sell_threshold_pct: float = -3.0,
-    initial_cash: float = 100000.0,
-    fixed_quantile_key: Optional[str] = None,
+    buy_threshold_pct: float = 10.0,  # 买入阈值 (百分比)，默认 10.0%
+    sell_threshold_pct: float = -3.0,  # 卖出阈值 (百分比)，默认 -3.0%
+    initial_cash: float = 100000.0,  # 初始资金，默认 100000.0
+    fixed_quantile_key: Optional[str] = None,  # 固定分位数键名，默认 None
     # 仓位控制参数
-    enable_rebalance: bool = False,
-    max_position_pct: float = 1.0,
-    min_position_pct: float = 0.0,
-    slope_position_per_pct: float = 0.0,
-    rebalance_tolerance_pct: float = 0.05,
-    trade_fee_rate: float = 0.006,
-    actual_total_return_pct: Optional[float] = None,
+    enable_rebalance: bool = False,  # 是否启用仓位重新平衡，默认 False
+    max_position_pct: float = 1.0,  # 最大持仓比例，默认 1.0 (100%)
+    min_position_pct: float = 0.0,  # 最小持仓比例，默认 0.0 (0%)
+    slope_position_per_pct: float = 0.0,  # 仓位调整比率 (每1%价格变化增加/减少的仓位比例)，默认 0.0
+    rebalance_tolerance_pct: float = 0.05,  # 仓位重新平衡容忍度 (百分比)，默认 0.05%
+    trade_fee_rate: float = 0.006,  # 交易手续费率 (每笔交易金额的比例)，默认 0.6%
+    actual_total_return_pct: Optional[float] = None,  # 实际总体涨跌幅 (百分比)，默认 None
     # 累计收益止盈参数
-    take_profit_threshold_pct: float = 10.0,
-    take_profit_sell_frac: float = 0.5,
+    take_profit_threshold_pct: float = 10.0,  # 累计收益止盈阈值 (百分比)，默认 10.0%
+    take_profit_sell_frac: float = 0.5,  # 止盈时卖出比例，默认 0.5 (50%)
 ) -> Dict[str, Any]:
     """
     基于分块预测结果进行回测
@@ -555,6 +555,17 @@ def _load_cached_chunked_response(stock_code: str) -> Optional[ChunkedPrediction
         print(f"⚠️ 加载缓存的分块响应失败: {e}")
         return None
 
+async def fetch_strategy_params(unique_key: str) -> Optional[Dict[str, Any]]:
+    status_code, data, text = await get_json(
+        "/api/v1/strategy/params/by-unique",
+        params={"unique_key": unique_key},
+        headers={"Accept-Encoding": "gzip, deflate", "X-Token": "fintrack-dev-token"},
+    )
+    if status_code == 200 and data:
+        if isinstance(data, dict):
+            return data.get("Data") or data.get("data") or data
+    return None
+
 async def run_backtest(
     request: ChunkedPredictionRequest,
     buy_threshold_pct: float = 3.0,
@@ -592,6 +603,52 @@ async def run_backtest(
     Returns:
         Dict[str, Any]: 包含预测响应和回测结果的字典
     """    
+    try:
+        _uk = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}"
+        _sp = await fetch_strategy_params(_uk)
+        if _sp:
+            _v = _sp.get("buy_threshold_pct")
+            if _v is not None:
+                buy_threshold_pct = float(_v)
+            _v = _sp.get("sell_threshold_pct")
+            if _v is not None:
+                sell_threshold_pct = float(_v)
+            _v = _sp.get("initial_cash")
+            if _v is not None:
+                initial_cash = float(_v)
+            _v = _sp.get("enable_rebalance")
+            if _v is not None:
+                enable_rebalance = bool(_v)
+            _v = _sp.get("max_position_pct")
+            if _v is not None:
+                max_position_pct = float(_v)
+            _v = _sp.get("min_position_pct")
+            if _v is not None:
+                min_position_pct = float(_v)
+            _v = _sp.get("slope_position_per_pct")
+            if _v is not None:
+                slope_position_per_pct = float(_v)
+            _v = _sp.get("rebalance_tolerance_pct")
+            if _v is not None:
+                rebalance_tolerance_pct = float(_v)
+            _v = _sp.get("trade_fee_rate")
+            if _v is not None:
+                trade_fee_rate = float(_v)
+            _v = _sp.get("take_profit_threshold_pct")
+            if _v is not None:
+                try:
+                    take_profit_threshold_pct = float(_v)
+                except Exception:
+                    pass
+            _v = _sp.get("take_profit_sell_frac")
+            if _v is not None:
+                try:
+                    take_profit_sell_frac = float(_v)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     # 选择用于回测的固定分位数：优先读取 Go 后端，其次本地 JSON，然后环境变量，最后回退到响应中的测试集最佳分位
     fixed_quantile_key = None
     # 优先从Go后端查询是否已存在记录：/api/v1/predictions/timesfm-best/by-unique?unique_key=...

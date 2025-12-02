@@ -98,7 +98,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                                     predictions: allPreds
                                 }
                             }
-                        };
+                        } as StockData;
                     }).filter((item): item is StockData => item !== null);
                     setPublicStocks(mapped);
                 }
@@ -166,7 +166,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                         <span className="truncate">{t('dashboard.addStock')}</span>
                     </button>
                 </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 hidden">
                     {filters.map(filter => (
                         <FilterChip
                             key={filter}

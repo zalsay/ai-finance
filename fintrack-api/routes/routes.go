@@ -109,13 +109,17 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			getPredictions.GET("/mtf-best/public", watchlistHandler.ListPublicTimesfmBestWithValidation)
 		}
 
-
-
 		// TimesFM 推理与回测代理路由
 		timesfm := v1.Group("/mtf")
 		{
 			timesfm.POST("/predict", watchlistHandler.TriggerTimesfmPredict)
 			timesfm.POST("/backtest", authHandler.AuthMiddleware(), watchlistHandler.RunTimesfmBacktestProxy)
+		}
+
+		strategy := v1.Group("/strategy")
+		{
+			strategy.POST("/params", watchlistHandler.SaveStrategyParams)
+			strategy.GET("/params/by-unique", watchlistHandler.GetStrategyParamsByUniqueKey)
 		}
 
 		// 股票相关路由（预留）

@@ -1,9 +1,10 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View } from '../../types';
 import { NAVIGATION_ITEMS } from '../../constants';
 import { useLanguage } from '../../contexts/LanguageContext';
 import LanguageSwitcher from './LanguageSwitcher';
+import { authAPI } from '../../services/apiService';
 
 interface SidebarProps {
   currentView: View;
@@ -13,20 +14,32 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout }) => {
     const { t } = useLanguage();
+    const [userEmail, setUserEmail] = useState<string>('');
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                const user = await authAPI.getProfile();
+                setUserEmail(user.email);
+            } catch (error) {
+                console.error('Failed to fetch user profile', error);
+            }
+        };
+        fetchProfile();
+    }, []);
     
     return (
         <aside className="w-64 shrink-0 bg-background-dark p-4 flex-col justify-between hidden lg:flex">
             <div className="flex flex-col gap-8">
                 <div className="flex items-center gap-2 px-2">
                     <span className="material-symbols-outlined text-primary text-3xl">trending_up</span>
-                    <h1 className="text-white text-xl font-bold">FinTrack AI</h1>
+                    <h1 className="text-white text-xl font-bold">MeetLife AI</h1>
                 </div>
                 <div className="flex flex-col gap-4">
                     <div className="flex gap-3 px-2">
-                        <img className="size-10 rounded-full object-cover" src="https://picsum.photos/seed/user/40/40" alt="User avatar" />
                         <div className="flex flex-col">
-                            <h2 className="text-white text-base font-medium leading-normal">Alex Doe</h2>
-                            <p className="text-white/60 text-sm font-normal leading-normal">alex.doe@email.com</p>
+                            <h2 className="text-white text-base font-medium leading-normal">Hello</h2>
+                            <p className="text-white/60 text-sm font-normal leading-normal">{userEmail || 'Loading...'}</p>
                         </div>
                     </div>
                     

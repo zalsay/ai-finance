@@ -219,3 +219,43 @@ type TimesfmBacktestRequest struct {
     TakeProfitThresholdPct *float64 `json:"take_profit_threshold_pct,omitempty"`
     TakeProfitSellFrac *float64 `json:"take_profit_sell_frac,omitempty"`
 }
+
+type StrategyParams struct {
+    UniqueKey              string   `json:"unique_key" db:"unique_key"`
+    UserID                 *int     `json:"user_id" db:"user_id"`
+    Symbol                 string   `json:"symbol" db:"symbol"`
+    TimesfmVersion         string   `json:"timesfm_version" db:"timesfm_version"`
+    ContextLen             int      `json:"context_len" db:"context_len"`
+    HorizonLen             int      `json:"horizon_len" db:"horizon_len"`
+    BuyThresholdPct        float64  `json:"buy_threshold_pct" db:"buy_threshold_pct"`
+    SellThresholdPct       float64  `json:"sell_threshold_pct" db:"sell_threshold_pct"`
+    InitialCash            float64  `json:"initial_cash" db:"initial_cash"`
+    EnableRebalance        bool     `json:"enable_rebalance" db:"enable_rebalance"`
+    MaxPositionPct         float64  `json:"max_position_pct" db:"max_position_pct"`
+    MinPositionPct         float64  `json:"min_position_pct" db:"min_position_pct"`
+    SlopePositionPerPct    float64  `json:"slope_position_per_pct" db:"slope_position_per_pct"`
+    RebalanceTolerancePct  float64  `json:"rebalance_tolerance_pct" db:"rebalance_tolerance_pct"`
+    TradeFeeRate           float64  `json:"trade_fee_rate" db:"trade_fee_rate"`
+    TakeProfitThresholdPct float64  `json:"take_profit_threshold_pct" db:"take_profit_threshold_pct"`
+    TakeProfitSellFrac     float64  `json:"take_profit_sell_frac" db:"take_profit_sell_frac"`
+}
+
+type SaveStrategyParamsRequest struct {
+    UniqueKey              string   `json:"unique_key" binding:"required"`
+    UserID                 *int     `json:"user_id"`
+    Symbol                 string   `json:"symbol" binding:"required"`
+    TimesfmVersion         string   `json:"timesfm_version" binding:"required"`
+    ContextLen             int      `json:"context_len" binding:"required"`
+    HorizonLen             int      `json:"horizon_len" binding:"required"`
+    BuyThresholdPct        float64  `json:"buy_threshold_pct"`
+    SellThresholdPct       float64  `json:"sell_threshold_pct"`
+    InitialCash            float64  `json:"initial_cash"`
+    EnableRebalance        bool     `json:"enable_rebalance"`
+    MaxPositionPct         float64  `json:"max_position_pct"`
+    MinPositionPct         float64  `json:"min_position_pct"`
+    SlopePositionPerPct    float64  `json:"slope_position_per_pct"`
+    RebalanceTolerancePct  float64  `json:"rebalance_tolerance_pct"`
+    TradeFeeRate           float64  `json:"trade_fee_rate"`
+    TakeProfitThresholdPct float64  `json:"take_profit_threshold_pct"`
+    TakeProfitSellFrac     float64  `json:"take_profit_sell_frac"`
+}
