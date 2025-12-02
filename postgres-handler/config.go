@@ -214,10 +214,6 @@ func (h *DatabaseHandler) initializeDatabase() error {
         id SERIAL PRIMARY KEY,
         unique_key VARCHAR(255) NOT NULL UNIQUE,
         user_id INTEGER,
-        symbol VARCHAR(20) NOT NULL,
-        timesfm_version VARCHAR(20) NOT NULL,
-        context_len INTEGER NOT NULL,
-        horizon_len INTEGER NOT NULL,
         buy_threshold_pct DOUBLE PRECISION,
         sell_threshold_pct DOUBLE PRECISION,
         initial_cash DOUBLE PRECISION,
@@ -232,7 +228,6 @@ func (h *DatabaseHandler) initializeDatabase() error {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
-    CREATE INDEX IF NOT EXISTS idx_strategy_params_symbol ON timesfm_strategy_params(symbol);
     CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(user_id);
     `
     if _, err := h.db.Exec(createStrategyParamsSQL); err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -458,24 +459,24 @@ func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
         return
     }
     if strings.TrimSpace(req.UniqueKey) == ""  {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key, symbol, timesfm_version are required"})
+        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
         return
     }
     var uidArg interface{}
     if req.UserID != nil { uidArg = *req.UserID } else { uidArg = nil }
     _, err := h.db.Exec(`
         INSERT INTO timesfm_strategy_params (
-            unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+            unique_key, user_id,
             buy_threshold_pct, sell_threshold_pct, initial_cash,
             enable_rebalance, max_position_pct, min_position_pct,
             slope_position_per_pct, rebalance_tolerance_pct,
             trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac
         ) VALUES (
-            $1, $2, $3, $4, $5, $6,
-            $7, $8, $9,
-            $10, $11, $12,
-            $13, $14,
-            $15, $16, $17
+            $1, $2,
+            $3, $4, $5,
+            $6, $7, $8,
+            $9, $10,
+            $11, $12, $13
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             user_id = EXCLUDED.user_id,
@@ -506,7 +507,12 @@ func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
 
 func (h *DatabaseHandler) getStrategyParamsByUniqueKeyHandler(c *gin.Context) {
     uniqueKey := c.Query("unique_key")
-    if strings.TrimSpace(uniqueKey) == "" || c.Query("user_id") == "" {
+    userId, err := strconv.Atoi(c.Query("user_id"))
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "user_id must be an integer"})
+        return
+    }
+    if strings.TrimSpace(uniqueKey) == "" || userId == 0 {
         c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key and user_id are required"})
         return
     }
@@ -518,8 +524,8 @@ func (h *DatabaseHandler) getStrategyParamsByUniqueKeyHandler(c *gin.Context) {
                trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac,
                created_at, updated_at
         FROM timesfm_strategy_params
-        WHERE unique_key = $1
-        LIMIT 1`, uniqueKey)
+        WHERE unique_key = $1 AND user_id = $2
+        LIMIT 1`, uniqueKey, userId)
     var item StrategyParams
     var uid sql.NullInt64
     if err := row.Scan(
@@ -539,6 +545,53 @@ func (h *DatabaseHandler) getStrategyParamsByUniqueKeyHandler(c *gin.Context) {
     }
     if uid.Valid { v := int(uid.Int64); item.UserID = &v } else { item.UserID = nil }
     c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: item})
+}
+
+func (h *DatabaseHandler) getStrategyParamsByUserHandler(c *gin.Context) {
+    uidStr := c.Query("user_id")
+    if strings.TrimSpace(uidStr) == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+        return
+    }
+    uid, err := strconv.Atoi(uidStr)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
+        return
+    }
+    rows, err := h.db.Query(`
+        SELECT unique_key, user_id,
+               buy_threshold_pct, sell_threshold_pct, initial_cash,
+               enable_rebalance, max_position_pct, min_position_pct,
+               slope_position_per_pct, rebalance_tolerance_pct,
+               trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac,
+               created_at, updated_at
+        FROM timesfm_strategy_params
+        WHERE user_id = $1
+        ORDER BY updated_at DESC`, uid)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    defer rows.Close()
+    list := []StrategyParams{}
+    for rows.Next() {
+        var item StrategyParams
+        var uidN sql.NullInt64
+        if err := rows.Scan(
+            &item.UniqueKey, &uidN,
+            &item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
+            &item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
+            &item.SlopePositionPerPct, &item.RebalanceTolerancePct,
+            &item.TradeFeeRate, &item.TakeProfitThresholdPct, &item.TakeProfitSellFrac,
+            &item.CreatedAt, &item.UpdatedAt,
+        ); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        if uidN.Valid { v := int(uidN.Int64); item.UserID = &v } else { item.UserID = nil }
+        list = append(list, item)
+    }
+    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: list})
 }
 
 func (h *DatabaseHandler) insertStockDataHandler(c *gin.Context) {
