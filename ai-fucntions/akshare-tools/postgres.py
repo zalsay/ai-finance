@@ -491,25 +491,21 @@ class PostgresHandler:
                     return await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
                 return self._records_to_df([])
 
-            # 检查最新日期是否覆盖到 end_date
-            # 统一为 tz-naive，避免比较时报错
             latest_dt = pd.to_datetime(df["datetime"], errors="coerce", utc=True).dt.tz_localize(None).max()
             trading_days = get_trading_days(start_compact, end_compact, need_=False)
             if not trading_days:
                 return df
-            target_end_trading = pd.Timestamp(trading_days[-1]) + pd.Timedelta(hours=8)
-            if pd.isna(latest_dt) or latest_dt < target_end_trading:
-                # 计算增量开始日期：已经存在最新日期 + 1 天，与 start_date 取较晚者
+            target_end_date = pd.Timestamp(trading_days[-1]).date()
+            if pd.isna(latest_dt) or pd.Timestamp(latest_dt).date() < target_end_date:
                 if pd.isna(latest_dt):
                     incr_start_compact = start_compact
                 else:
-                    incr_start_compact = self._to_yyyymmdd(latest_dt.to_pydatetime() + timedelta(days=1))
-                    # 若用户给定的 start_date 更晚，则用用户给定的
+                    incr_start_compact = self._to_yyyymmdd(pd.Timestamp(latest_dt).to_pydatetime() + timedelta(days=1))
                     given_start_compact = start_compact
                     if pd.Timestamp(given_start_compact) > pd.Timestamp(incr_start_compact):
                         incr_start_compact = given_start_compact
 
-                logger.info(f"最新日期 {latest_dt} 未覆盖到 {target_end_trading}，增量同步: {symbol} {incr_start_compact}~{end_compact}")
+                logger.info(f"最新日期 {pd.Timestamp(latest_dt).date() if not pd.isna(latest_dt) else 'NaT'} 未覆盖到 {target_end_date}，增量同步: {symbol} {incr_start_compact}~{end_compact}")
                 await self.sync_stock(symbol, stock_type=stock_type, batch_size=batch_size)
                 if requery:
                     return await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
