@@ -1,251 +1,164 @@
 
 import React, { useState, useEffect } from 'react';
-import { StockData } from '../../types';
-import StockPredictionCard from './StockPredictionCard';
-import AddStockModal from './AddStockModal';
+import { StockData, MarketStatus } from '../../types';
+import { getMarketStatus, getPublicPredictions, watchlistAPI } from '../../services/apiService';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { watchlistAPI, getPublicPredictions } from '../../services/apiService';
+import StockChart from './StockChart';
 
-interface DashboardProps {
-    stocks: StockData[];
-    isLoading: boolean;
-    error: string | null;
-    onRefresh?: () => void;
-}
-
-const FilterChip: React.FC<{ label: string; active?: boolean; onClick: () => void; }> = ({ label, active, onClick }) => (
-    <div
-        onClick={onClick}
-        className={`flex h-8 shrink-0 items-center justify-center gap-x-2 rounded-full px-4 cursor-pointer transition-colors ${active ? 'bg-primary/20 text-primary' : 'bg-white/10 text-white/80 hover:bg-white/20'
-            }`}
-    >
-        <p className="text-sm font-medium leading-normal">{label}</p>
-    </div>
-);
-
-
-const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: propIsLoading, error: propError, onRefresh }) => {
+const Dashboard: React.FC = () => {
     const { t, language } = useLanguage();
-    const [activeFilter, setActiveFilter] = useState('All');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const filters = ['All', 'Highest Confidence', 'Potential Growth', 'Bullish', 'Bearish'];
-    
+    const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
     const [publicStocks, setPublicStocks] = useState<StockData[]>([]);
-    const [isFetching, setIsFetching] = useState(true);
-    const [fetchError, setFetchError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [addingToWatchlist, setAddingToWatchlist] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchPublic = async () => {
-            setIsFetching(true);
-            setFetchError(null);
+        const fetchData = async () => {
             try {
-                const res = await getPublicPredictions();
-                if (res && res.items) {
-                     const mapped = res.items.map(item => {
-                        const bestItemKey = item.best.best_prediction_item;
-                        const contextLen = item.best.context_len;
-                        const horizonLen = item.best.horizon_len;
-                        // Sort chunks by date ascending (oldest first)
-                        const sortedChunks = (item.chunks || []).sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
-                        
-                        let allDates: string[] = [];
-                        let allActuals: number[] = [];
-                        let allPreds: number[] = [];
-
-                        sortedChunks.forEach(chunk => {
-                            if (chunk.dates && chunk.dates.length > 0) {
-                                allDates = allDates.concat(chunk.dates);
-                                allActuals = allActuals.concat(chunk.actual_values || []);
-                                const chunkPreds = chunk.predictions[bestItemKey] || [];
-                                allPreds = allPreds.concat(chunkPreds);
-                            }
-                        });
-
-                        if (allDates.length === 0) return null;
-
-                        const lastActual = allActuals.length > 0 ? allActuals[allActuals.length - 1] : 0;
-                        const lastPred = allPreds.length > 0 ? allPreds[allPreds.length - 1] : 0;
-                        const lastDate = allDates.length > 0 ? allDates[allDates.length - 1] : "";
-
-                        // If no actual data (future forecast), use pred as current? Or 0?
-                        // Let's assume there is some actual data, or we use pred as "Target"
-                        const price = lastActual || lastPred;
-                        
-                        // Calculate change based on first and last actual values of the chunks
-                        let startPrice = 0;
-                        if (allActuals.length > 0) {
-                            startPrice = allActuals[0];
-                        }
-                        const endPrice = lastActual;
-                        const change = startPrice > 0 ? ((endPrice - startPrice) / startPrice) * 100 : 0;
-
-                        // Calculate predicted change
-                        let startPred = 0;
-                        if (allPreds.length > 0) {
-                            startPred = allPreds[0];
-                        }
-                        const endPred = lastPred;
-                        const predictedChange = startPred > 0 ? ((endPred - startPred) / startPred) * 100 : 0;
-
-                        // Calculate confidence from best_metrics
-                        let confidence = 85;
-                        try {
-                            const metrics = JSON.parse(item.best.best_metrics);
-                            if (metrics && typeof metrics.composite_score === 'number') {
-                                confidence = 100 - metrics.composite_score;
-                            }
-                        } catch (e) {
-                            // Keep default
-                        }
-
-                        return {
-                            symbol: item.best.symbol,
-                            companyName: item.best.short_name || item.best.symbol,
-                            currentPrice: price,
-                            changePercent: change,
-                            predictedChangePercent: predictedChange,
-                            prediction: {
-                                predicted_high: lastPred,
-                                predicted_low: lastPred,
-                                confidence: parseFloat(confidence.toFixed(4)),
-                                sentiment: change > 0 ? 'Bullish' : 'Bearish',
-                                analysis: language === 'zh' 
-                                    ? `最佳模型: ${bestItemKey} 上下文: ${contextLen ? Math.round(contextLen/1024) : '?'}K 预测: ${horizonLen || '?'}天`
-                                    : `Best: ${bestItemKey} Ctx: ${contextLen ? Math.round(contextLen/1024) : '?'}K Hor: ${horizonLen || '?'}d`,
-                                modelName: bestItemKey,
-                                contextLen: contextLen,
-                                horizonLen: horizonLen,
-                                maxDeviationPercent: item.max_deviation_percent,
-                                chartData: {
-                                    dates: allDates,
-                                    actuals: allActuals,
-                                    predictions: allPreds
-                                }
-                            }
-                        } as StockData;
-                    }).filter((item): item is StockData => item !== null);
+                const [statusRes, publicRes] = await Promise.all([
+                    getMarketStatus(),
+                    getPublicPredictions()
+                ]);
+                setMarketStatus(statusRes);
+                
+                if (publicRes && publicRes.items) {
+                    const mapped = publicRes.items.map(item => ({
+                        symbol: item.best.symbol,
+                        companyName: item.best.short_name || item.best.symbol,
+                        currentPrice: 0, // Public endpoint doesn't provide price
+                        changePercent: 0,
+                        uniqueKey: item.best.unique_key
+                    }));
                     setPublicStocks(mapped);
                 }
-            } catch (e: any) {
-                console.error("Fetch error", e);
-                setFetchError(e.message || "Failed to load public predictions");
+            } catch (err) {
+                console.error('Failed to fetch dashboard data:', err);
+                setError('Failed to load dashboard data');
             } finally {
-                setIsFetching(false);
+                setIsLoading(false);
             }
         };
-        fetchPublic();
-    }, [language]);
 
-    const handleAddStock = async (symbol: string) => {
-        await watchlistAPI.addToWatchlist(symbol);
-        // Refresh dashboard after adding stock
-        if (onRefresh) {
-            onRefresh();
+        fetchData();
+    }, []);
+
+    const handleAddToWatchlist = async (symbol: string) => {
+        setAddingToWatchlist(symbol);
+        try {
+            await watchlistAPI.addToWatchlist({ symbol });
+            // Optional: Show success toast
+        } catch (error) {
+            console.error('Failed to add to watchlist:', error);
+            // Optional: Show error toast
+        } finally {
+            setAddingToWatchlist(null);
         }
     };
 
-    const displayStocks = publicStocks;
-    const isLoading = isFetching;
-    const error = propError || fetchError;
-
-    const filteredStocks = displayStocks.filter(stock => {
-        if (!stock.prediction) return activeFilter === 'All';
-        switch (activeFilter) {
-            case 'Highest Confidence':
-                return stock.prediction.confidence > 85;
-            case 'Potential Growth':
-                return (stock.prediction.predicted_high / stock.currentPrice - 1) * 100 > 5;
-            case 'Bullish':
-                return stock.prediction.sentiment === 'Bullish';
-            case 'Bearish':
-                return stock.prediction.sentiment === 'Bearish';
-            default:
-                return true;
-        }
-    });
+    if (isLoading) {
+        return (
+            <div className="flex flex-col gap-6">
+                <header className="flex flex-wrap justify-between gap-4 items-center">
+                    <div className="flex flex-col gap-1">
+                        <h1 className="text-white text-4xl font-black leading-tight tracking-[-0.033em]">
+                            {t('dashboard.title')}
+                        </h1>
+                        <p className="text-white/60 text-base font-normal leading-normal">
+                            {t('dashboard.subtitle')}
+                        </p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button className="flex items-center justify-center p-2 rounded-lg text-white/80 bg-white/5 hover:bg-white/10 transition-colors">
+                            <span className="material-symbols-outlined">notifications</span>
+                        </button>
+                        <button className="flex items-center justify-center p-2 rounded-lg text-white/80 bg-white/5 hover:bg-white/10 transition-colors">
+                            <span className="material-symbols-outlined">settings</span>
+                        </button>
+                    </div>
+                </header>
+                <div className="flex items-center justify-center h-64">
+                    <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
             <header className="flex flex-wrap justify-between gap-4 items-center">
                 <div className="flex flex-col gap-1">
-                    <h1 className="text-white text-4xl font-black leading-tight tracking-[-0.033em]">{t('dashboard.title')}</h1>
-                    <p className="text-white/60 text-base font-normal leading-normal">{t('dashboard.subtitle')}</p>
+                    <h1 className="text-white text-4xl font-black leading-tight tracking-[-0.033em]">
+                        {t('dashboard.title')}
+                    </h1>
+                    <p className="text-white/60 text-base font-normal leading-normal">
+                        {t('dashboard.subtitle')}
+                    </p>
                 </div>
-            </header>
-            <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap justify-between gap-2 items-center">
-                    <div className="flex gap-2">
-                        <button className="flex items-center justify-center p-2 rounded-lg text-white/80 bg-white/5 hover:bg-white/10 transition-colors">
-                            <span className="material-symbols-outlined text-xl">calendar_today</span>
-                        </button>
-                        <button className="flex items-center justify-center p-2 rounded-lg text-white/80 bg-white/5 hover:bg-white/10 transition-colors">
-                            <span className="material-symbols-outlined text-xl">sort</span>
-                        </button>
-                    </div>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="flex items-center justify-center gap-2 px-4 h-10 rounded-lg bg-primary text-background-dark text-sm font-bold leading-normal tracking-[0.015em] hover:opacity-90 transition-opacity"
-                    >
-                        <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
-                        <span className="truncate">{t('dashboard.addStock')}</span>
+                <div className="flex gap-2">
+                    <button className="flex items-center justify-center p-2 rounded-lg text-white/80 bg-white/5 hover:bg-white/10 transition-colors">
+                        <span className="material-symbols-outlined">notifications</span>
+                    </button>
+                    <button className="flex items-center justify-center p-2 rounded-lg text-white/80 bg-white/5 hover:bg-white/10 transition-colors">
+                        <span className="material-symbols-outlined">settings</span>
                     </button>
                 </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 hidden">
-                    {filters.map(filter => (
-                        <FilterChip
-                            key={filter}
-                            label={t(`dashboard.filter${filter.replace(/\s+/g, '')}`)}
-                            active={activeFilter === filter}
-                            onClick={() => setActiveFilter(filter)}
-                        />
-                    ))}
-                </div>
+            </header>
+
+            {/* Market Status Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {marketStatus?.indices.map((index) => (
+                    <div key={index.name} className="bg-[#1C1C1C] rounded-xl p-4 border border-white/10">
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="text-white/60 text-sm">{index.name}</span>
+                            <span className={`text-sm font-medium ${index.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {index.change >= 0 ? '+' : ''}{index.change}%
+                            </span>
+                        </div>
+                        <div className="text-white text-xl font-bold">{index.value.toLocaleString()}</div>
+                    </div>
+                ))}
             </div>
 
-            {error && (
-                <div className="bg-red-900/50 border border-red-500/50 text-red-300 p-4 rounded-lg text-center">
-                    <p className="font-bold">{t('dashboard.errorTitle')}</p>
-                    <p className="text-sm">{error}</p>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-6">
-                {isLoading ? (
-                    Array.from({ length: 6 }).map((_, index) => (
-                        <div key={index} className="flex flex-col gap-4 rounded-xl border border-white/10 bg-card-dark p-6 min-h-[350px] animate-pulse">
-                            <div className="flex justify-between items-start">
+            {/* Public Predictions / Market Overview */}
+            <section>
+                <h2 className="text-white text-xl font-bold mb-4">
+                    {language === 'zh' ? '市场概览' : 'Market Overview'}
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {publicStocks.map((stock) => (
+                        <div key={stock.symbol} className="bg-[#1C1C1C] rounded-xl p-4 border border-white/10">
+                            <div className="flex justify-between items-start mb-4">
                                 <div>
-                                    <div className="h-6 w-16 bg-white/10 rounded"></div>
-                                    <div className="h-4 w-24 bg-white/10 rounded mt-2"></div>
+                                    <div className="text-white font-bold text-lg">{stock.symbol}</div>
+                                    <div className="text-white/60 text-sm">{stock.companyName}</div>
                                 </div>
-                                <div>
-                                    <div className="h-8 w-20 bg-white/10 rounded"></div>
-                                    <div className="h-4 w-12 bg-white/10 rounded mt-2 ml-auto"></div>
-                                </div>
+                                <button 
+                                    onClick={() => handleAddToWatchlist(stock.symbol)}
+                                    disabled={addingToWatchlist === stock.symbol}
+                                    className="flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-50"
+                                    title={language === 'zh' ? "添加到关注列表" : "Add to Watchlist"}
+                                >
+                                    {addingToWatchlist === stock.symbol ? (
+                                        <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                                    ) : (
+                                        <span className="material-symbols-outlined text-sm">add</span>
+                                    )}
+                                </button>
                             </div>
-                            <div className="flex-1 bg-white/5 rounded-lg"></div>
-                            <div className="h-4 w-full bg-white/10 rounded"></div>
-                            <div className="flex justify-between items-center">
-                                <div className="h-4 w-1/3 bg-white/10 rounded"></div>
-                                <div className="h-4 w-1/4 bg-white/10 rounded"></div>
+                            <div className="h-32 bg-white/5 rounded-lg flex items-center justify-center mb-2">
+                                <span className="text-white/20 text-sm">Chart Preview</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-white/40">
+                                    {language === 'zh' ? '预测置信度' : 'Prediction Confidence'}
+                                </span>
+                                <span className="text-green-400 font-medium">High</span>
                             </div>
                         </div>
-                    ))
-                ) : (
-                    filteredStocks.map(stock => <StockPredictionCard key={stock.symbol} stock={stock} />)
-                )}
-            </div>
-            {!isLoading && filteredStocks.length === 0 && (
-                <div className="text-center col-span-full py-12 bg-card-dark rounded-xl">
-                    <p className="text-white/80">{t('dashboard.noStocks')}</p>
+                    ))}
                 </div>
-            )}
-
-            <AddStockModal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                onAdd={handleAddStock}
-            />
+            </section>
         </div>
     );
 };
