@@ -51,6 +51,7 @@ export interface WatchlistItem {
   };
   added_at: string;
   notes?: string;
+  unique_key?: string;
 }
 
 export interface WatchlistResponse {
@@ -141,51 +142,44 @@ export const authAPI = {
 
 // 关注列表API
 export const watchlistAPI = {
-  // 获取关注列表
-  getWatchlist: async (): Promise<WatchlistResponse> => {
-    return apiRequest('/watchlist');
+  getWatchlist: async () => {
+    return apiRequest<{ watchlist: WatchlistItem[] }>('/watchlist', { method: 'GET' });
   },
-
-  // 添加股票到关注列表
-  addToWatchlist: async (symbol: string, notes?: string): Promise<{ message: string }> => {
-    return apiRequest('/watchlist', {
+  addToWatchlist: async (data: AddToWatchlistRequest) => {
+    return apiRequest<{ message: string; id: number }>('/watchlist', {
       method: 'POST',
-      body: JSON.stringify({ symbol, notes: notes || '' }),
+      body: JSON.stringify(data),
     });
   },
-
-  // 从关注列表删除股票
-  removeFromWatchlist: async (id: number): Promise<{ message: string }> => {
-    return apiRequest(`/watchlist/${id}`, { method: 'DELETE' });
+  removeFromWatchlist: async (id: number) => {
+    return apiRequest<{ message: string }>(`/watchlist/${id}`, { method: 'DELETE' });
   },
-
-  // 更新关注列表项目
-  updateWatchlistItem: async (id: number, notes: string): Promise<WatchlistItem> => {
-    return apiRequest(`/watchlist/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ notes }),
-    });
-  },
-};
-
-// 股票API
-export const stockAPI = {
-  // 获取所有股票
-  getStocks: async (): Promise<any> => {
-    return apiRequest('/stocks');
-  },
-
-  // 获取特定股票信息
-  getStock: async (symbol: string): Promise<any> => {
-    return apiRequest(`/stocks/${symbol}`);
-  },
-};
-
-// 检查用户是否已登录
-export const isAuthenticated = (): boolean => {
-  return !!getAuthToken();
 };
 
 export const getPublicPredictions = async (): Promise<PublicPredictionResponse> => {
-  return apiRequest('/get-predictions/mtf-best/public');
+  return apiRequest<PublicPredictionResponse>('/predictions/public', { method: 'GET' });
+};
+
+export const getMarketStatus = async () => {
+  // Mock data for market status
+  return Promise.resolve({
+    indices: [
+      { name: 'S&P 500', value: 4783.45, change: 1.2 },
+      { name: 'NASDAQ', value: 15055.65, change: 1.5 },
+      { name: 'DOW', value: 37695.73, change: 0.8 },
+      { name: 'VIX', value: 12.45, change: -5.2 }
+    ]
+  });
+};
+
+export const strategyAPI = {
+  saveParams: async (params: any): Promise<{ message: string; unique_key: string }> => {
+    return apiRequest('/strategy/params', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+  getParams: async (uniqueKey: string): Promise<any> => {
+    return apiRequest(`/strategy/params/by-unique?unique_key=${uniqueKey}`);
+  },
 };

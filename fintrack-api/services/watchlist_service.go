@@ -41,10 +41,19 @@ func (s *WatchlistService) AddToWatchlist(userID int, req *models.AddToWatchlist
 func (s *WatchlistService) GetWatchlist(userID int) ([]models.WatchlistItem, error) {
 	rows, err := s.db.Conn.Query(`
 		SELECT 
-			id, symbol, added_at, notes
-		FROM user_watchlist
-		WHERE user_id = $1
-		ORDER BY added_at DESC
+			uw.id, uw.symbol, uw.added_at, uw.notes,
+			COALESCE(tbp.unique_key, ''),
+			COALESCE(tbp.timesfm_version, '')
+		FROM user_watchlist uw
+		LEFT JOIN LATERAL (
+			SELECT unique_key, timesfm_version
+			FROM timesfm_best_predictions
+			WHERE symbol = uw.symbol
+			ORDER BY created_at DESC
+			LIMIT 1
+		) tbp ON true
+		WHERE uw.user_id = $1
+		ORDER BY uw.added_at DESC
 	`, userID)
 
 	if err != nil {
@@ -55,14 +64,30 @@ func (s *WatchlistService) GetWatchlist(userID int) ([]models.WatchlistItem, err
 	var items []models.WatchlistItem
 	for rows.Next() {
 		var item models.WatchlistItem
+		var uniqueKey, version string
 
 		err := rows.Scan(
 			&item.ID, &item.Stock.Symbol, &item.AddedAt, &item.Notes,
+			&uniqueKey, &version,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan watchlist item: %v", err)
 		}
-
+		
+		// Assuming WatchlistItem has a field for uniqueKey or we put it in notes/stock struct
+		// But stock struct is shared. Let's add UniqueKey to WatchlistItem in models first.
+		// For now, I'll add it to the WatchlistItem struct in next step.
+		// Wait, I cannot modify models in this tool call if I don't have the file open.
+		// I will use a temporary field or check if I can extend the model.
+		// Let's modify models/stock.go first to add UniqueKey to WatchlistItem.
+		
+		// Wait, I can't modify two files in one tool call unless I use shell or multiple calls.
+		// I will revert this mental step and modify models/stock.go first.
+		// But I'm already in edit_file_fast_apply for watchlist_service.go.
+		// I will just retrieve it but I need a place to store it.
+		// I'll just assume I will add it to models.WatchlistItem.
+		
+		item.UniqueKey = uniqueKey
 		items = append(items, item)
 	}
 

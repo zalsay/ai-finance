@@ -2,11 +2,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { StockPrediction } from '../types';
 
-if (!process.env.API_KEY) {
-    console.warn("API_KEY environment variable not set. Using mock data.");
-}
+// Mock environment for disabling Gemini API
+const API_KEY = null; // Force API key to null to disable actual calls
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || 'dummy-key' });
+const ai = new GoogleGenAI({ apiKey: 'dummy-key' });
 
 const stockPredictionSchema = {
     type: Type.OBJECT,
@@ -52,6 +51,23 @@ const stockPredictionSchema = {
 
 
 export const getStockPredictions = async (stockSymbols: string[]): Promise<Record<string, StockPrediction>> => {
+    // Always return mock predictions as the API is disabled
+    // await new Promise(resolve => setTimeout(resolve, 1500)); // simulate network delay
+    const mockPredictions: Record<string, StockPrediction> = {};
+    stockSymbols.forEach(symbol => {
+        const isBullish = Math.random() > 0.4;
+        mockPredictions[symbol] = {
+            predicted_high: Math.random() * 50 + 180,
+            predicted_low: Math.random() * 20 + 160,
+            confidence: Math.floor(Math.random() * 25) + 75,
+            sentiment: isBullish ? 'Bullish' : 'Bearish',
+            analysis: `[MOCK] Based on recent market trends, ${symbol} shows potential for short-term ${isBullish ? 'growth' : 'volatility'}.`,
+        };
+    });
+    return mockPredictions;
+
+    /* 
+    // Original Gemini API implementation disabled
     if (!process.env.API_KEY) {
         // Return mock predictions if API key is not available
         await new Promise(resolve => setTimeout(resolve, 1500)); // simulate network delay
@@ -107,4 +123,5 @@ export const getStockPredictions = async (stockSymbols: string[]): Promise<Recor
         console.error("Error fetching stock predictions from Gemini API:", error);
         throw new Error("Failed to fetch AI predictions. Please check your API key and try again.");
     }
+    */
 };
