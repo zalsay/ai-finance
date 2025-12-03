@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { stocksAPI } from '../../services/apiService';
 
 interface AddStockModalProps {
     isOpen: boolean;
@@ -14,6 +15,8 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
     const [stockCode, setStockCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [resolvedName, setResolvedName] = useState<string | null>(null);
+    const lookupKeyRef = useRef<string>('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -39,7 +42,8 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
             setExchange('sh');
             onClose();
         } catch (err: any) {
-            setError(err.message || '添加股票失败');
+            const msg = err.message || '添加失败';
+            setError(msg);
         } finally {
             setIsLoading(false);
         }
@@ -55,6 +59,28 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
         }
     };
 
+    useEffect(() => {
+        setResolvedName(null);
+        setError(null);
+        if (stockCode && stockCode.length === 6) {
+            const queryKey = type === 1 ? stockCode : `${exchange}${stockCode}`;
+            const myKey = `${type}-${queryKey}`;
+            lookupKeyRef.current = myKey;
+            stocksAPI.lookupName(queryKey, type)
+                .then(res => {
+                    if (lookupKeyRef.current !== myKey) return;
+                    setResolvedName(res.name);
+                    setError(null);
+                })
+                .catch(err => {
+                    if (lookupKeyRef.current !== myKey) return;
+                    const msg = err?.message || '未找到该代码';
+                    setResolvedName(null);
+                    setError(msg);
+                });
+        }
+    }, [stockCode, exchange, type]);
+
     if (!isOpen) return null;
 
     return (
@@ -62,7 +88,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
             <div className="w-full max-w-md bg-card-dark rounded-xl shadow-2xl border border-white/10 overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-white">添加股票</h2>
+                    <h2 className="text-xl font-bold text-white">添加</h2>
                     <button
                         onClick={handleClose}
                         disabled={isLoading}
@@ -151,14 +177,27 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                             autoFocus
                         />
                         <p className="text-white/40 text-xs mt-2">
-                            完整代码: <span className="text-primary font-mono">{exchange}{stockCode || '______'}</span>
+                            完整代码: <span className="text-primary font-mono">{exchange}{stockCode || '______'}</span>{resolvedName ? <span className="ml-2 text-white/60">{resolvedName}</span> : null}
                         </p>
                     </div>
 
                     {/* Error Message */}
-                    {error && (
-                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                            <p className="text-red-400 text-sm">{error}</p>
+                    {error && (!resolvedName || (error && error.includes('duplicate symbol'))) && (
+                        <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                            <p className="text-red-400 text-xs">
+                                {(() => {
+                                    if (error.includes('symbol not found')) {
+                                        return '未找到该代码，请使用完整代码格式，例如：sz000001 或 sh600519';
+                                    }
+                                    if (error.includes('User not authenticated') || error.includes('Unauthorized')) {
+                                        return '请先登录';
+                                    }
+                                    if (error.includes('duplicate symbol')) {
+                                        return '该代码已添加关注';
+                                    }
+                                    return error;
+                                })()}
+                            </p>
                         </div>
                     )}
 

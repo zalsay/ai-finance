@@ -224,6 +224,18 @@ type TimesfmBacktestRequest struct {
 	TakeProfitSellFrac     *float64 `json:"take_profit_sell_frac,omitempty"`
 }
 
+type BatchSymbolsRequest struct {
+    Symbols []string `json:"symbols" binding:"required"`
+}
+
+type LatestQuote struct {
+    Symbol       string   `json:"symbol"`
+    LatestPrice  *float64 `json:"latest_price"`
+    ChangePercent *float64 `json:"change_percent"`
+    TradingDate  *string  `json:"trading_date"`
+    TurnoverRate *float64 `json:"turnover_rate"`
+}
+
 type StrategyParams struct {
 	UniqueKey              string  `json:"unique_key" db:"unique_key"`
 	UserID                 *int    `json:"user_id" db:"user_id"`
