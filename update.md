@@ -47,3 +47,8 @@
     - 内容：在 `ensure_date_range_df` 增加对区间起始覆盖的判断，比较 `earliest_dt_date` 与交易日 `target_start_date`，若最早日期晚于起始交易日则同样触发 `sync_stock`。
     - 逻辑：`earliest_dt_date > target_start_date` 或 `latest_dt_date < target_end_date` 均触发增量；任一满足即重读区间数据。
     - 语法校验：执行 `python3 -m py_compile ai-fucntions/akshare-tools/postgres.py` 通过。
+42. Python：验证分块写入缺少best时自动补写
+    - 修改文件：`ai-fucntions/timesfm_inference/predict_chunked_functions.py`
+    - 内容：在验证分块持久化前，若 `GET /api/v1/save-predictions/mtf-best/by-unique` 返回404，则自动调用 `POST /api/v1/save-predictions/mtf-best` 以补写 `unique_key` 对应的 timesfm-best 记录，使用验证集指标或最小payload，随后继续写入验证分块，避免外键冲突。
+    - 逻辑：先检查存在性；不存在则构造 `go_payload`（包含 train/test/val 起止日期、`best_prediction_item`、`best_metrics`、`context_len`、`horizon_len` 等）进行补写；补写成功则继续写入验证分块；失败则保持原有跳过策略。
+    - 语法校验：执行 `python3 -m py_compile ai-fucntions/timesfm_inference/predict_chunked_functions.py` 通过。
