@@ -279,8 +279,39 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
 
             {stock.prediction ? (
                 <>
-                    <p className="text-sm text-white/80">{stock.prediction.analysis}</p>
-                    <div className="flex flex-wrap justify-between items-center text-white/60 text-xs gap-y-1">
+                    {stock.prediction.modelName ? (
+                        <div className="flex flex-wrap gap-3 mb-3">
+                            <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20 min-w-[80px]">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-xs text-primary/70">smart_toy</span>
+                                    <span className="text-xs font-medium text-primary/70 leading-none">{t('Model', '模型')}</span>
+                                </div>
+                                <span className="text-sm font-bold text-primary leading-tight pl-0.5">{stock.prediction.modelName}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 min-w-[80px]">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-xs text-white/50">memory</span>
+                                    <span className="text-xs font-medium text-white/50 leading-none">{t('Context', '上下文')}</span>
+                                </div>
+                                <span className="text-sm font-bold text-white/90 leading-tight pl-0.5">
+                                    {stock.prediction.contextLen ? Math.round(stock.prediction.contextLen / 1024) : '?'}K
+                                </span>
+                            </div>
+                            <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 min-w-[80px]">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-xs text-white/50">calendar_today</span>
+                                    <span className="text-xs font-medium text-white/50 leading-none">{t('Horizon', '预测周期')}</span>
+                                </div>
+                                <span className="text-sm font-bold text-white/90 leading-tight pl-0.5">
+                                    {stock.prediction.horizonLen || '?'} {t('days', '天')}
+                                </span>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-white/80">{stock.prediction.analysis}</p>
+                    )}
+                    
+                    <div className="flex flex-wrap justify-between items-center text-white/60 text-xs gap-y-1 pt-2 border-t border-white/5">
                         <span>{t('Max Deviation %', '最大偏差')}: <strong className="text-white/80">{stock.prediction.maxDeviationPercent?.toFixed(2) ?? '0.00'}%</strong></span>
                         <span>{t('Best Score', '最佳得分')}: <strong className={confidenceColor}>{stock.prediction.confidence.toFixed(4)}</strong></span>
                     </div>

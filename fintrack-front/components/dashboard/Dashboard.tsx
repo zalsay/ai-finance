@@ -43,6 +43,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                 if (res && res.items) {
                      const mapped = res.items.map(item => {
                         const bestItemKey = item.best.best_prediction_item;
+                        const contextLen = item.best.context_len;
+                        const horizonLen = item.best.horizon_len;
                         // Sort chunks by date ascending (oldest first)
                         const sortedChunks = (item.chunks || []).sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
                         
@@ -108,8 +110,11 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                                 confidence: parseFloat(confidence.toFixed(4)),
                                 sentiment: change > 0 ? 'Bullish' : 'Bearish',
                                 analysis: language === 'zh' 
-                                    ? `最佳模型: ${bestItemKey}`
-                                    : `Best: ${bestItemKey}`,
+                                    ? `最佳模型: ${bestItemKey} 上下文: ${contextLen ? Math.round(contextLen/1024) : '?'}K 预测: ${horizonLen || '?'}天`
+                                    : `Best: ${bestItemKey} Ctx: ${contextLen ? Math.round(contextLen/1024) : '?'}K Hor: ${horizonLen || '?'}d`,
+                                modelName: bestItemKey,
+                                contextLen: contextLen,
+                                horizonLen: horizonLen,
                                 maxDeviationPercent: item.max_deviation_percent,
                                 chartData: {
                                     dates: allDates,
