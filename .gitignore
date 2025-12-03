@@ -82,4 +82,5 @@ tmp/
 ai-fucntions/timesfm_inference/timesfm-2p5-functions/timesfm-2.5
 fintrack-ai-front/node_modules
 ai-fucntions/timesfm_inference/timesfm-2p5-functions/timesfm-2.5
-ai-fucntions/forecast-results/
+*.json
+*.txt
