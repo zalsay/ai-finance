@@ -930,8 +930,52 @@ async def predict_validation_chunks_only(
                     except Exception as chk_err:
                         best_confirmed = False
                 if not best_confirmed:
+                    try:
+                        if fixed_best_prediction_item:
+                            def to_date_str(val):
+                                try:
+                                    dt = pd.to_datetime(val, errors='coerce')
+                                    return dt.strftime('%Y-%m-%d') if not pd.isna(dt) else str(val)
+                                except Exception:
+                                    return str(val)
+
+                            train_start_date = to_date_str(df_train['ds'].min())
+                            train_end_date = to_date_str(df_train['ds'].max())
+                            test_start_date = to_date_str(df_test['ds'].min())
+                            test_end_date = to_date_str(df_test['ds'].max())
+                            val_start_date = to_date_str(df_val['ds'].min())
+                            val_end_date = to_date_str(df_val['ds'].max())
+
+                            best_metrics_payload = validation_results if validation_results else {
+                                'best_prediction_item': fixed_best_prediction_item
+                            }
+                            go_payload = {
+                                "unique_key": unique_key_val,
+                                "symbol": request.stock_code,
+                                "timesfm_version": timesfm_version_str,
+                                "best_prediction_item": fixed_best_prediction_item,
+                                "best_metrics": _round_obj(best_metrics_payload),
+                                "train_start_date": train_start_date,
+                                "train_end_date": train_end_date,
+                                "test_start_date": test_start_date,
+                                "test_end_date": test_end_date,
+                                "val_start_date": val_start_date,
+                                "val_end_date": val_end_date,
+                                "context_len": int(request.context_len),
+                                "horizon_len": int(request.horizon_len),
+                                "user_id": getattr(request, 'user_id', None),
+                                "is_public": 1 if getattr(request, 'user_id', None) == 1 else 0,
+                            }
+                            status_code, data, body_text = await pg.save_best_prediction(go_payload)
+                            best_confirmed = (status_code == 200)
+                            if best_confirmed:
+                                print(f"✅ 已补写timesfm-best: unique_key={unique_key_val}")
+                            else:
+                                print(f"⚠️ 补写timesfm-best失败: status={status_code}, body={body_text}")
+                    except Exception as add_err:
+                        print(f"⚠️ 尝试补写timesfm-best异常: {add_err}")
+                if not best_confirmed:
                     print(f"⚠️ 跳过验证分块写入：未找到timesfm-best(unique_key={unique_key_val})，避免外键冲突")
-                    # 直接跳过持久化，仍返回预测结果
                     raise Exception("missing_best_record_for_val_chunks")
 
                 for vcr in val_results:
