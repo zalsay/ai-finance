@@ -60,3 +60,12 @@
     - `LanguageContext.tsx`: 新增 `auth.sessionExpired` 和 `auth.redirectingLogin` 多语言字段。
 - **效果**：
     - 当用户遇到认证错误（如 Token 过期、Authorization header required）时，系统会**自动**弹出全屏提示框告知“会话已过期”，并自动跳转至登录页，无需用户手动点击错误提示，体验更加智能流畅。
+
+### 50. 前端优化：修复图标加载闪烁问题 (FOUC)
+- **修改文件**：
+    - `fintrack-front/index.html`
+- **变更内容**：
+    - 将 Google Fonts 引用链接中的 `display` 参数设为 `block`，并补充完整的 `Material Symbols Outlined` 字体参数。
+    - 在 `<style>` 中完善 `.material-symbols-outlined` 类的 CSS 定义，显式指定 `font-family` 及防抖动属性（`white-space: nowrap`, `overflow: hidden` 等）。
+- **效果**：
+    - 解决了 Landing 页及应用内图标在字体加载前短暂显示文本（如 "trending_up"）的问题。现在图标在字体加载完成前会保持隐藏，加载完成后立即显示，消除了视觉上的突兀感。
