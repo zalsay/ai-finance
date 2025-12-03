@@ -60,3 +60,21 @@ export interface PublicPredictionResponse {
   items: PublicPredictionItem[];
   count: number;
 }
+
+export interface StrategyParams {
+  unique_key: string;
+  buy_threshold_pct: number;
+  sell_threshold_pct: number;
+  initial_cash: number;
+  enable_rebalance: boolean;
+  max_position_pct: number;
+  min_position_pct: number;
+  slope_position_per_pct: number;
+  rebalance_tolerance_pct: number;
+  trade_fee_rate: number;
+  take_profit_threshold_pct: number;
+  take_profit_sell_frac: number;
+  user_id?: number;
+}
+
+export interface SaveStrategyParamsRequest extends StrategyParams {}

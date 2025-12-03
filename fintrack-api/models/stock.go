@@ -73,6 +73,7 @@ type WatchlistItem struct {
 	Prediction   *StockPrediction `json:"prediction,omitempty"`
 	AddedAt      time.Time        `json:"added_at"`
 	Notes        *string          `json:"notes"`
+	UniqueKey    string           `json:"unique_key,omitempty"`
 }
 
 type AddToWatchlistRequest struct {

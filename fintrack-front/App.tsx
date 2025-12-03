@@ -6,6 +6,7 @@ import Sidebar from './components/layout/Sidebar';
 import Dashboard from './components/dashboard/Dashboard';
 import Watchlist from './components/watchlist/Watchlist';
 import Pricing from './components/pricing/Pricing';
+import Portfolio from './components/portfolio/Portfolio';
 import { View, StockData } from './types';
 import { getStockPredictions } from './services/geminiService';
 import { INITIAL_STOCKS, NAVIGATION_ITEMS } from './constants';
@@ -95,6 +96,8 @@ const AppContent: React.FC = () => {
                 return <Watchlist initialStocks={INITIAL_STOCKS} />;
             case 'pricing':
                 return <Pricing />;
+            case 'portfolio':
+                return <Portfolio />;
             default:
                 return <div className="text-center p-8 bg-card-dark rounded-lg">
                     <h2 className="text-2xl font-bold">{t('common.comingSoon')}</h2>
