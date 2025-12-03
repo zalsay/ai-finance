@@ -126,7 +126,7 @@ const AppContent: React.FC = () => {
             case 'pricing':
                 return <Pricing />;
             case 'portfolio':
-                return <Portfolio />;
+                return <Portfolio onAuthError={handleAuthError} />;
             default:
                 return <div className="text-center p-8 bg-card-dark rounded-lg">
                     <h2 className="text-2xl font-bold">{t('common.comingSoon')}</h2>

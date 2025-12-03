@@ -52,6 +52,7 @@ export interface WatchlistItem {
   added_at: string;
   notes?: string;
   unique_key?: string;
+  stock_type?: number;
 }
 
 export interface WatchlistResponse {
@@ -61,6 +62,7 @@ export interface WatchlistResponse {
 
 export interface AddToWatchlistRequest {
   symbol: string;
+  stock_type?: number;
 }
 
 // 设置认证token
