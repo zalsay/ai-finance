@@ -1149,7 +1149,7 @@ if __name__ == "__main__":
         horizon_len=7,
         start_date="",
         end_date="20251201",
-        context_len=1024,
+        context_len=512,
         time_step=0,
         stock_type=2,
         timesfm_version="2.5",

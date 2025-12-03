@@ -199,7 +199,7 @@ async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
             stock_code=req_stock_code,
             stock_type=data.get("stock_type", 1),
             time_step=data.get("time_step", 0),
-            years=data.get("years", 12),
+            years=data.get("years", 15),
             horizon_len=data.get("horizon_len", 7),
             context_len=data.get("context_len", 2048),
             timesfm_version=data.get("timesfm_version", "2.5"),
