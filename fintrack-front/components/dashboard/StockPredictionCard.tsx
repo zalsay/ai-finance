@@ -6,9 +6,10 @@ import { getChangeColors, getChartColor } from '../../utils/colorUtils';
 
 interface StockPredictionCardProps {
   stock: StockData;
+  onAddToWatchlist?: (symbol: string) => void;
 }
 
-const Chart: React.FC<{ change: number; language: any; chartData?: { dates: string[], actuals: number[], predictions: number[] } }> = ({ change, language, chartData }) => {
+const Chart: React.FC<{ change: number; language: any; chartData?: { dates: string[], actuals: number[], predictions: number[] }; currentPrice?: number; startPrice?: number }> = ({ change, language, chartData, currentPrice, startPrice }) => {
     const isPositive = change >= 0;
     const color = getChartColor(isPositive, language);
     const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -197,6 +198,20 @@ const Chart: React.FC<{ change: number; language: any; chartData?: { dates: stri
                             )}
                         </div>
                     )}
+
+                    {/* Start Price (Top Left) */}
+                    {startPrice !== undefined && (
+                        <div className="absolute top-2 left-2 bg-black/30 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white/60 font-medium">
+                            {startPrice.toFixed(2)}
+                        </div>
+                    )}
+
+                    {/* Current Price (Top Right) */}
+                    {currentPrice !== undefined && (
+                        <div className="absolute top-2 right-2 bg-black/30 backdrop-blur-sm px-1.5 py-0.5 rounded text-xs text-white font-bold">
+                            {currentPrice.toFixed(2)}
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -225,7 +240,7 @@ const Chart: React.FC<{ change: number; language: any; chartData?: { dates: stri
 };
 
 
-const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
+const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock, onAddToWatchlist }) => {
     const { language } = useLanguage();
     const isPositive = stock.changePercent >= 0;
     const { textClass, hexColor } = getChangeColors(isPositive, language); // Destructure hexColor
@@ -234,66 +249,40 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
     const { textClass: predTextClass } = getChangeColors(isPredPositive, language);
 
     const confidenceColor = stock.prediction?.confidence ?? 0 > 85 ? 'text-primary' : (stock.prediction?.confidence ?? 0) > 70 ? 'text-yellow-400' : 'text-red-400';
+    
+    const [isAdded, setIsAdded] = useState(false);
 
     // Localization helper
     const t = (en: string, zh: string) => language === 'zh' ? zh : en;
 
+    const startPrice = stock.currentPrice / (1 + stock.changePercent / 100);
+
     return (
         <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-card-dark p-6">
-            <div className="flex justify-between items-start">
+            <div className="flex flex-wrap md:flex-nowrap justify-between items-start gap-x-3 gap-y-3">
                 <div>
                     <p className="text-white text-lg font-bold leading-normal">{stock.companyName}</p>
                     <p className="text-white/60 text-sm truncate max-w-[150px]">{stock.symbol}</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <p className="text-white text-2xl font-bold leading-tight">{stock.currentPrice.toFixed(2)}</p>
-                    <div className="flex flex-col items-end gap-0.5">
-                        <span className={`${textClass} text-xs`} style={{ fontFamily: '"PingFang SC", sans-serif' }}>
-                           {t('Act', '实际')}: {isPositive ? '+' : ''}{Math.abs(stock.changePercent).toFixed(2)}%
-                        </span>
-                        {stock.predictedChangePercent !== undefined && (
-                            <span className="text-primary text-xs" style={{ fontFamily: '"PingFang SC", sans-serif' }}>
-                               {t('Pred', '预测')}: {isPredPositive ? '+' : ''}{Math.abs(stock.predictedChangePercent).toFixed(2)}%
-                            </span>
-                        )}
-                    </div>
-                </div>
-            </div>
-            <div className="flex min-h-[150px] md:min-h-[180px] flex-1 flex-col gap-4 py-4">
-                <Chart change={stock.changePercent} language={language} chartData={stock.prediction?.chartData} />
-            </div>
-            
-            {/* Legend */}
-            {stock.prediction?.chartData && (
-                <div className="flex justify-end gap-4 text-xs text-white/60 -mt-2 mb-2">
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-3 h-0.5 rounded-full" style={{ backgroundColor: hexColor }}></div>
-                        <span>{t('Actual', '实际')}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-3 h-0.5 rounded-full bg-primary"></div>
-                        <span>{t('Prediction', '预测')}</span>
-                    </div>
-                </div>
-            )}
-
-            {stock.prediction ? (
-                <>
-                    {stock.prediction.modelName ? (
-                        <div className="flex flex-wrap gap-3 mb-3">
-                            <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20 min-w-[80px]">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-xs text-primary/70">smart_toy</span>
-                                    <span className="text-xs font-medium text-primary/70 leading-none">{t('Model', '模型')}</span>
-                                </div>
-                                <span className="text-sm font-bold text-primary leading-tight pl-0.5">{stock.prediction.modelName}</span>
+                {stock.prediction?.modelName && (
+                    <div className="flex gap-2 w-full md:w-auto order-3 md:order-none overflow-x-auto no-scrollbar">
+                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                <span className="material-symbols-outlined text-xs text-white/80">smart_toy</span>
+                                <span className="text-xs font-medium text-white/80 leading-none">{t('Model', '模型')}</span>
                             </div>
-                            <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 min-w-[80px]">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-xs text-white/50">memory</span>
-                                    <span className="text-xs font-medium text-white/50 leading-none">{t('Context', '上下文')}</span>
-                                </div>
-                                <span className="text-sm font-bold text-white/90 leading-tight pl-0.5">
+                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                <span className="text-xs font-bold text-white/90 leading-tight">{stock.prediction.modelName}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                <span className="material-symbols-outlined text-xs text-white/80">memory</span>
+                                <span className="text-xs font-medium text-white/80 leading-none">{t('Context', '上下文')}</span>
+                            </div>
+                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                <span className="text-xs font-bold text-white/90 leading-tight">
                                     {stock.prediction.contextLen 
                                         ? (stock.prediction.contextLen < 1024 
                                             ? stock.prediction.contextLen 
@@ -301,24 +290,107 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
                                         : '?'}
                                 </span>
                             </div>
-                            <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 min-w-[80px]">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-xs text-white/50">calendar_today</span>
-                                    <span className="text-xs font-medium text-white/50 leading-none">{t('Horizon', '预测周期')}</span>
-                                </div>
-                                <span className="text-sm font-bold text-white/90 leading-tight pl-0.5">
+                        </div>
+
+                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                <span className="material-symbols-outlined text-xs text-white/80">calendar_today</span>
+                                <span className="text-xs font-medium text-white/80 leading-none">{t('Horizon', '周期')}</span>
+                            </div>
+                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                <span className="text-xs font-bold text-white/90 leading-tight">
                                     {stock.prediction.horizonLen || '?'} {t('days', '天')}
                                 </span>
                             </div>
                         </div>
-                    ) : (
+
+                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                <span className="material-symbols-outlined text-xs text-white/80">query_stats</span>
+                                <span className="text-xs font-medium text-white/80 leading-none">{t('Max Dev', '最大偏差')}</span>
+                            </div>
+                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                <span className="text-xs font-bold text-white/90 leading-tight">
+                                    {stock.prediction.maxDeviationPercent?.toFixed(2) ?? '0.00'}%
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                <span className="material-symbols-outlined text-xs text-white/80">grade</span>
+                                <span className="text-xs font-medium text-white/80 leading-none">{t('Score', '最佳得分')}</span>
+                            </div>
+                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                <span className={`text-xs font-bold leading-tight ${confidenceColor}`}>
+                                    {stock.prediction.confidence.toFixed(4)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                <span className="material-symbols-outlined text-xs text-white/80">trending_up</span>
+                                <span className="text-xs font-medium text-white/80 leading-none">{t('Act Chg', '实际涨跌')}</span>
+                            </div>
+                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                <span className={`text-xs font-bold leading-tight ${textClass}`}>
+                                    {isPositive ? '+' : ''}{Math.abs(stock.changePercent).toFixed(2)}%
+                                </span>
+                            </div>
+                        </div>
+
+                        {stock.predictedChangePercent !== undefined && (
+                            <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                    <span className="material-symbols-outlined text-xs text-white/80">online_prediction</span>
+                                    <span className="text-xs font-medium text-white/80 leading-none">{t('Pred Chg', '预测涨跌')}</span>
+                                </div>
+                                <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                    <span className="text-xs font-bold leading-tight text-primary">
+                                        {isPredPositive ? '+' : ''}{Math.abs(stock.predictedChangePercent).toFixed(2)}%
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+                <div className="flex items-center gap-3 ml-auto order-2 md:order-none">
+                    {onAddToWatchlist && (
+                        <button 
+                            onClick={() => {
+                                onAddToWatchlist(stock.symbol);
+                                setIsAdded(true);
+                                setTimeout(() => setIsAdded(false), 2000);
+                            }}
+                            className={`flex items-center justify-center w-10 h-10 rounded-lg bg-white/5 hover:bg-primary hover:text-black transition-colors ${isAdded ? 'text-green-400' : 'text-white/60'}`}
+                            title={isAdded ? t('Added!', '已添加！') : t('Add to Watchlist', '加入关注')}
+                        >
+                            <div className="relative flex items-center justify-center">
+                                <span className="material-symbols-outlined">{isAdded ? 'check' : 'favorite'}</span>
+                                {!isAdded && <span className="absolute -top-1 -right-2 text-[10px] leading-none font-bold">+</span>}
+                            </div>
+                        </button>
+                    )}
+                </div>
+            </div>
+            <div className="flex min-h-[150px] md:min-h-[180px] flex-1 flex-col gap-4 py-4">
+                <Chart 
+                    change={stock.changePercent} 
+                    language={language} 
+                    chartData={stock.prediction?.chartData} 
+                    currentPrice={stock.currentPrice}
+                    startPrice={startPrice}
+                />
+            </div>
+            
+            {/* Legend Removed */}
+
+            {stock.prediction ? (
+                <>
+                    {!stock.prediction.modelName && (
                         <p className="text-sm text-white/80">{stock.prediction.analysis}</p>
                     )}
-                    
-                    <div className="flex flex-wrap justify-between items-center text-white/60 text-xs gap-y-1 pt-2 border-t border-white/5">
-                        <span>{t('Max Deviation %', '最大偏差')}: <strong className="text-white/80">{stock.prediction.maxDeviationPercent?.toFixed(2) ?? '0.00'}%</strong></span>
-                        <span>{t('Best Score', '最佳得分')}: <strong className={confidenceColor}>{stock.prediction.confidence.toFixed(4)}</strong></span>
-                    </div>
                 </>
             ) : (
                  <div className="flex flex-col items-center justify-center text-center gap-2">

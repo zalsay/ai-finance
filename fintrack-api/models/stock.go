@@ -39,11 +39,12 @@ type StockPrediction struct {
 }
 
 type UserWatchlist struct {
-	ID      int       `json:"id" db:"id"`
-	UserID  int       `json:"user_id" db:"user_id"`
-	StockID int       `json:"stock_id" db:"stock_id"`
-	AddedAt time.Time `json:"added_at" db:"added_at"`
-	Notes   *string   `json:"notes" db:"notes"`
+	ID        int       `json:"id" db:"id"`
+	UserID    int       `json:"user_id" db:"user_id"`
+	StockID   int       `json:"stock_id" db:"stock_id"`
+	AddedAt   time.Time `json:"added_at" db:"added_at"`
+	Notes     *string   `json:"notes" db:"notes"`
+	StockType *int      `json:"stock_type" db:"stock_type"`
 }
 
 type UserPortfolio struct {
@@ -74,11 +75,13 @@ type WatchlistItem struct {
 	AddedAt      time.Time        `json:"added_at"`
 	Notes        *string          `json:"notes"`
 	UniqueKey    string           `json:"unique_key,omitempty"`
+	StockType    *int             `json:"stock_type"`
 }
 
 type AddToWatchlistRequest struct {
-	Symbol string  `json:"symbol" binding:"required"`
-	Notes  *string `json:"notes"`
+	Symbol    string  `json:"symbol" binding:"required"`
+	StockType *int    `json:"stock_type"`
+	Notes     *string `json:"notes"`
 }
 
 type UpdateWatchlistRequest struct {

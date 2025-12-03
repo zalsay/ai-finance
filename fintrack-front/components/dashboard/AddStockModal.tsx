@@ -4,11 +4,12 @@ import { useLanguage } from '../../contexts/LanguageContext';
 interface AddStockModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onAdd: (symbol: string) => Promise<void>;
+    onAdd: (symbol: string, type: 1 | 2) => Promise<void>;
 }
 
 const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd }) => {
     const { t } = useLanguage();
+    const [type, setType] = useState<1 | 2>(1);
     const [exchange, setExchange] = useState<'sh' | 'sz'>('sh');
     const [stockCode, setStockCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +33,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
         setIsLoading(true);
         try {
             const fullSymbol = `${exchange}${stockCode}`;
-            await onAdd(fullSymbol);
+            await onAdd(fullSymbol, type);
             // Reset form on success
             setStockCode('');
             setExchange('sh');
@@ -48,6 +49,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
         if (!isLoading) {
             setStockCode('');
             setExchange('sh');
+            setType(1);
             setError(null);
             onClose();
         }
@@ -74,6 +76,35 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
 
                 {/* Body */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    {/* Type Selection */}
+                    <div className="flex flex-col">
+                        <label className="text-white/80 text-sm font-medium mb-2">类型</label>
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setType(1)}
+                                disabled={isLoading}
+                                className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${type === 1
+                                        ? 'bg-primary text-background-dark'
+                                        : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                                    } disabled:opacity-50`}
+                            >
+                                股票
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setType(2)}
+                                disabled={isLoading}
+                                className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${type === 2
+                                        ? 'bg-primary text-background-dark'
+                                        : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                                    } disabled:opacity-50`}
+                            >
+                                ETF基金
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Exchange Selection */}
                     <div className="flex flex-col">
                         <label className="text-white/80 text-sm font-medium mb-2">交易所</label>
@@ -159,7 +190,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                                     添加中...
                                 </>
                             ) : (
-                                '添加股票'
+                                `添加${type === 1 ? '股票' : 'ETF'}`
                             )}
                         </button>
                     </div>

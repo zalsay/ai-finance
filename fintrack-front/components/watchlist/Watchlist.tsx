@@ -4,6 +4,7 @@ import { StockData } from '../../types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getChangeColors } from '../../utils/colorUtils';
 import { watchlistAPI, WatchlistItem } from '../../services/apiService';
+import AddStockModal from '../dashboard/AddStockModal';
 
 interface WatchlistProps {
   initialStocks: StockData[];
@@ -21,8 +22,9 @@ const Sparkline: React.FC<{ change: number }> = ({ change }) => {
 const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => {
     const { t, language } = useLanguage();
     const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([]);
+    const [activeTab, setActiveTab] = useState<1 | 2>(1);
     const [searchTerm, setSearchTerm] = useState('');
-    const [newSymbol, setNewSymbol] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +36,7 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
         try {
             setIsLoading(true);
             const response = await watchlistAPI.getWatchlist();
-            setWatchlistItems(response.watchlist);
+            setWatchlistItems(response.watchlist || []);
         } catch (err: any) {
             if (onAuthError && err.message && (
                 err.message.includes('Authorization header required') || 
@@ -50,14 +52,11 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
         }
     };
 
-    const addStock = async () => {
-        if (!newSymbol.trim()) return;
-        
+    const handleAddStock = async (symbol: string, type: 1 | 2) => {
         try {
-            setIsLoading(true);
-            await watchlistAPI.addToWatchlist({ symbol: newSymbol.toUpperCase() });
-            setNewSymbol('');
-            await loadWatchlist(); // 重新加载列表
+            // The modal handles its own loading state
+            await watchlistAPI.addToWatchlist({ symbol: symbol.toUpperCase(), stock_type: type });
+            await loadWatchlist(); // Reload list after adding
         } catch (err: any) {
             if (onAuthError && err.message && (
                 err.message.includes('Authorization header required') || 
@@ -65,11 +64,9 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                 err.message.includes('Unauthorized')
             )) {
                 onAuthError();
-            } else {
-                setError(err.message);
+                return;
             }
-        } finally {
-            setIsLoading(false);
+            throw err; // Re-throw for modal to handle
         }
     };
 
@@ -93,10 +90,13 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
         }
     };
     
-    const filteredItems = watchlistItems.filter(item => 
-        item.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        item.company_name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredItems = watchlistItems.filter(item => {
+        const matchesSearch = (item.stock?.symbol || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+            (item.stock?.company_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+        // Default to 1 (stock) if stock_type is undefined
+        const itemType = item.stock_type || 1;
+        return matchesSearch && itemType === activeTab;
+    });
 
     return (
       <div className="flex flex-col w-full">
@@ -116,8 +116,23 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
             </div>
         )}
         
-        <div className="px-4 py-3 mb-6">
-            <div className="flex w-full flex-1 items-stretch rounded-lg h-14 border border-white/10 bg-white/5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/50 transition-all duration-200">
+        <div className="flex space-x-1 mb-4 px-4 bg-white/5 rounded-lg p-1 mx-4 w-fit">
+            <button 
+                className={`px-6 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 1 ? 'bg-primary text-black shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                onClick={() => setActiveTab(1)}
+            >
+                {t('watchlist.tabStock')}
+            </button>
+            <button 
+                className={`px-6 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 2 ? 'bg-primary text-black shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                onClick={() => setActiveTab(2)}
+            >
+                {t('watchlist.tabEtf')}
+            </button>
+        </div>
+
+        <div className="px-4 py-3 mb-6 flex flex-col md:flex-row gap-4">
+            <div className="flex flex-1 items-stretch rounded-lg h-14 border border-white/10 bg-white/5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/50 transition-all duration-200">
                 <div className="text-white/60 flex items-center justify-center pl-4">
                     <span className="material-symbols-outlined">search</span>
                 </div>
@@ -127,23 +142,23 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                 />
-                <input 
-                    className="form-input flex min-w-0 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-0 border-none bg-transparent h-full placeholder:text-white/40 px-2 text-base font-normal leading-normal" 
-                    placeholder="股票代码"
-                    value={newSymbol}
-                    onChange={e => setNewSymbol(e.target.value)}
-                    onKeyPress={e => e.key === 'Enter' && addStock()}
-                    disabled={isLoading}
-                />
-                <button 
-                    className="flex m-2 min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-md h-auto px-4 bg-primary text-black text-sm font-bold leading-normal tracking-[0.015em] hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" 
-                    onClick={addStock}
-                    disabled={isLoading || !newSymbol.trim()}
-                >
-                    <span className="truncate">{isLoading ? '添加中...' : t('watchlist.addStock')}</span>
-                </button>
             </div>
+            
+            <button 
+                className="flex h-14 w-full md:w-auto items-center justify-center gap-2 px-6 rounded-lg bg-primary text-black text-sm font-bold hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setIsModalOpen(true)}
+                disabled={isLoading}
+            >
+                <span className="material-symbols-outlined">add</span>
+                <span className="truncate">{t('watchlist.addStock')}</span>
+            </button>
         </div>
+
+        <AddStockModal 
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            onAdd={handleAddStock}
+        />
 
         {watchlistItems.length > 0 ? (
             <div className="px-4 py-3 @container">
@@ -151,7 +166,7 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                     <table className="flex-1">
                         <thead className="border-b border-b-[#2D2D2D]">
                             <tr>
-                                <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{t('watchlist.tickerCompany')}</th>
+                                <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{t('watchlist.ticker')}</th>
                                 <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal hidden sm:table-cell">{t('watchlist.lastPrice')}</th>
                                 <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{t('watchlist.todayChange')}</th>
                                 <th className="px-4 py-3 text-left text-white/60 w-32 text-sm font-medium leading-normal hidden md:table-cell">{t('watchlist.chart')}</th>
@@ -160,22 +175,24 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                         </thead>
                         <tbody>
                             {filteredItems.map(item => {
-                                const changePercent = item.change_percent || 0;
+                                const changePercent = item.current_price?.change_percent || 0;
                                 const isPositive = changePercent >= 0;
                                 const { textClass } = getChangeColors(isPositive, language);
+                                const currentPrice = item.current_price?.price;
+                                
                                 return (
                                     <tr key={item.id} className="border-t border-t-[#2D2D2D]">
                                         <td className="h-[72px] px-4 py-2 text-white text-sm font-normal leading-normal">
-                                            <span className="font-bold">{item.symbol}</span><br/>
-                                            <span className="text-xs text-white/60">{item.company_name}</span>
+                                            <span className="font-bold">{item.stock?.symbol}</span><br/>
+                                            <span className="text-xs text-white/60">{item.stock?.company_name}</span>
                                         </td>
                                         <td className="h-[72px] px-4 py-2 text-white/80 text-sm font-normal leading-normal hidden sm:table-cell">
-                                            ${item.current_price ? item.current_price.toFixed(2) : 'N/A'}
+                                            ${currentPrice ? currentPrice.toFixed(2) : 'N/A'}
                                         </td>
                                         <td className={`h-[72px] px-4 py-2 text-sm font-normal leading-normal ${textClass}`}>
-                                            {item.current_price && changePercent ? (
+                                            {currentPrice && changePercent ? (
                                                 <>
-                                                    {isPositive ? '+' : ''}{(item.current_price * changePercent / 100).toFixed(2)} ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
+                                                    {isPositive ? '+' : ''}{(currentPrice * changePercent / 100).toFixed(2)} ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
                                                 </>
                                             ) : 'N/A'}
                                         </td>

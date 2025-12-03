@@ -4,7 +4,11 @@ import StrategyCard from '../dashboard/StrategyCard';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { watchlistAPI } from '../../services/apiService';
 
-const Portfolio: React.FC = () => {
+interface PortfolioProps {
+    onAuthError?: () => void;
+}
+
+const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
     const { t, language } = useLanguage();
     const [portfolioStocks, setPortfolioStocks] = useState<StockData[]>([]);
     const [isFetching, setIsFetching] = useState(true);
@@ -18,7 +22,7 @@ const Portfolio: React.FC = () => {
                 // Use watchlistAPI to get personal watchlist
                 const res = await watchlistAPI.getWatchlist();
                 if (res && res.watchlist) {
-                     const mapped = res.watchlist.map(item => {
+                    const mapped = res.watchlist.map(item => {
                         if (!item.unique_key) return null;
                         return {
                             symbol: item.stock.symbol,
@@ -32,13 +36,21 @@ const Portfolio: React.FC = () => {
                 }
             } catch (e: any) {
                 console.error("Fetch error", e);
-                setFetchError(e.message || "Failed to load watchlist strategies");
+                if (onAuthError && e.message && (
+                    e.message.includes('Authorization header required') || 
+                    e.message.includes('401') ||
+                    e.message.includes('Unauthorized')
+                )) {
+                    onAuthError();
+                } else {
+                    setFetchError(e.message || "Failed to load watchlist strategies");
+                }
             } finally {
                 setIsFetching(false);
             }
         };
         fetchWatchlist();
-    }, []);
+    }, [onAuthError]);
 
     return (
         <div className="flex flex-col gap-6">
@@ -59,7 +71,10 @@ const Portfolio: React.FC = () => {
                     <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
                  </div>
             ) : fetchError ? (
-                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
+                <div 
+                    onClick={onAuthError}
+                    className={`p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 ${onAuthError ? 'cursor-pointer hover:bg-red-500/20 transition-colors' : ''}`}
+                >
                     {fetchError}
                 </div>
             ) : portfolioStocks.length > 0 ? (

@@ -27,7 +27,7 @@ import requests
 import akshare as ak
 
 
-GO_API_URL = os.environ.get("GO_API_URL", "http://localhost:8080")
+GO_API_URL = os.environ.get("GO_API_URL", "http://go-api.meetlife.com.cn:8000")
 API_TOKEN = os.environ.get("API_TOKEN", "fintrack-dev-token")
 
 
@@ -199,7 +199,7 @@ def upsert_a_stock_comment_daily(codes: List[str] = None, batch_size: int = 500)
     if df is None or df.empty:
         print("stock_comment_em: empty")
         return 0
-
+    print(f"stock_comment_em: {df.head(1)}")
     cols = set(df.columns)
     code_col = "代码" if "代码" in cols else ("code" if "code" in cols else None)
     name_col = "名称" if "名称" in cols else ("name" if "name" in cols else None)
