@@ -35,6 +35,10 @@ func (h *WatchlistHandler) AddToWatchlist(c *gin.Context) {
 
 	err := h.watchlistService.AddToWatchlist(userID.(int), &req)
 	if err != nil {
+		if err.Error() == services.ErrSymbolNotFound.Error() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "symbol not found in a_stock_comment_daily"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
