@@ -733,7 +733,7 @@ func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequ
 	} else {
 		uidArg = nil
 	}
-    _, err := s.db.Conn.Exec(`
+	_, err := s.db.Conn.Exec(`
         INSERT INTO timesfm_strategy_params (
             unique_key, user_id,
             buy_threshold_pct, sell_threshold_pct, initial_cash,
@@ -762,12 +762,12 @@ func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequ
             take_profit_sell_frac = EXCLUDED.take_profit_sell_frac,
             updated_at = CURRENT_TIMESTAMP
     `,
-        req.UniqueKey, uidArg,
-        req.BuyThresholdPct, req.SellThresholdPct, req.InitialCash,
-        req.EnableRebalance, req.MaxPositionPct, req.MinPositionPct,
-        req.SlopePositionPerPct, req.RebalanceTolerancePct,
-        req.TradeFeeRate, req.TakeProfitThresholdPct, req.TakeProfitSellFrac,
-    )
+		req.UniqueKey, uidArg,
+		req.BuyThresholdPct, req.SellThresholdPct, req.InitialCash,
+		req.EnableRebalance, req.MaxPositionPct, req.MinPositionPct,
+		req.SlopePositionPerPct, req.RebalanceTolerancePct,
+		req.TradeFeeRate, req.TakeProfitThresholdPct, req.TakeProfitSellFrac,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to upsert timesfm_strategy_params: %v", err)
 	}
@@ -775,7 +775,7 @@ func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequ
 }
 
 func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*models.StrategyParams, error) {
-    row := s.db.Conn.QueryRow(`
+	row := s.db.Conn.QueryRow(`
         SELECT unique_key, user_id,
                buy_threshold_pct, sell_threshold_pct, initial_cash,
                enable_rebalance, max_position_pct, min_position_pct,
@@ -787,13 +787,13 @@ func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*mode
     `, uniqueKey)
 	var item models.StrategyParams
 	var uid sql.NullInt64
-    err := row.Scan(
-        &item.UniqueKey, &uid,
-        &item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
-        &item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
-        &item.SlopePositionPerPct, &item.RebalanceTolerancePct,
-        &item.TradeFeeRate, &item.TakeProfitThresholdPct, &item.TakeProfitSellFrac,
-    )
+	err := row.Scan(
+		&item.UniqueKey, &uid,
+		&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
+		&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
+		&item.SlopePositionPerPct, &item.RebalanceTolerancePct,
+		&item.TradeFeeRate, &item.TakeProfitThresholdPct, &item.TakeProfitSellFrac,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, sql.ErrNoRows

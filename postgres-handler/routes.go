@@ -52,6 +52,11 @@ func RegisterRoutes(r *gin.Engine, handler *DatabaseHandler, apiToken string) {
 		api.POST("/strategy/params", handler.saveStrategyParamsHandler)
 		api.GET("/strategy/params/by-user-unique", handler.getStrategyParamsByUniqueKeyHandler)
 		api.GET("/strategy/params/by-user", handler.getStrategyParamsByUserHandler)
+
+		// LLM Token Usage routes
+		api.POST("/llm/token-usage", handler.saveLlmTokenUsageHandler)
+		api.GET("/llm/token-usage/:user_id", handler.getLlmTokenUsageByUserHandler)
+		api.GET("/llm/token-usage/:user_id/stats", handler.getLlmTokenUsageStatsHandler)
 	}
 
 	r.GET("/health", func(c *gin.Context) {

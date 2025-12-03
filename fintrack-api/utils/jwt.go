@@ -74,11 +74,11 @@ func getJWTExpiryHours() int {
 	if hoursStr == "" {
 		return 24 // default 24 hours
 	}
-	
+
 	hours, err := strconv.Atoi(hoursStr)
 	if err != nil {
 		return 24 // fallback to default
 	}
-	
+
 	return hours
 }

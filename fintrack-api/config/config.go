@@ -9,13 +9,15 @@ import (
 )
 
 type Config struct {
-	Database      DatabaseConfig
-	Server        ServerConfig
-	JWT           JWTConfig
-	CORS          CORSConfig
-	External      ExternalAPIConfig
-	Redis         RedisConfig
-	PythonService PythonServiceConfig
+	Database        DatabaseConfig
+	Server          ServerConfig
+	JWT             JWTConfig
+	CORS            CORSConfig
+	External        ExternalAPIConfig
+	Redis           RedisConfig
+	PythonService   PythonServiceConfig
+	LLM             LLMConfig
+	PostgresHandler PostgresHandlerConfig
 }
 
 type DatabaseConfig struct {
@@ -61,6 +63,20 @@ type PythonServiceConfig struct {
 	Timeout int // seconds
 }
 
+type LLMConfig struct {
+	APIKey           string // OpenAI API Key
+	BaseURL          string // OpenAI API Base URL (optional, for custom endpoints)
+	DefaultModel     string // Default model (e.g., "gpt-3.5-turbo")
+	MaxContextRounds int    // Maximum context rounds (default 3)
+	Timeout          int    // API request timeout in seconds
+}
+
+type PostgresHandlerConfig struct {
+	BaseURL  string // Postgres handler API base URL
+	APIToken string // API token for authentication
+	Timeout  int    // API request timeout in seconds
+}
+
 func LoadConfig() (*Config, error) {
 	// 尝试加载.env文件
 	godotenv.Load()
@@ -101,6 +117,18 @@ func LoadConfig() (*Config, error) {
 		PythonService: PythonServiceConfig{
 			BaseURL: getEnv("PYTHON_SERVICE_URL", "http://localhost:8001"),
 			Timeout: getEnvAsInt("PYTHON_SERVICE_TIMEOUT", 30),
+		},
+		LLM: LLMConfig{
+			APIKey:           getEnv("OPENAI_API_KEY", ""),
+			BaseURL:          getEnv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+			DefaultModel:     getEnv("OPENAI_DEFAULT_MODEL", "gpt-3.5-turbo"),
+			MaxContextRounds: getEnvAsInt("OPENAI_MAX_CONTEXT_ROUNDS", 3),
+			Timeout:          getEnvAsInt("OPENAI_TIMEOUT", 60),
+		},
+		PostgresHandler: PostgresHandlerConfig{
+			BaseURL:  getEnv("POSTGRES_HANDLER_URL", "http://localhost:8080"),
+			APIToken: getEnv("POSTGRES_HANDLER_TOKEN", ""),
+			Timeout:  getEnvAsInt("POSTGRES_HANDLER_TIMEOUT", 10),
 		},
 	}
 

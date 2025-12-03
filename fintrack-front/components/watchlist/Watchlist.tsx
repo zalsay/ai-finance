@@ -7,6 +7,7 @@ import { watchlistAPI, WatchlistItem } from '../../services/apiService';
 
 interface WatchlistProps {
   initialStocks: StockData[];
+  onAuthError?: () => void;
 }
 
 const Sparkline: React.FC<{ change: number }> = ({ change }) => {
@@ -17,7 +18,7 @@ const Sparkline: React.FC<{ change: number }> = ({ change }) => {
     return <img className="h-8 w-full object-contain" alt={isPositive ? "Upward trend sparkline" : "Downward trend sparkline"} src={src} />;
 };
 
-const Watchlist: React.FC<WatchlistProps> = ({ initialStocks }) => {
+const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => {
     const { t, language } = useLanguage();
     const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -35,7 +36,15 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks }) => {
             const response = await watchlistAPI.getWatchlist();
             setWatchlistItems(response.watchlist);
         } catch (err: any) {
-            setError(err.message);
+            if (onAuthError && err.message && (
+                err.message.includes('Authorization header required') || 
+                err.message.includes('401') ||
+                err.message.includes('Unauthorized')
+            )) {
+                onAuthError();
+            } else {
+                setError(err.message);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -50,7 +59,15 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks }) => {
             setNewSymbol('');
             await loadWatchlist(); // 重新加载列表
         } catch (err: any) {
-            setError(err.message);
+            if (onAuthError && err.message && (
+                err.message.includes('Authorization header required') || 
+                err.message.includes('401') ||
+                err.message.includes('Unauthorized')
+            )) {
+                onAuthError();
+            } else {
+                setError(err.message);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -62,7 +79,15 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks }) => {
             await watchlistAPI.removeFromWatchlist(id);
             await loadWatchlist(); // 重新加载列表
         } catch (err: any) {
-            setError(err.message);
+            if (onAuthError && err.message && (
+                err.message.includes('Authorization header required') || 
+                err.message.includes('401') ||
+                err.message.includes('Unauthorized')
+            )) {
+                onAuthError();
+            } else {
+                setError(err.message);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -83,7 +108,10 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks }) => {
         </div>
         
         {error && (
-            <div className="mx-4 mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <div 
+                onClick={onAuthError}
+                className={`mx-4 mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg ${onAuthError ? 'cursor-pointer hover:bg-red-500/20 transition-colors' : ''}`}
+            >
                 <p className="text-red-400 text-sm">{error}</p>
             </div>
         )}
