@@ -33,15 +33,19 @@ func (h *WatchlistHandler) AddToWatchlist(c *gin.Context) {
 		return
 	}
 
-	err := h.watchlistService.AddToWatchlist(userID.(int), &req)
-	if err != nil {
-		if err.Error() == services.ErrSymbolNotFound.Error() {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "symbol not found in a_stock_comment_daily"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
+    err := h.watchlistService.AddToWatchlist(userID.(int), &req)
+    if err != nil {
+        if err.Error() == services.ErrSymbolNotFound.Error() {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "symbol not found"})
+            return
+        }
+        if err.Error() == services.ErrDuplicateSymbol.Error() {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "duplicate symbol"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
 
 	// Trigger stock data sync asynchronously (non-blocking)
 	go h.watchlistService.SyncStockData(req.Symbol)
@@ -142,6 +146,59 @@ func (h *WatchlistHandler) GetUserStrategies(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"strategies": strategies})
+}
+
+func (h *WatchlistHandler) GetBatchLatestQuotes(c *gin.Context) {
+    userID, exists := c.Get("user_id")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+        return
+    }
+
+    var req models.BatchSymbolsRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    if len(req.Symbols) == 0 {
+        c.JSON(http.StatusOK, gin.H{"quotes": []models.LatestQuote{}})
+        return
+    }
+
+    quotes, err := h.watchlistService.GetLatestQuotesBySymbols(req.Symbols)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    _ = userID
+    c.JSON(http.StatusOK, gin.H{"quotes": quotes})
+}
+
+func (h *WatchlistHandler) LookupStockName(c *gin.Context) {
+    symbol := c.Query("symbol")
+    if symbol == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "symbol is required"})
+        return
+    }
+    stockTypeStr := c.Query("stock_type")
+    stockType := 1
+    if stockTypeStr != "" {
+        if v, err := strconv.Atoi(stockTypeStr); err == nil {
+            stockType = v
+        }
+    }
+
+    name, err := h.watchlistService.LookupStockName(symbol, stockType)
+    if err != nil {
+        if err.Error() == services.ErrSymbolNotFound.Error() {
+            c.JSON(http.StatusNotFound, gin.H{"error": "symbol not found"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"symbol": symbol, "name": name})
 }
 
 // 查询某用户的TimesFM最佳分位预测列表
