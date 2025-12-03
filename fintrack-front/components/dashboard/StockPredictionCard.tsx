@@ -294,7 +294,11 @@ const StockPredictionCard: React.FC<StockPredictionCardProps> = ({ stock }) => {
                                     <span className="text-xs font-medium text-white/50 leading-none">{t('Context', '上下文')}</span>
                                 </div>
                                 <span className="text-sm font-bold text-white/90 leading-tight pl-0.5">
-                                    {stock.prediction.contextLen ? Math.round(stock.prediction.contextLen / 1024) : '?'}K
+                                    {stock.prediction.contextLen 
+                                        ? (stock.prediction.contextLen < 1024 
+                                            ? stock.prediction.contextLen 
+                                            : Math.round(stock.prediction.contextLen / 1024) + 'K') 
+                                        : '?'}
                                 </span>
                             </div>
                             <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 min-w-[80px]">

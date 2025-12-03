@@ -110,8 +110,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                                 confidence: parseFloat(confidence.toFixed(4)),
                                 sentiment: change > 0 ? 'Bullish' : 'Bearish',
                                 analysis: language === 'zh' 
-                                    ? `最佳模型: ${bestItemKey} 上下文: ${contextLen ? Math.round(contextLen/1024) : '?'}K 预测: ${horizonLen || '?'}天`
-                                    : `Best: ${bestItemKey} Ctx: ${contextLen ? Math.round(contextLen/1024) : '?'}K Hor: ${horizonLen || '?'}d`,
+                                    ? `最佳模型: ${bestItemKey} 上下文: ${contextLen ? (contextLen < 1024 ? contextLen : Math.round(contextLen / 1024) + 'K') : '?'} 预测: ${horizonLen || '?'}天`
+                                    : `Best: ${bestItemKey} Ctx: ${contextLen ? (contextLen < 1024 ? contextLen : Math.round(contextLen / 1024) + 'K') : '?'} Hor: ${horizonLen || '?'}d`,
                                 modelName: bestItemKey,
                                 contextLen: contextLen,
                                 horizonLen: horizonLen,
