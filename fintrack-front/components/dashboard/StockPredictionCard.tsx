@@ -4,7 +4,6 @@ import { StockData } from '../../types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getChangeColors, getChartColor } from '../../utils/colorUtils';
 
-
 interface StockPredictionCardProps {
   stock: StockData;
 }
