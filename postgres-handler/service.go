@@ -1,60 +1,67 @@
 package main
 
 import (
-    "fmt"
-    "time"
-    "gorm.io/gorm"
+	"fmt"
+	"time"
+
+	"gorm.io/gorm"
 )
 
 type DatabaseHandler struct {
-    db *gorm.DB
+	db *gorm.DB
 }
 
 func (h *DatabaseHandler) Close() error {
-    sqlDB, err := h.db.DB()
-    if err != nil { return err }
-    return sqlDB.Close()
+	sqlDB, err := h.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
 }
 
 func (h *DatabaseHandler) InsertStockData(data *StockData) error {
-    query := `
+	query := `
     INSERT INTO stock_data (
         datetime, open, close, high, low, volume, amount, amplitude,
         percentage_change, amount_change, turnover_rate, type, symbol
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     RETURNING id, created_at, updated_at`
-    row := h.db.Raw(query,
-        data.Datetime, data.Open, data.Close, data.High, data.Low,
-        data.Volume, data.Amount, data.Amplitude, data.PercentageChange,
-        data.AmountChange, data.TurnoverRate, data.Type, data.Symbol,
-    ).Row()
-    return row.Scan(&data.ID, &data.CreatedAt, &data.UpdatedAt)
+	row := h.db.Raw(query,
+		data.Datetime, data.Open, data.Close, data.High, data.Low,
+		data.Volume, data.Amount, data.Amplitude, data.PercentageChange,
+		data.AmountChange, data.TurnoverRate, data.Type, data.Symbol,
+	).Row()
+	return row.Scan(&data.ID, &data.CreatedAt, &data.UpdatedAt)
 }
 
 func (h *DatabaseHandler) BatchInsertStockData(dataList []StockData) error {
-    tx := h.db.Begin()
-    if tx.Error != nil { return fmt.Errorf("failed to begin transaction: %v", tx.Error) }
-    insertSQL := `
+	tx := h.db.Begin()
+	if tx.Error != nil {
+		return fmt.Errorf("failed to begin transaction: %v", tx.Error)
+	}
+	insertSQL := `
     INSERT INTO stock_data (
         datetime, open, close, high, low, volume, amount, amplitude,
         percentage_change, amount_change, turnover_rate, type, symbol
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
-    for _, data := range dataList {
-        if err := tx.Exec(insertSQL,
-            data.Datetime, data.Open, data.Close, data.High, data.Low,
-            data.Volume, data.Amount, data.Amplitude, data.PercentageChange,
-            data.AmountChange, data.TurnoverRate, data.Type, data.Symbol,
-        ).Error; err != nil {
-            tx.Rollback()
-            return fmt.Errorf("failed to execute batch insert: %v", err)
-        }
-    }
-    if err := tx.Commit().Error; err != nil { return fmt.Errorf("failed to commit transaction: %v", err) }
-    return nil
+	for _, data := range dataList {
+		if err := tx.Exec(insertSQL,
+			data.Datetime, data.Open, data.Close, data.High, data.Low,
+			data.Volume, data.Amount, data.Amplitude, data.PercentageChange,
+			data.AmountChange, data.TurnoverRate, data.Type, data.Symbol,
+		).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to execute batch insert: %v", err)
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	return nil
 }
 
 func (h *DatabaseHandler) UpsertEtfDaily(data *EtfDailyData) error {
-    query := `
+	query := `
     INSERT INTO etf_daily (
         code, trading_date, name, latest_price, change_amount, change_percent,
         buy, sell, prev_close, open, high, low, volume, turnover
@@ -73,17 +80,21 @@ func (h *DatabaseHandler) UpsertEtfDaily(data *EtfDailyData) error {
         low = EXCLUDED.low,
         volume = EXCLUDED.volume,
         turnover = EXCLUDED.turnover`
-    return h.db.Exec(query,
-        data.Code, data.TradingDate, data.Name, data.LatestPrice, data.ChangeAmount, data.ChangePercent,
-        data.Buy, data.Sell, data.PrevClose, data.Open, data.High, data.Low, data.Volume, data.Turnover,
-    ).Error
+	return h.db.Exec(query,
+		data.Code, data.TradingDate, data.Name, data.LatestPrice, data.ChangeAmount, data.ChangePercent,
+		data.Buy, data.Sell, data.PrevClose, data.Open, data.High, data.Low, data.Volume, data.Turnover,
+	).Error
 }
 
 func (h *DatabaseHandler) BatchInsertTimesfmForecast(list []TimesfmForecast) error {
-    if len(list) == 0 { return fmt.Errorf("empty list") }
-    tx := h.db.Begin()
-    if tx.Error != nil { return tx.Error }
-    insertSQL := `
+	if len(list) == 0 {
+		return fmt.Errorf("empty list")
+	}
+	tx := h.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	insertSQL := `
         INSERT INTO timesfm_forecast (
             symbol, ds, tsf, tsf_01, tsf_02, tsf_03, tsf_04, tsf_05, tsf_06, tsf_07, tsf_08, tsf_09,
             chunk_index, best_quantile, best_quantile_pct, best_pred_pct, actual_pct, diff_pct, mse, mae, combined_score,
@@ -93,22 +104,25 @@ func (h *DatabaseHandler) BatchInsertTimesfmForecast(list []TimesfmForecast) err
             $13, $14, $15, $16, $17, $18, $19, $20, $21,
             $22, $23
         )`
-    for _, v := range list {
-        if err := tx.Exec(insertSQL,
-            v.Symbol, v.Ds, v.Tsf, v.Tsf01, v.Tsf02, v.Tsf03, v.Tsf04, v.Tsf05, v.Tsf06, v.Tsf07, v.Tsf08, v.Tsf09,
-            v.ChunkIndex, v.BestQuantile, v.BestQuantilePct, v.BestPredPct, v.ActualPct, v.DiffPct, v.MSE, v.MAE, v.CombinedScore,
-            v.Version, v.HorizonLen,
-        ).Error; err != nil {
-            tx.Rollback()
-            return err
-        }
-    }
-    return tx.Commit().Error
+	for _, v := range list {
+		if err := tx.Exec(insertSQL,
+			v.Symbol, v.Ds, v.Tsf, v.Tsf01, v.Tsf02, v.Tsf03, v.Tsf04, v.Tsf05, v.Tsf06, v.Tsf07, v.Tsf08, v.Tsf09,
+			v.ChunkIndex, v.BestQuantile, v.BestQuantilePct, v.BestPredPct, v.ActualPct, v.DiffPct, v.MSE, v.MAE, v.CombinedScore,
+			v.Version, v.HorizonLen,
+		).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit().Error
 }
 
 func (h *DatabaseHandler) BatchUpsertEtfDaily(dataList []EtfDailyData) error {
-    tx := h.db.Begin(); if tx.Error != nil { return fmt.Errorf("failed to begin transaction: %v", tx.Error) }
-    upsertSQL := `
+	tx := h.db.Begin()
+	if tx.Error != nil {
+		return fmt.Errorf("failed to begin transaction: %v", tx.Error)
+	}
+	upsertSQL := `
     INSERT INTO etf_daily (
         code, trading_date, name, latest_price, change_amount, change_percent,
         buy, sell, prev_close, open, high, low, volume, turnover
@@ -126,18 +140,23 @@ func (h *DatabaseHandler) BatchUpsertEtfDaily(dataList []EtfDailyData) error {
         low = EXCLUDED.low,
         volume = EXCLUDED.volume,
         turnover = EXCLUDED.turnover`
-    for _, d := range dataList {
-        if err := tx.Exec(upsertSQL,
-            d.Code, d.TradingDate, d.Name, d.LatestPrice, d.ChangeAmount, d.ChangePercent,
-            d.Buy, d.Sell, d.PrevClose, d.Open, d.High, d.Low, d.Volume, d.Turnover,
-        ).Error; err != nil { tx.Rollback(); return fmt.Errorf("failed to execute etf upsert batch: %v", err) }
-    }
-    if err := tx.Commit().Error; err != nil { return fmt.Errorf("failed to commit etf upsert batch: %v", err) }
-    return nil
+	for _, d := range dataList {
+		if err := tx.Exec(upsertSQL,
+			d.Code, d.TradingDate, d.Name, d.LatestPrice, d.ChangeAmount, d.ChangePercent,
+			d.Buy, d.Sell, d.PrevClose, d.Open, d.High, d.Low, d.Volume, d.Turnover,
+		).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to execute etf upsert batch: %v", err)
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed to commit etf upsert batch: %v", err)
+	}
+	return nil
 }
 
 func (h *DatabaseHandler) UpsertIndexInfo(info *IndexInfo) error {
-    return h.db.Exec(`
+	return h.db.Exec(`
     INSERT INTO index_info (code, display_name, publish_date)
     VALUES ($1, $2, $3)
     ON CONFLICT (code) DO UPDATE SET
@@ -146,22 +165,30 @@ func (h *DatabaseHandler) UpsertIndexInfo(info *IndexInfo) error {
 }
 
 func (h *DatabaseHandler) BatchUpsertIndexInfo(list []IndexInfo) error {
-    tx := h.db.Begin(); if tx.Error != nil { return tx.Error }
-    upsertSQL := `
+	tx := h.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	upsertSQL := `
         INSERT INTO index_info (code, display_name, publish_date)
         VALUES ($1, $2, $3)
         ON CONFLICT (code) DO UPDATE SET
             display_name = EXCLUDED.display_name,
             publish_date = EXCLUDED.publish_date`
-    for _, v := range list {
-        if err := tx.Exec(upsertSQL, v.Code, v.DisplayName, v.PublishDate).Error; err != nil { tx.Rollback(); return fmt.Errorf("batch upsert index_info failed: %v", err) }
-    }
-    if err := tx.Commit().Error; err != nil { return err }
-    return nil
+	for _, v := range list {
+		if err := tx.Exec(upsertSQL, v.Code, v.DisplayName, v.PublishDate).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("batch upsert index_info failed: %v", err)
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *DatabaseHandler) UpsertIndexDaily(d *IndexDailyData) error {
-    return h.db.Exec(`
+	return h.db.Exec(`
     INSERT INTO index_daily (
         code, trading_date, open, close, high, low, volume, amount, change_percent
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -173,12 +200,15 @@ func (h *DatabaseHandler) UpsertIndexDaily(d *IndexDailyData) error {
         volume = EXCLUDED.volume,
         amount = EXCLUDED.amount,
         change_percent = EXCLUDED.change_percent`,
-        d.Code, d.TradingDate, d.Open, d.Close, d.High, d.Low, d.Volume, d.Amount, d.ChangePercent).Error
+		d.Code, d.TradingDate, d.Open, d.Close, d.High, d.Low, d.Volume, d.Amount, d.ChangePercent).Error
 }
 
 func (h *DatabaseHandler) BatchUpsertIndexDaily(list []IndexDailyData) error {
-    tx := h.db.Begin(); if tx.Error != nil { return tx.Error }
-    upsertSQL := `
+	tx := h.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	upsertSQL := `
         INSERT INTO index_daily (
             code, trading_date, open, close, high, low, volume, amount, change_percent
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -190,18 +220,24 @@ func (h *DatabaseHandler) BatchUpsertIndexDaily(list []IndexDailyData) error {
             volume = EXCLUDED.volume,
             amount = EXCLUDED.amount,
             change_percent = EXCLUDED.change_percent`
-    for _, v := range list {
-        if err := tx.Exec(upsertSQL, v.Code, v.TradingDate, v.Open, v.Close, v.High, v.Low, v.Volume, v.Amount, v.ChangePercent).Error; err != nil {
-            tx.Rollback(); return fmt.Errorf("batch upsert index_daily failed: %v", err)
-        }
-    }
-    if err := tx.Commit().Error; err != nil { return err }
-    return nil
+	for _, v := range list {
+		if err := tx.Exec(upsertSQL, v.Code, v.TradingDate, v.Open, v.Close, v.High, v.Low, v.Volume, v.Amount, v.ChangePercent).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("batch upsert index_daily failed: %v", err)
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *DatabaseHandler) BatchUpsertAStockCommentDaily(list []StockCommentDaily) error {
-    tx := h.db.Begin(); if tx.Error != nil { return tx.Error }
-    upsertSQL := `
+	tx := h.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	upsertSQL := `
         INSERT INTO a_stock_comment_daily (
             code, trading_date, name, latest_price, change_percent, turnover_rate,
             pe_ratio, main_cost, institution_participation, composite_score,
@@ -219,19 +255,24 @@ func (h *DatabaseHandler) BatchUpsertAStockCommentDaily(list []StockCommentDaily
             rise = EXCLUDED.rise,
             current_rank = EXCLUDED.current_rank,
             attention_index = EXCLUDED.attention_index`
-    for _, v := range list {
-        if err := tx.Exec(upsertSQL,
-            v.Code, v.TradingDate, v.Name, v.LatestPrice, v.ChangePercent, v.TurnoverRate,
-            v.PeRatio, v.MainCost, v.InstitutionParticipation, v.CompositeScore,
-            v.Rise, v.CurrentRank, v.AttentionIndex,
-        ).Error; err != nil { tx.Rollback(); return fmt.Errorf("batch upsert a_stock_comment_daily failed: %v", err) }
-    }
-    if err := tx.Commit().Error; err != nil { return err }
-    return nil
+	for _, v := range list {
+		if err := tx.Exec(upsertSQL,
+			v.Code, v.TradingDate, v.Name, v.LatestPrice, v.ChangePercent, v.TurnoverRate,
+			v.PeRatio, v.MainCost, v.InstitutionParticipation, v.CompositeScore,
+			v.Rise, v.CurrentRank, v.AttentionIndex,
+		).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("batch upsert a_stock_comment_daily failed: %v", err)
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *DatabaseHandler) GetAStockCommentDailyByName(name string, limit int, offset int) ([]StockCommentDaily, error) {
-    rows, err := h.db.Raw(`
+	rows, err := h.db.Raw(`
     SELECT 
         code,
         trading_date,
@@ -250,25 +291,31 @@ func (h *DatabaseHandler) GetAStockCommentDailyByName(name string, limit int, of
     WHERE name ILIKE $1
     ORDER BY trading_date DESC
     LIMIT $2 OFFSET $3`, "%"+name+"%", limit, offset).Rows()
-    if err != nil { return nil, fmt.Errorf("failed to query a_stock_comment_daily by name: %v", err) }
-    defer rows.Close()
-    var result []StockCommentDaily
-    for rows.Next() {
-        var item StockCommentDaily
-        if err := rows.Scan(
-            &item.Code, &item.TradingDate, &item.Name, &item.LatestPrice,
-            &item.ChangePercent, &item.TurnoverRate, &item.PeRatio, &item.MainCost,
-            &item.InstitutionParticipation, &item.CompositeScore, &item.Rise,
-            &item.CurrentRank, &item.AttentionIndex,
-        ); err != nil { return nil, fmt.Errorf("failed to scan a_stock_comment_daily row: %v", err) }
-        result = append(result, item)
-    }
-    if len(result) == 0 { return nil, nil }
-    return result, nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to query a_stock_comment_daily by name: %v", err)
+	}
+	defer rows.Close()
+	var result []StockCommentDaily
+	for rows.Next() {
+		var item StockCommentDaily
+		if err := rows.Scan(
+			&item.Code, &item.TradingDate, &item.Name, &item.LatestPrice,
+			&item.ChangePercent, &item.TurnoverRate, &item.PeRatio, &item.MainCost,
+			&item.InstitutionParticipation, &item.CompositeScore, &item.Rise,
+			&item.CurrentRank, &item.AttentionIndex,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan a_stock_comment_daily row: %v", err)
+		}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
 }
 
 func (h *DatabaseHandler) GetStockData(symbol string, stockType int, limit int, offset int) ([]StockData, error) {
-    rows, err := h.db.Raw(`
+	rows, err := h.db.Raw(`
     SELECT id, datetime, open, close, high, low, volume, amount, amplitude,
            percentage_change, amount_change, turnover_rate, type, symbol,
            created_at, updated_at
@@ -276,126 +323,260 @@ func (h *DatabaseHandler) GetStockData(symbol string, stockType int, limit int, 
     WHERE symbol = $1 AND type = $2
     ORDER BY datetime DESC
     LIMIT $3 OFFSET $4`, symbol, stockType, limit, offset).Rows()
-    if err != nil { return nil, fmt.Errorf("failed to query stock data: %v", err) }
-    defer rows.Close()
-    var results []StockData
-    for rows.Next() {
-        var data StockData
-        if err := rows.Scan(
-            &data.ID, &data.Datetime, &data.Open, &data.Close, &data.High, &data.Low,
-            &data.Volume, &data.Amount, &data.Amplitude, &data.PercentageChange,
-            &data.AmountChange, &data.TurnoverRate, &data.Type, &data.Symbol,
-            &data.CreatedAt, &data.UpdatedAt,
-        ); err != nil { return nil, fmt.Errorf("failed to scan row: %v", err) }
-        results = append(results, data)
-    }
-    return results, nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to query stock data: %v", err)
+	}
+	defer rows.Close()
+	var results []StockData
+	for rows.Next() {
+		var data StockData
+		if err := rows.Scan(
+			&data.ID, &data.Datetime, &data.Open, &data.Close, &data.High, &data.Low,
+			&data.Volume, &data.Amount, &data.Amplitude, &data.PercentageChange,
+			&data.AmountChange, &data.TurnoverRate, &data.Type, &data.Symbol,
+			&data.CreatedAt, &data.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %v", err)
+		}
+		results = append(results, data)
+	}
+	return results, nil
 }
 
 func (h *DatabaseHandler) GetStockDataByDateRange(symbol string, stockType int, startDate, endDate time.Time) ([]StockData, error) {
-    rows, err := h.db.Raw(`
+	rows, err := h.db.Raw(`
     SELECT id, datetime, open, close, high, low, volume, amount, amplitude,
            percentage_change, amount_change, turnover_rate, type, symbol,
            created_at, updated_at
     FROM stock_data
     WHERE symbol = $1 AND type = $2 AND datetime >= $3 AND datetime <= $4
     ORDER BY datetime ASC`, symbol, stockType, startDate, endDate).Rows()
-    if err != nil { return nil, fmt.Errorf("failed to query stock data by date range: %v", err) }
-    defer rows.Close()
-    var results []StockData
-    for rows.Next() {
-        var data StockData
-        if err := rows.Scan(
-            &data.ID, &data.Datetime, &data.Open, &data.Close, &data.High, &data.Low,
-            &data.Volume, &data.Amount, &data.Amplitude, &data.PercentageChange,
-            &data.AmountChange, &data.TurnoverRate, &data.Type, &data.Symbol,
-            &data.CreatedAt, &data.UpdatedAt,
-        ); err != nil { return nil, fmt.Errorf("failed to scan row: %v", err) }
-        results = append(results, data)
-    }
-    return results, nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to query stock data by date range: %v", err)
+	}
+	defer rows.Close()
+	var results []StockData
+	for rows.Next() {
+		var data StockData
+		if err := rows.Scan(
+			&data.ID, &data.Datetime, &data.Open, &data.Close, &data.High, &data.Low,
+			&data.Volume, &data.Amount, &data.Amplitude, &data.PercentageChange,
+			&data.AmountChange, &data.TurnoverRate, &data.Type, &data.Symbol,
+			&data.CreatedAt, &data.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %v", err)
+		}
+		results = append(results, data)
+	}
+	return results, nil
 }
 
 func (h *DatabaseHandler) GetEtfDaily(code string, limit int, offset int) ([]EtfDailyData, error) {
-    rows, err := h.db.Raw(`
+	rows, err := h.db.Raw(`
     SELECT code, trading_date, name, latest_price, change_amount, change_percent,
            buy, sell, prev_close, open, high, low, volume, turnover
     FROM etf_daily
     WHERE code = $1
     ORDER BY trading_date DESC
     LIMIT $2 OFFSET $3`, code, limit, offset).Rows()
-    if err != nil { return nil, fmt.Errorf("failed to query etf_daily: %v", err) }
-    defer rows.Close()
-    var results []EtfDailyData
-    for rows.Next() {
-        var d EtfDailyData
-        if err := rows.Scan(
-            &d.Code, &d.TradingDate, &d.Name, &d.LatestPrice, &d.ChangeAmount, &d.ChangePercent,
-            &d.Buy, &d.Sell, &d.PrevClose, &d.Open, &d.High, &d.Low, &d.Volume, &d.Turnover,
-        ); err != nil { return nil, fmt.Errorf("failed to scan etf_daily row: %v", err) }
-        results = append(results, d)
-    }
-    return results, nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to query etf_daily: %v", err)
+	}
+	defer rows.Close()
+	var results []EtfDailyData
+	for rows.Next() {
+		var d EtfDailyData
+		if err := rows.Scan(
+			&d.Code, &d.TradingDate, &d.Name, &d.LatestPrice, &d.ChangeAmount, &d.ChangePercent,
+			&d.Buy, &d.Sell, &d.PrevClose, &d.Open, &d.High, &d.Low, &d.Volume, &d.Turnover,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan etf_daily row: %v", err)
+		}
+		results = append(results, d)
+	}
+	return results, nil
 }
 
 func (h *DatabaseHandler) GetEtfDailyByDateRange(code string, startDate, endDate time.Time) ([]EtfDailyData, error) {
-    rows, err := h.db.Raw(`
+	rows, err := h.db.Raw(`
     SELECT code, trading_date, name, latest_price, change_amount, change_percent,
            buy, sell, prev_close, open, high, low, volume, turnover
     FROM etf_daily
     WHERE code = $1 AND trading_date >= $2 AND trading_date <= $3
     ORDER BY trading_date ASC`, code, startDate, endDate).Rows()
-    if err != nil { return nil, fmt.Errorf("failed to query etf_daily by date range: %v", err) }
-    defer rows.Close()
-    var results []EtfDailyData
-    for rows.Next() {
-        var d EtfDailyData
-        if err := rows.Scan(
-            &d.Code, &d.TradingDate, &d.Name, &d.LatestPrice, &d.ChangeAmount, &d.ChangePercent,
-            &d.Buy, &d.Sell, &d.PrevClose, &d.Open, &d.High, &d.Low, &d.Volume, &d.Turnover,
-        ); err != nil { return nil, fmt.Errorf("failed to scan etf_daily row: %v", err) }
-        results = append(results, d)
-    }
-    return results, nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to query etf_daily by date range: %v", err)
+	}
+	defer rows.Close()
+	var results []EtfDailyData
+	for rows.Next() {
+		var d EtfDailyData
+		if err := rows.Scan(
+			&d.Code, &d.TradingDate, &d.Name, &d.LatestPrice, &d.ChangeAmount, &d.ChangePercent,
+			&d.Buy, &d.Sell, &d.PrevClose, &d.Open, &d.High, &d.Low, &d.Volume, &d.Turnover,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan etf_daily row: %v", err)
+		}
+		results = append(results, d)
+	}
+	return results, nil
 }
 
 func (h *DatabaseHandler) GetIndexDaily(code string, limit int, offset int) ([]IndexDailyData, error) {
-    rows, err := h.db.Raw(`
+	rows, err := h.db.Raw(`
     SELECT code, trading_date, open, close, high, low, volume, amount, change_percent
     FROM index_daily
     WHERE code = $1
     ORDER BY trading_date DESC
     LIMIT $2 OFFSET $3`, code, limit, offset).Rows()
-    if err != nil { return nil, fmt.Errorf("failed to query index_daily: %v", err) }
-    defer rows.Close()
-    var result []IndexDailyData
-    for rows.Next() {
-        var item IndexDailyData
-        if err := rows.Scan(&item.Code, &item.TradingDate, &item.Open, &item.Close, &item.High, &item.Low, &item.Volume, &item.Amount, &item.ChangePercent); err != nil {
-            return nil, fmt.Errorf("failed to scan index_daily row: %v", err)
-        }
-        result = append(result, item)
-    }
-    if len(result) == 0 { return nil, nil }
-    return result, nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to query index_daily: %v", err)
+	}
+	defer rows.Close()
+	var result []IndexDailyData
+	for rows.Next() {
+		var item IndexDailyData
+		if err := rows.Scan(&item.Code, &item.TradingDate, &item.Open, &item.Close, &item.High, &item.Low, &item.Volume, &item.Amount, &item.ChangePercent); err != nil {
+			return nil, fmt.Errorf("failed to scan index_daily row: %v", err)
+		}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
 }
 
 func (h *DatabaseHandler) GetIndexDailyByDateRange(code string, startDate, endDate time.Time) ([]IndexDailyData, error) {
-    rows, err := h.db.Raw(`
+	rows, err := h.db.Raw(`
     SELECT code, trading_date, open, close, high, low, volume, amount, change_percent
     FROM index_daily
     WHERE code = $1 AND trading_date BETWEEN $2 AND $3
     ORDER BY trading_date ASC`, code, startDate, endDate).Rows()
-    if err != nil { return nil, fmt.Errorf("failed to query index_daily by date range: %v", err) }
-    defer rows.Close()
-    var result []IndexDailyData
-    for rows.Next() {
-        var item IndexDailyData
-        if err := rows.Scan(&item.Code, &item.TradingDate, &item.Open, &item.Close, &item.High, &item.Low, &item.Volume, &item.Amount, &item.ChangePercent); err != nil {
-            return nil, fmt.Errorf("failed to scan index_daily row: %v", err)
-        }
-        result = append(result, item)
-    }
-    if len(result) == 0 { return nil, nil }
-    return result, nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to query index_daily by date range: %v", err)
+	}
+	defer rows.Close()
+	var result []IndexDailyData
+	for rows.Next() {
+		var item IndexDailyData
+		if err := rows.Scan(&item.Code, &item.TradingDate, &item.Open, &item.Close, &item.High, &item.Low, &item.Volume, &item.Amount, &item.ChangePercent); err != nil {
+			return nil, fmt.Errorf("failed to scan index_daily row: %v", err)
+		}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+// SaveLlmTokenUsage saves a new LLM token usage record
+func (h *DatabaseHandler) SaveLlmTokenUsage(usage *LlmTokenUsage) error {
+	result := h.db.Create(usage)
+	if result.Error != nil {
+		return fmt.Errorf("failed to save LLM token usage: %v", result.Error)
+	}
+	return nil
+}
+
+// GetLlmTokenUsageByUser retrieves LLM token usage records for a user with optional filters
+func (h *DatabaseHandler) GetLlmTokenUsageByUser(userID int, limit, offset int, startDate, endDate *time.Time, provider, model *string) ([]LlmTokenUsage, error) {
+	query := h.db.Where("user_id = ?", userID)
+
+	if startDate != nil {
+		query = query.Where("request_time >= ?", *startDate)
+	}
+	if endDate != nil {
+		query = query.Where("request_time <= ?", *endDate)
+	}
+	if provider != nil && *provider != "" {
+		query = query.Where("provider = ?", *provider)
+	}
+	if model != nil && *model != "" {
+		query = query.Where("model = ?", *model)
+	}
+
+	var records []LlmTokenUsage
+	result := query.Order("request_time DESC").Limit(limit).Offset(offset).Find(&records)
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to query LLM token usage: %v", result.Error)
+	}
+
+	return records, nil
+}
+
+// LlmTokenUsageStats represents token usage statistics
+type LlmTokenUsageStats struct {
+	TotalTokens           int                      `json:"total_tokens"`
+	TotalPromptTokens     int                      `json:"total_prompt_tokens"`
+	TotalCompletionTokens int                      `json:"total_completion_tokens"`
+	RequestCount          int                      `json:"request_count"`
+	ByProvider            map[string]ProviderStats `json:"by_provider"`
+}
+
+type ProviderStats struct {
+	TotalTokens int            `json:"total_tokens"`
+	Models      map[string]int `json:"models"`
+}
+
+// GetLlmTokenUsageStats retrieves aggregated token usage statistics for a user
+func (h *DatabaseHandler) GetLlmTokenUsageStats(userID int, startDate, endDate *time.Time) (*LlmTokenUsageStats, error) {
+	query := h.db.Model(&LlmTokenUsage{}).Where("user_id = ?", userID)
+
+	if startDate != nil {
+		query = query.Where("request_time >= ?", *startDate)
+	}
+	if endDate != nil {
+		query = query.Where("request_time <= ?", *endDate)
+	}
+
+	// Get total statistics
+	var totalStats struct {
+		TotalTokens           int
+		TotalPromptTokens     int
+		TotalCompletionTokens int
+		RequestCount          int
+	}
+
+	err := query.Select(
+		"COALESCE(SUM(total_tokens), 0) as total_tokens",
+		"COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens",
+		"COALESCE(SUM(completion_tokens), 0) as total_completion_tokens",
+		"COUNT(*) as request_count",
+	).Scan(&totalStats).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total stats: %v", err)
+	}
+
+	// Get provider and model breakdown
+	var records []LlmTokenUsage
+	if err := query.Select("provider", "model", "total_tokens").Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("failed to get provider breakdown: %v", err)
+	}
+
+	byProvider := make(map[string]ProviderStats)
+	for _, record := range records {
+		providerStats, exists := byProvider[record.Provider]
+		if !exists {
+			providerStats = ProviderStats{
+				TotalTokens: 0,
+				Models:      make(map[string]int),
+			}
+		}
+		providerStats.TotalTokens += record.TotalTokens
+		providerStats.Models[record.Model] += record.TotalTokens
+		byProvider[record.Provider] = providerStats
+	}
+
+	stats := &LlmTokenUsageStats{
+		TotalTokens:           totalStats.TotalTokens,
+		TotalPromptTokens:     totalStats.TotalPromptTokens,
+		TotalCompletionTokens: totalStats.TotalCompletionTokens,
+		RequestCount:          totalStats.RequestCount,
+		ByProvider:            byProvider,
+	}
+
+	return stats, nil
 }

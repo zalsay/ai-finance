@@ -8,6 +8,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/joho/godotenv v1.4.0
 	github.com/lib/pq v1.10.9
+	github.com/sashabaranov/go-openai v1.41.2
 	golang.org/x/crypto v0.14.0
 )
 
