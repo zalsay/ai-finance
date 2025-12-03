@@ -33,11 +33,14 @@ API_TOKEN = os.environ.get("API_TOKEN", "fintrack-dev-token")
 
 def _post(path: str, payload):
     url = GO_API_URL.rstrip("/") + path
-    headers = {
-        "Content-Type": "application/json",
-        "X-Token": API_TOKEN,
-    }
-    resp = requests.post(url, data=json.dumps(payload), headers=headers, timeout=30)
+    headers = {"Content-Type": "application/json", "X-Token": API_TOKEN}
+    body = json.dumps(payload, allow_nan=False)
+    resp = requests.post(url, data=body, headers=headers, timeout=30)
+    if resp.status_code >= 400:
+        try:
+            print(f"HTTP {resp.status_code} {url} => {resp.text[:500]}")
+        except Exception:
+            pass
     resp.raise_for_status()
     return resp.json()
 
@@ -45,27 +48,38 @@ def _post(path: str, payload):
 def normalize_date_str(s: str) -> Optional[str]:
     if not s:
         return None
-    s = str(s).strip()
-    # 支持 "1991/7/15" 或 "1991-07-15" 或 pandas.Timestamp
     try:
         import pandas as pd
         if isinstance(s, pd.Timestamp):
             return s.strftime("%Y-%m-%d")
     except Exception:
         pass
-    s = s.replace("/", "-")
-    parts = s.split("-")
-    if len(parts) == 3:
-        y = parts[0]
-        m = parts[1].zfill(2)
-        d = parts[2].zfill(2)
-        return f"{y}-{m}-{d}"
-    return s
+    t = str(s).strip().replace("/", "-")
+    tl = t.lower()
+    if tl in {"", "nan", "nat", "none", "null", "--", "—"}:
+        return None
+    parts = t.split("-")
+    if len(parts) != 3:
+        return None
+    y, m, d = parts[0], parts[1], parts[2]
+    if not (y.isdigit() and m.isdigit() and d.isdigit()):
+        return None
+    y = y
+    m = m.zfill(2)
+    d = d.zfill(2)
+    out = f"{y}-{m}-{d}"
+    try:
+        import datetime as _dt
+        _dt.datetime.strptime(out, "%Y-%m-%d")
+    except Exception:
+        return None
+    return out
 
 
 def upsert_index_info_by_codes(codes: List[str] = None) -> int:
     """将指定 codes 的指数基础信息写入 Go API"""
     df = ak.index_stock_info()
+    print(df.shape(0))
     if df is None or df.empty:
         print("index_stock_info: empty")
         return 0
@@ -199,7 +213,7 @@ def upsert_a_stock_comment_daily(codes: List[str] = None, batch_size: int = 500)
     if df is None or df.empty:
         print("stock_comment_em: empty")
         return 0
-    print(f"stock_comment_em: {df.head(1)}")
+    print(f"stock_comment_em: {df.shape[0]}")
     cols = set(df.columns)
     code_col = "代码" if "代码" in cols else ("code" if "code" in cols else None)
     name_col = "名称" if "名称" in cols else ("name" if "name" in cols else None)
@@ -229,21 +243,66 @@ def upsert_a_stock_comment_daily(codes: List[str] = None, batch_size: int = 500)
 
     rows = []
     for _, row in df.iterrows():
-        rows.append({
-            "code": str(row[code_col]),
-            "trading_date": row[date_col],
-            "name": str(row[name_col]) if row[name_col] is not None else None,
-            "latest_price": float(row[lp_col]) if row[lp_col] is not None else None,
-            "change_percent": float(row[cp_col]) if row[cp_col] is not None else None,
-            "turnover_rate": float(row[tr_col]) if row[tr_col] is not None else None,
-            "pe_ratio": float(row[pe_col]) if row[pe_col] is not None else None,
-            "main_cost": float(row[mc_col]) if row[mc_col] is not None else None,
-            "institution_participation": float(row[ip_col]) if row[ip_col] is not None else None,
-            "composite_score": float(row[cs_col]) if row[cs_col] is not None else None,
-            "rise": int(float(row[rise_col])) if row[rise_col] is not None else None,
-            "current_rank": int(float(row[rank_col])) if row[rank_col] is not None else None,
-            "attention_index": float(row[ai_col]) if row[ai_col] is not None else None,
-        })
+        code_val = row[code_col]
+        date_val = row[date_col]
+        code_str = str(code_val) if code_val is not None else ""
+        date_str = normalize_date_str(date_val) if date_val is not None else ""
+        if not code_str or not date_str:
+            continue
+        item = {"code": code_str, "trading_date": date_str}
+        name_val = row[name_col]
+        if name_val is not None:
+            nv = str(name_val).strip()
+            if nv:
+                item["name"] = nv
+        import math
+        def _f(x):
+            try:
+                v = float(x)
+                if not math.isfinite(v):
+                    return None
+                return v
+            except Exception:
+                return None
+        def _i(x):
+            try:
+                v = float(x)
+                if not math.isfinite(v):
+                    return None
+                return int(v)
+            except Exception:
+                return None
+        lp = _f(row[lp_col])
+        if lp is not None:
+            item["latest_price"] = lp
+        cp = _f(row[cp_col])
+        if cp is not None:
+            item["change_percent"] = cp
+        tr = _f(row[tr_col])
+        if tr is not None:
+            item["turnover_rate"] = tr
+        pe = _f(row[pe_col])
+        if pe is not None:
+            item["pe_ratio"] = pe
+        mc = _f(row[mc_col])
+        if mc is not None:
+            item["main_cost"] = mc
+        ip = _f(row[ip_col])
+        if ip is not None:
+            item["institution_participation"] = ip
+        cs = _f(row[cs_col])
+        if cs is not None:
+            item["composite_score"] = cs
+        rise = _i(row[rise_col])
+        if rise is not None:
+            item["rise"] = rise
+        rank = _i(row[rank_col])
+        if rank is not None:
+            item["current_rank"] = rank
+        ai = _f(row[ai_col])
+        if ai is not None:
+            item["attention_index"] = ai
+        rows.append(item)
 
     affected = 0
     for i in range(0, len(rows), batch_size):

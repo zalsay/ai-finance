@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"errors"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -16,23 +17,47 @@ import (
 )
 
 type WatchlistService struct {
-	db     *database.DB
-	config *config.Config
+    db     *database.DB
+    config *config.Config
 }
 
 func NewWatchlistService(db *database.DB, cfg *config.Config) *WatchlistService {
-	return &WatchlistService{db: db, config: cfg}
+    return &WatchlistService{db: db, config: cfg}
 }
 
+var ErrSymbolNotFound = errors.New("symbol not found in a_stock_comment_daily")
+
 func (s *WatchlistService) AddToWatchlist(userID int, req *models.AddToWatchlistRequest) error {
-	// Directly add symbol to watchlist - no need for stocks table
-	// stock_type defaults to 1 (stock) if not provided
 	stockType := 1
 	if req.StockType != nil {
 		stockType = *req.StockType
 	}
 
-	_, err := s.db.Conn.Exec(`
+	var name sql.NullString
+	err := s.db.Conn.QueryRow(
+		`SELECT COALESCE(name, '') FROM a_stock_comment_daily WHERE code = $1 ORDER BY trading_date DESC LIMIT 1`,
+		req.Symbol,
+	).Scan(&name)
+	if err == sql.ErrNoRows {
+		return ErrSymbolNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("failed to query a_stock_comment_daily: %v", err)
+	}
+
+	nameStr := strings.TrimSpace(name.String)
+    if nameStr != "" {
+        _, err = s.db.Conn.Exec(
+            `INSERT INTO stocks (symbol, company_name) VALUES ($1, $2)
+             ON CONFLICT (symbol) DO UPDATE SET company_name = EXCLUDED.company_name`,
+            req.Symbol, nameStr,
+        )
+        if err != nil {
+            log.Printf("upsert stocks failed, continue without company_name: %v", err)
+        }
+    }
+
+	_, err = s.db.Conn.Exec(`
 		INSERT INTO user_watchlist (user_id, symbol, notes, stock_type) 
 		VALUES ($1, $2, $3, $4)
 	`, userID, req.Symbol, req.Notes, stockType)
