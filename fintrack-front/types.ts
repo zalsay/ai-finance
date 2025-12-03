@@ -63,6 +63,7 @@ export interface PublicPredictionResponse {
 
 export interface StrategyParams {
   unique_key: string;
+  name?: string;
   buy_threshold_pct: number;
   sell_threshold_pct: number;
   initial_cash: number;

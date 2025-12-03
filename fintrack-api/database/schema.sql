@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
     id SERIAL PRIMARY KEY,
     unique_key VARCHAR(255) NOT NULL UNIQUE,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    name VARCHAR(255),
     buy_threshold_pct DOUBLE PRECISION,
     sell_threshold_pct DOUBLE PRECISION,
     initial_cash DOUBLE PRECISION,
