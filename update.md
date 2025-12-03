@@ -37,3 +37,8 @@
 37→      - 数据库：`save_best_prediction` 与 `save_best_val_chunk` 的payload进行四位小数处理。
 38→      - JSON：最佳分位JSON与`chunked_response.json`的payload进行四位小数处理。
 39→    - 语法校验：执行 `python3 -m py_compile ai-fucntions/timesfm_inference/predict_chunked_functions.py` 通过。
+40. Python：修复增量同步日期覆盖判断（仅按日期比较）
+    - 修改文件：`ai-fucntions/akshare-tools/postgres.py`
+    - 内容：在 `ensure_date_range_df` 中去除时间偏移，统一将 `latest_dt` 与交易日 `target_end_date` 转为日期进行比较，避免出现“最新日期 00:00:00 未覆盖到 08:00:00”的误判。
+    - 逻辑：`latest_dt_date < target_end_date` 触发增量同步；相等视为已覆盖。
+    - 语法校验：执行 `python3 -m py_compile ai-fucntions/akshare-tools/postgres.py` 通过。
