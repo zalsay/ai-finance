@@ -206,7 +206,7 @@ async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
             user_id=data.get("user_id", None),
         )
         req_stock_code = request.stock_code
-        request.start_date = "20100101"
+        # request.start_date = "20100101"
         request.end_date = "20251201"
         logger.info(f"predict_for_best received: {request}")
         background_tasks.add_task(predict_chunked_mode_for_best, request)
