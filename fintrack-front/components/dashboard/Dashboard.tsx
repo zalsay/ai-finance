@@ -136,8 +136,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
         fetchPublic();
     }, [language]);
 
-    const handleAddStock = async (symbol: string) => {
-        await watchlistAPI.addToWatchlist(symbol);
+    const handleAddStock = async (symbol: string, type: 1 | 2 = 1) => {
+        await watchlistAPI.addToWatchlist({ symbol, stock_type: type });
         // Refresh dashboard after adding stock
         if (onRefresh) {
             onRefresh();
@@ -232,7 +232,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                         </div>
                     ))
                 ) : (
-                    filteredStocks.map(stock => <StockPredictionCard key={stock.symbol} stock={stock} />)
+                    filteredStocks.map(stock => <StockPredictionCard key={stock.symbol} stock={stock} onAddToWatchlist={handleAddStock} />)
                 )}
             </div>
             {!isLoading && filteredStocks.length === 0 && (

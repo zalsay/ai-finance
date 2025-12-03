@@ -51,6 +51,8 @@ const translations = {
     'watchlist.todayChange': 'Today\'s Change',
     'watchlist.chart': 'Chart',
     'watchlist.actions': 'Actions',
+    'watchlist.tabStock': 'Stocks',
+    'watchlist.tabEtf': 'ETFs',
     'watchlist.emptyTitle': 'Your watchlist is empty',
     'watchlist.emptySubtitle': 'Use the search bar above to find and add your first stock.',
     
@@ -161,6 +163,8 @@ const translations = {
     'watchlist.todayChange': '今日变化',
     'watchlist.chart': '图表',
     'watchlist.actions': '操作',
+    'watchlist.tabStock': '股票',
+    'watchlist.tabEtf': 'ETF基金',
     'watchlist.emptyTitle': '您的关注列表为空',
     'watchlist.emptySubtitle': '使用上方的搜索栏查找并添加您的第一只股票。',
     
