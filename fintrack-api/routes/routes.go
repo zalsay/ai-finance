@@ -108,8 +108,9 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 
 		strategy := v1.Group("/strategy")
 		{
-			strategy.POST("/params", watchlistHandler.SaveStrategyParams)
+			strategy.POST("/params", authHandler.AuthMiddleware(), watchlistHandler.SaveStrategyParams)
 			strategy.GET("/params/by-unique", watchlistHandler.GetStrategyParamsByUniqueKey)
+			strategy.GET("/list", authHandler.AuthMiddleware(), watchlistHandler.GetUserStrategies)
 		}
 
 		// LLM 路由 (需要鉴权)

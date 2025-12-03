@@ -124,6 +124,22 @@ func (h *WatchlistHandler) UpdateWatchlistItem(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h *WatchlistHandler) GetUserStrategies(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	strategies, err := h.watchlistService.GetUserStrategies(userID.(int))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"strategies": strategies})
+}
+
 // 查询某用户的TimesFM最佳分位预测列表
 func (h *WatchlistHandler) ListTimesfmBestByUser(c *gin.Context) {
 	userID, exists := c.Get("user_id")

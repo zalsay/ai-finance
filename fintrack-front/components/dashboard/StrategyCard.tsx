@@ -59,12 +59,11 @@ const StrategyCard: React.FC<StrategyCardProps> = ({ uniqueKey, symbol, onUpdate
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                {symbol} 
+                                {strategy?.name || symbol} 
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium">
                                     Strategy
                                 </span>
                             </h3>
-                            <p className="text-white/40 text-xs mt-1 font-mono">{uniqueKey.substring(0, 12)}...</p>
                         </div>
                         <button 
                             onClick={() => setIsModalOpen(true)}
