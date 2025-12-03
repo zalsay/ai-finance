@@ -12,6 +12,25 @@ logger = logging.getLogger(__name__)
 
 
 
+# 统一日期解析与归一化
+def _to_dt(s):
+    if s is None:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d")
+    except Exception:
+        try:
+            return datetime.strptime(s, "%Y%m%d")
+        except Exception:
+            return None
+
+def _to_yyyymmdd(s):
+    dt = _to_dt(s)
+    return dt.strftime("%Y%m%d") if dt else None
+
 # 忽略警告
 warnings.filterwarnings("ignore")
 
@@ -51,15 +70,29 @@ async def df_preprocess(stock_code, stock_type, start_date=None, end_date=None, 
         tuple: (df, df_train, df_test, df_val) 或 (None, None, None, None) 如果失败
     """
     try:
-        # 获取股票数据
-        # df = ak_stock_data(stock_code, start_date="19900101", end_date=end_date, years=years, time_step=time_step)
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        if end_date is None:
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+        if end_date is None or str(end_date).strip() == "":
             end_date = yesterday
+        else:
+            end_norm = _to_yyyymmdd(end_date)
+            end_date = end_norm or yesterday
+        if start_date is None or str(start_date).strip() == "":
             if years > 0:
-                start_date = (datetime.now() - timedelta(days=years*365)).strftime("%Y%m%d")
+                dt_end = datetime.strptime(end_date, "%Y%m%d")
+                start_date = (dt_end - timedelta(days=years*365)).strftime("%Y%m%d")
             else:
                 start_date = "20100101"
+        else:
+            start_norm = _to_yyyymmdd(start_date)
+            start_date = start_norm or "20100101"
+        try:
+            dt_start = datetime.strptime(start_date, "%Y%m%d")
+            dt_end = datetime.strptime(end_date, "%Y%m%d")
+            if dt_start > dt_end:
+                start_date = (dt_end - timedelta(days=years*365)).strftime("%Y%m%d")
+        except Exception:
+            start_date = start_date or "20100101"
+            end_date = end_date or yesterday
         
         symbol = to_symbol(stock_code, stock_type)
         logger.info(f"获取股票{symbol} 数据，时间范围：{start_date} 到 {end_date} ，股票类型：{stock_type}")

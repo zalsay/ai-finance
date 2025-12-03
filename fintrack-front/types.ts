@@ -7,6 +7,9 @@ export interface StockPrediction {
   confidence: number;
   sentiment: 'Bullish' | 'Bearish' | 'Neutral';
   analysis: string;
+  modelName?: string;
+  contextLen?: number;
+  horizonLen?: number;
   chartData?: {
     dates: string[];
     actuals: number[];
@@ -32,6 +35,8 @@ export interface TimesfmBest {
   best_metrics: string;
   is_public: number;
   short_name?: string;
+  context_len?: number;
+  horizon_len?: number;
 }
 
 export interface TimesfmChunk {

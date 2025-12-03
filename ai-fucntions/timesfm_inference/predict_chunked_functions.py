@@ -1,4 +1,5 @@
 
+from urllib import request
 from req_res_types import *
 from typing import List, Optional
 import os
@@ -64,9 +65,7 @@ def predict_single_chunk_mode1(
         df_test: pd.DataFrame, 
         tfm, 
         chunk_index: int,
-        timesfm_version: str = "2.0",
-        symbol: str = "",
-        context_len: int = 2048,
+        request: ChunkedPredictionRequest,
     ) -> ChunkPredictionResult:
     """
     模式1：对单个分块进行预测（固定训练集，使用ak_stock_data生成测试数据）
@@ -82,7 +81,7 @@ def predict_single_chunk_mode1(
         ChunkPredictionResult: 分块预测结果
     """
     try:
-        if timesfm_version == "2.0":
+        if request.timesfm_version == "2.0":
             # 使用新数据集进行预测
             # print(f"正在使用TimesFM-2.0模型对测试集分块 {chunk_index} 进行预测...")
             forecast_df = tfm.forecast_on_df(
@@ -95,10 +94,10 @@ def predict_single_chunk_mode1(
             rename_dict["timesfm"] = "mtf"
             if rename_dict:
                 forecast_df = forecast_df.rename(columns=rename_dict)
-        elif timesfm_version == "2.5":
+        elif request.timesfm_version == "2.5":
             # print(f"正在使用TimesFM-2.5模型对测试集分块 {chunk_index} 进行预测...")
             predict_2p5_func = import_predict_2p5()
-            forecast_df = predict_2p5_func(df_train, max_context=context_len, pred_horizon=len(df_test), unique_id=symbol)
+            forecast_df = predict_2p5_func(df_train, max_context=request.context_len, pred_horizon=request.horizon_len, unique_id=request.stock_code)
 
         df_train_last_one = df_train.iloc[-1]
         # 获取预测结果的前horizon_len条记录
@@ -162,12 +161,17 @@ def predict_single_chunk_mode1(
 
                 # 计算该分位数的MLE与平均负对数似然
                 try:
+                    # 计算残差：实际值减去预测值
                     residuals_q = np.array(actual_values_trimmed, dtype=float) - np.array(pred_values_trimmed, dtype=float)
+                    # 用残差的标准差估计噪声标准差 σ̂
                     sigma_hat_q = float(np.sqrt(np.mean(residuals_q ** 2)))
+                    # 若 σ̂ ≤ 0，则加一个极小值防止除零；否则不加
                     eps_q = 1e-8 if sigma_hat_q <= 0 else 0.0
                     sigma_eff_q = sigma_hat_q + eps_q
+                    # 计算平均负对数似然（NLL），假设残差服从 N(0, σ²)
                     avg_nll_q = float(0.5 * np.mean(np.log(2 * np.pi * (sigma_eff_q ** 2)) + (residuals_q ** 2) / (sigma_eff_q ** 2)))
                 except Exception as e:
+                    # 若计算失败，打印错误信息并置空
                     print(f"  计算分位数 {quantile} 的MLE和平均负对数似然时出错: {str(e)} 第{e.__traceback__.tb_lineno}行")
                     sigma_hat_q = None
                     avg_nll_q = None
@@ -405,9 +409,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                 df_test=chunk,
                 tfm=tfm,
                 chunk_index=i,
-                timesfm_version=request.timesfm_version,
-                symbol=request.stock_code,
-                context_len=request.context_len,
+                request=request,
             )
             
             chunk_results.append(result)
@@ -483,11 +485,11 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             if item_mse:
                 avg_mse = np.mean(item_mse)
                 avg_mae = np.mean(item_mae)
-                avg_return_diff = np.mean(item_returns) if item_returns else float('inf')
-                avg_mle = np.mean(item_mle) if item_mle else float('inf')
+                avg_return_diff = np.var(item_returns) if item_returns else float('inf')
+                avg_mle = np.var(item_mle) if item_mle else float('inf')
                 # 综合评分 (MSE权重0.3, MAE权重0.3, 涨跌幅差异权重0.4)
                 # composite_score = 0.3 * avg_mse + 0.3 * avg_mae + 0.4 * avg_return_diff
-                composite_score = 0.25 * avg_mse + 0.25 * avg_mae + 0.25 * avg_return_diff + 0.25 * avg_mle
+                composite_score = 0.3 * avg_mse + 0.3 * avg_mae + 0.4 * avg_return_diff
                 
                 if composite_score < best_score:
                     best_score = composite_score
@@ -797,9 +799,7 @@ async def predict_validation_chunks_only(
                 df_test=val_chunk,
                 tfm=tfm,
                 chunk_index=i,
-                timesfm_version=timesfm_version,
-                symbol=request.stock_code,
-                context_len=request.context_len,
+                request=request,
             )
             val_results.append(val_result)
 
@@ -1145,11 +1145,11 @@ if __name__ == "__main__":
     from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
         stock_code="sh510300",
-        years=10,
+        years=15,
         horizon_len=7,
-        start_date="20100101",
-        end_date="20251114",
-        context_len=4096,
+        start_date="",
+        end_date="20251201",
+        context_len=1024,
         time_step=0,
         stock_type=2,
         timesfm_version="2.5",
