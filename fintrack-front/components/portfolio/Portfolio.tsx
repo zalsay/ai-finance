@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StockData } from '../../types';
 import StrategyCard from '../dashboard/StrategyCard';
+import CreateStrategyModal from '../dashboard/CreateStrategyModal';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { watchlistAPI } from '../../services/apiService';
+import { watchlistAPI, strategyAPI } from '../../services/apiService';
 
 interface PortfolioProps {
     onAuthError?: () => void;
@@ -11,46 +12,88 @@ interface PortfolioProps {
 const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
     const { t, language } = useLanguage();
     const [portfolioStocks, setPortfolioStocks] = useState<StockData[]>([]);
+    const [watchlistItems, setWatchlistItems] = useState<any[]>([]);
+    const [userStrategies, setUserStrategies] = useState<any[]>([]);
     const [isFetching, setIsFetching] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [bindingLoading, setBindingLoading] = useState<string | null>(null); // symbol being bound
+
+    const fetchWatchlist = useCallback(async () => {
+        setIsFetching(true);
+        setFetchError(null);
+        try {
+            // Parallel fetch
+            const [watchlistRes, strategiesRes] = await Promise.all([
+                watchlistAPI.getWatchlist(),
+                strategyAPI.getUserStrategies()
+            ]);
+
+            if (strategiesRes && strategiesRes.strategies) {
+                setUserStrategies(strategiesRes.strategies);
+            }
+
+            if (watchlistRes && watchlistRes.watchlist) {
+                setWatchlistItems(watchlistRes.watchlist);
+                
+                const mapped = watchlistRes.watchlist.map(item => {
+                    if (!item.unique_key) return null;
+                    return {
+                        symbol: item.stock.symbol,
+                        uniqueKey: item.unique_key, 
+                        companyName: item.stock.company_name || item.stock.symbol,
+                        currentPrice: item.current_price?.price || 0, 
+                        changePercent: item.current_price?.change_percent || 0,
+                    } as StockData;
+                }).filter((item): item is StockData => item !== null);
+                setPortfolioStocks(mapped);
+            }
+        } catch (e: any) {
+            console.error("Fetch error", e);
+            if (onAuthError && e.message && (
+                e.message.includes('Authorization header required') || 
+                e.message.includes('401') ||
+                e.message.includes('Unauthorized')
+            )) {
+                onAuthError();
+            } else {
+                setFetchError(e.message || "Failed to load watchlist strategies");
+            }
+        } finally {
+            setIsFetching(false);
+        }
+    }, [onAuthError]);
 
     useEffect(() => {
-        const fetchWatchlist = async () => {
-            setIsFetching(true);
-            setFetchError(null);
-            try {
-                // Use watchlistAPI to get personal watchlist
-                const res = await watchlistAPI.getWatchlist();
-                if (res && res.watchlist) {
-                    const mapped = res.watchlist.map(item => {
-                        if (!item.unique_key) return null;
-                        return {
-                            symbol: item.stock.symbol,
-                            uniqueKey: item.unique_key, 
-                            companyName: item.stock.company_name || item.stock.symbol,
-                            currentPrice: item.current_price?.price || 0, 
-                            changePercent: item.current_price?.change_percent || 0,
-                        } as StockData;
-                    }).filter((item): item is StockData => item !== null);
-                    setPortfolioStocks(mapped);
-                }
-            } catch (e: any) {
-                console.error("Fetch error", e);
-                if (onAuthError && e.message && (
-                    e.message.includes('Authorization header required') || 
-                    e.message.includes('401') ||
-                    e.message.includes('Unauthorized')
-                )) {
-                    onAuthError();
-                } else {
-                    setFetchError(e.message || "Failed to load watchlist strategies");
-                }
-            } finally {
-                setIsFetching(false);
-            }
-        };
         fetchWatchlist();
-    }, [onAuthError]);
+    }, [fetchWatchlist, refreshKey]);
+
+    const handleSuccess = () => {
+        setRefreshKey(prev => prev + 1);
+    };
+
+    const handleBind = async (stockUniqueKey: string, templateKey: string) => {
+        if (!stockUniqueKey || !templateKey) return;
+        setBindingLoading(stockUniqueKey);
+        try {
+            const template = userStrategies.find(s => s.unique_key === templateKey);
+            if (!template) return;
+            
+            // Save params using the stock's uniqueKey but template's values
+            await strategyAPI.saveParams({
+                ...template,
+                unique_key: stockUniqueKey
+            });
+            
+            handleSuccess();
+        } catch (e: any) {
+            console.error(e);
+            // Optional: Show toast error
+        } finally {
+            setBindingLoading(null);
+        }
+    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -77,7 +120,7 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                 >
                     {fetchError}
                 </div>
-            ) : portfolioStocks.length > 0 ? (
+            ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {portfolioStocks.map((stock: any) => (
                             stock.uniqueKey ? (
@@ -88,18 +131,117 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                             />
                             ) : null
                     ))}
-                </div>
-            ) : (
-                <div className="text-center py-12 bg-white/5 rounded-xl border border-white/10">
-                    <span className="material-symbols-outlined text-4xl text-white/20 mb-4">playlist_add</span>
-                    <p className="text-white/40 mb-4">
-                        {language === 'zh' ? '您的关注列表为空或没有可用的策略。' : 'Your watchlist is empty or has no available strategies.'}
-                    </p>
-                    <p className="text-white/60 text-sm">
-                        {language === 'zh' ? '请先添加股票到关注列表。' : 'Please add stocks to your watchlist first.'}
-                    </p>
+                    
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="rounded-xl bg-white/5 border border-dashed border-white/20 hover:border-primary/50 hover:bg-white/10 transition-all p-5 flex flex-col items-center justify-center h-full min-h-[200px] group"
+                    >
+                        <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                            <span className="material-symbols-outlined text-2xl">add</span>
+                        </div>
+                        <span className="text-white font-bold text-lg">{language === 'zh' ? '添加策略' : 'Add Strategy'}</span>
+                        <p className="text-white/40 text-xs mt-1">{language === 'zh' ? '为新股票配置策略' : 'Configure strategy for new stock'}</p>
+                    </button>
                 </div>
             )}
+            
+            {/* Watchlist Binding Section */}
+            <div className="bg-[#1E1E1E] rounded-xl border border-white/10 overflow-hidden">
+                <div className="p-6 border-b border-white/10">
+                    <h2 className="text-xl font-bold text-white">
+                        {language === 'zh' ? '策略绑定' : 'Strategy Bindings'}
+                    </h2>
+                    <p className="text-white/60 text-sm mt-1">
+                        {language === 'zh' ? '将策略应用到关注列表中的股票' : 'Apply strategies to stocks in your watchlist'}
+                    </p>
+                </div>
+                
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm text-white/60">
+                        <thead className="bg-white/5 text-xs uppercase font-semibold text-white/40">
+                            <tr>
+                                <th className="px-6 py-4">{language === 'zh' ? '股票' : 'Stock'}</th>
+                                <th className="px-6 py-4">{language === 'zh' ? '当前策略' : 'Current Strategy'}</th>
+                                <th className="px-6 py-4">{language === 'zh' ? '操作' : 'Action'}</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {watchlistItems.map((item) => {
+                                const currentStrategy = userStrategies.find(s => s.unique_key === item.unique_key);
+                                const isBinding = bindingLoading === item.unique_key;
+                                
+                                return (
+                                    <tr key={item.id} className="hover:bg-white/5 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col">
+                                                <span className="text-white font-medium font-mono">{item.stock.symbol}</span>
+                                                <span className="text-xs">{item.stock.company_name}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {currentStrategy ? (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-primary font-medium">{currentStrategy.name || 'Unnamed Strategy'}</span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary/80 font-mono">
+                                                        {currentStrategy.buy_threshold_pct}% / {currentStrategy.sell_threshold_pct}%
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-white/20 italic">{language === 'zh' ? '未绑定' : 'Unbound'}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {item.unique_key ? (
+                                                <div className="flex items-center gap-2">
+                                                    <select 
+                                                        className="bg-black/20 border border-white/10 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-primary"
+                                                        onChange={(e) => {
+                                                            if (e.target.value) {
+                                                                handleBind(item.unique_key, e.target.value);
+                                                                e.target.value = ''; // Reset select
+                                                            }
+                                                        }}
+                                                        disabled={isBinding}
+                                                        defaultValue=""
+                                                    >
+                                                        <option value="" disabled>{language === 'zh' ? '选择策略应用...' : 'Apply strategy...'}</option>
+                                                        {userStrategies
+                                                            .filter(s => s.unique_key.startsWith('tpl_')) // Only show templates
+                                                            .map(s => (
+                                                                <option key={s.unique_key} value={s.unique_key}>
+                                                                    {s.name}
+                                                                </option>
+                                                            ))
+                                                        }
+                                                    </select>
+                                                    {isBinding && <span className="material-symbols-outlined animate-spin text-primary text-sm">progress_activity</span>}
+                                                </div>
+                                            ) : (
+                                                <span className="text-white/20 text-xs cursor-help" title={language === 'zh' ? '该股票暂无AI预测模型支持，无法绑定策略' : 'No AI model available for this stock'}>
+                                                    {language === 'zh' ? '不可用' : 'Unavailable'}
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {watchlistItems.length === 0 && (
+                                <tr>
+                                    <td colSpan={3} className="px-6 py-8 text-center text-white/40">
+                                        {language === 'zh' ? '关注列表为空' : 'Watchlist is empty'}
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <CreateStrategyModal 
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onSuccess={handleSuccess}
+            />
         </div>
     );
 };

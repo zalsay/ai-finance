@@ -188,4 +188,7 @@ export const strategyAPI = {
   getParams: async (uniqueKey: string): Promise<any> => {
     return apiRequest(`/strategy/params/by-unique?unique_key=${uniqueKey}`);
   },
+  getUserStrategies: async (): Promise<{ strategies: any[] }> => {
+    return apiRequest('/strategy/list');
+  },
 };

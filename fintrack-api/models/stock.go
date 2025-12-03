@@ -227,6 +227,7 @@ type TimesfmBacktestRequest struct {
 type StrategyParams struct {
 	UniqueKey              string  `json:"unique_key" db:"unique_key"`
 	UserID                 *int    `json:"user_id" db:"user_id"`
+	Name                   *string `json:"name" db:"name"`
 	BuyThresholdPct        float64 `json:"buy_threshold_pct" db:"buy_threshold_pct"`
 	SellThresholdPct       float64 `json:"sell_threshold_pct" db:"sell_threshold_pct"`
 	InitialCash            float64 `json:"initial_cash" db:"initial_cash"`
@@ -243,6 +244,7 @@ type StrategyParams struct {
 type SaveStrategyParamsRequest struct {
 	UniqueKey              string  `json:"unique_key" binding:"required"`
 	UserID                 *int    `json:"user_id"`
+	Name                   *string `json:"name"`
 	BuyThresholdPct        float64 `json:"buy_threshold_pct"`
 	SellThresholdPct       float64 `json:"sell_threshold_pct"`
 	InitialCash            float64 `json:"initial_cash"`

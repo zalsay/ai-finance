@@ -733,20 +733,21 @@ func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequ
 	}
 	_, err := s.db.Conn.Exec(`
         INSERT INTO timesfm_strategy_params (
-            unique_key, user_id,
+            unique_key, user_id, name,
             buy_threshold_pct, sell_threshold_pct, initial_cash,
             enable_rebalance, max_position_pct, min_position_pct,
             slope_position_per_pct, rebalance_tolerance_pct,
             trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac
         ) VALUES (
-            $1, $2,
-            $3, $4, $5,
-            $6, $7, $8,
-            $9, $10,
-            $11, $12, $13
+            $1, $2, $3,
+            $4, $5, $6,
+            $7, $8, $9,
+            $10, $11,
+            $12, $13, $14
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             user_id = EXCLUDED.user_id,
+            name = EXCLUDED.name,
             buy_threshold_pct = EXCLUDED.buy_threshold_pct,
             sell_threshold_pct = EXCLUDED.sell_threshold_pct,
             initial_cash = EXCLUDED.initial_cash,
@@ -760,7 +761,7 @@ func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequ
             take_profit_sell_frac = EXCLUDED.take_profit_sell_frac,
             updated_at = CURRENT_TIMESTAMP
     `,
-		req.UniqueKey, uidArg,
+		req.UniqueKey, uidArg, req.Name,
 		req.BuyThresholdPct, req.SellThresholdPct, req.InitialCash,
 		req.EnableRebalance, req.MaxPositionPct, req.MinPositionPct,
 		req.SlopePositionPerPct, req.RebalanceTolerancePct,
@@ -774,7 +775,7 @@ func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequ
 
 func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*models.StrategyParams, error) {
 	row := s.db.Conn.QueryRow(`
-        SELECT unique_key, user_id,
+        SELECT unique_key, user_id, name,
                buy_threshold_pct, sell_threshold_pct, initial_cash,
                enable_rebalance, max_position_pct, min_position_pct,
                slope_position_per_pct, rebalance_tolerance_pct,
@@ -786,7 +787,7 @@ func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*mode
 	var item models.StrategyParams
 	var uid sql.NullInt64
 	err := row.Scan(
-		&item.UniqueKey, &uid,
+		&item.UniqueKey, &uid, &item.Name,
 		&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
 		&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
 		&item.SlopePositionPerPct, &item.RebalanceTolerancePct,
@@ -805,4 +806,46 @@ func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*mode
 		item.UserID = nil
 	}
 	return &item, nil
+}
+
+// 获取用户的所有策略
+func (s *WatchlistService) GetUserStrategies(userID int) ([]models.StrategyParams, error) {
+	rows, err := s.db.Conn.Query(`
+        SELECT unique_key, user_id, name,
+               buy_threshold_pct, sell_threshold_pct, initial_cash,
+               enable_rebalance, max_position_pct, min_position_pct,
+               slope_position_per_pct, rebalance_tolerance_pct,
+               trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac
+        FROM timesfm_strategy_params
+        WHERE user_id = $1
+        ORDER BY updated_at DESC
+    `, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query user strategies: %v", err)
+	}
+	defer rows.Close()
+
+	var results []models.StrategyParams
+	for rows.Next() {
+		var item models.StrategyParams
+		var uid sql.NullInt64
+		err := rows.Scan(
+			&item.UniqueKey, &uid, &item.Name,
+			&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
+			&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
+			&item.SlopePositionPerPct, &item.RebalanceTolerancePct,
+			&item.TradeFeeRate, &item.TakeProfitThresholdPct, &item.TakeProfitSellFrac,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan strategy params: %v", err)
+		}
+		if uid.Valid {
+			v := int(uid.Int64)
+			item.UserID = &v
+		} else {
+			item.UserID = nil
+		}
+		results = append(results, item)
+	}
+	return results, nil
 }

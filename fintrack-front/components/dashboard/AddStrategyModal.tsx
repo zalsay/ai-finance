@@ -18,6 +18,7 @@ const AddStrategyModal: React.FC<AddStrategyModalProps> = ({ isOpen, onClose, on
 
     const [formData, setFormData] = useState<StrategyParams>({
         unique_key: uniqueKey,
+        name: initialData?.name || '',
         buy_threshold_pct: initialData?.buy_threshold_pct ?? 1.5,
         sell_threshold_pct: initialData?.sell_threshold_pct ?? -1.0,
         initial_cash: initialData?.initial_cash ?? 100000,
@@ -37,7 +38,7 @@ const AddStrategyModal: React.FC<AddStrategyModalProps> = ({ isOpen, onClose, on
         const { name, value, type, checked } = e.target;
         setFormData(prev => ({
             ...prev,
-            [name]: type === 'checkbox' ? checked : parseFloat(value)
+            [name]: type === 'checkbox' ? checked : (type === 'number' ? parseFloat(value) : value)
         }));
     };
 
@@ -60,6 +61,7 @@ const AddStrategyModal: React.FC<AddStrategyModalProps> = ({ isOpen, onClose, on
     };
 
     const labels: Record<string, string> = {
+        name: language === 'zh' ? '策略名称' : 'Strategy Name',
         buy_threshold_pct: language === 'zh' ? '买入阈值(%)' : 'Buy Threshold(%)',
         sell_threshold_pct: language === 'zh' ? '卖出阈值(%)' : 'Sell Threshold(%)',
         initial_cash: language === 'zh' ? '初始资金' : 'Initial Cash',
@@ -96,9 +98,10 @@ const AddStrategyModal: React.FC<AddStrategyModalProps> = ({ isOpen, onClose, on
                         {Object.keys(formData).map((key) => {
                             if (key === 'unique_key' || key === 'user_id') return null;
                             const isBool = typeof (formData as any)[key] === 'boolean';
+                            const isString = typeof (formData as any)[key] === 'string';
                             
                             return (
-                                <div key={key} className={isBool ? "col-span-2 flex items-center gap-3" : "space-y-2"}>
+                                <div key={key} className={isBool || isString ? "col-span-2 flex items-center gap-3" : "space-y-2"}>
                                     {isBool ? (
                                         <>
                                             <input
@@ -113,6 +116,21 @@ const AddStrategyModal: React.FC<AddStrategyModalProps> = ({ isOpen, onClose, on
                                                 {labels[key] || key}
                                             </label>
                                         </>
+                                    ) : isString ? (
+                                        <div className="w-full space-y-2">
+                                            <label htmlFor={key} className="text-xs text-white/60 uppercase font-semibold tracking-wider">
+                                                {labels[key] || key}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name={key}
+                                                id={key}
+                                                value={(formData as any)[key]}
+                                                onChange={handleChange}
+                                                className="w-full rounded-lg bg-white/5 border border-white/10 px-4 py-2.5 text-white focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                                                placeholder={language === 'zh' ? '输入策略名称' : 'Enter strategy name'}
+                                            />
+                                        </div>
                                     ) : (
                                         <>
                                             <label htmlFor={key} className="text-xs text-white/60 uppercase font-semibold tracking-wider">
