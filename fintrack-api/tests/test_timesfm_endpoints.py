@@ -37,7 +37,7 @@ def login(base_url, email, password):
 
 def test_predict(base_url):
     url = base_url + "/predict_for_best"
-    payload = {"stock_code": "sh510300", "stock_type": 2, "horizon_len": 7, "context_len": 8192, "timesfm_version": "2.5", "user_id": 1}
+    payload = {"stock_code": "sh510300", "stock_type": 2, "horizon_len": 7, "context_len": 4096, "timesfm_version": "2.5", "user_id": 1}
     status, js, raw = http_post_json(url, payload)
     print("predict status:", status)
     print("predict body:", js if js is not None else raw)
