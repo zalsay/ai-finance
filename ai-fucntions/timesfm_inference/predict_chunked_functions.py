@@ -15,6 +15,24 @@ sys.path.append(pre_data_dir)
 ak_tools_dir = os.path.join(parent_dir, 'akshare-tools')
 sys.path.append(ak_tools_dir)
 
+def _round4(x):
+    try:
+        import numpy as _np
+        if isinstance(x, (float, _np.floating)):
+            return round(float(x), 4)
+        return x
+    except Exception:
+        return x
+
+def _round_obj(o):
+    import numpy as _np
+    if isinstance(o, (float, _np.floating)):
+        return round(float(o), 4)
+    if isinstance(o, list):
+        return [_round_obj(v) for v in o]
+    if isinstance(o, dict):
+        return {k: _round_obj(v) for k, v in o.items()}
+    return o
 # 导入其他模块
 from chunks_functions import create_chunks_from_test_data
 from processor import df_preprocess
@@ -541,10 +559,10 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                 "stock_code": request.stock_code,
                 "best_prediction_item": best_prediction_item,
                 "timesfm_version": request.timesfm_version,
-                "best_metrics": best_metrics,
+                "best_metrics": _round_obj(best_metrics),
             }
             with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(_round_obj(payload), f, ensure_ascii=False, indent=2)
             print(f"✅ 最佳分位数已保存: {out_path} -> {best_prediction_item}")
 
             try:
@@ -568,7 +586,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
                     "symbol": request.stock_code,
                     "timesfm_version": request.timesfm_version,
                     "best_prediction_item": best_prediction_item,
-                    "best_metrics": best_metrics,
+                    "best_metrics": _round_obj(best_metrics),
                     "train_start_date": train_start_date,
                     "train_end_date": train_end_date,
                     "test_start_date": test_start_date,
@@ -680,7 +698,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             }
 
             with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(_round_obj(payload), f, ensure_ascii=False, indent=2)
             print(f"✅ 分块响应已保存: {out_path}")
         except Exception as save_err:
             print(f"⚠️ 保存分块响应 JSON 失败: {save_err}")
@@ -875,7 +893,7 @@ async def predict_validation_chunks_only(
                     "symbol": request.stock_code,
                     "timesfm_version": timesfm_version_str,
                     "best_prediction_item": fixed_best_prediction_item,
-                    "best_metrics": best_metrics_payload,
+                    "best_metrics": _round_obj(best_metrics_payload),
                     "train_start_date": train_start_date,
                     "train_end_date": train_end_date,
                     "test_start_date": test_start_date,
@@ -931,11 +949,11 @@ async def predict_validation_chunks_only(
                         )[:size]
                         dates_str = [d.strftime('%Y-%m-%d') for d in chunk_dates]
 
-                        def to_float_list(arr):
+                        def to_float4_list(arr):
                             out = []
                             for x in arr:
                                 try:
-                                    out.append(float(x))
+                                    out.append(round(float(x), 4))
                                 except Exception:
                                     out.append(None)
                             return out
@@ -944,16 +962,16 @@ async def predict_validation_chunks_only(
                         preds_map = (vcr.predictions or {})
                         best_key = fixed_best_prediction_item
                         if best_key and best_key in preds_map:
-                            predictions_clean[best_key] = to_float_list(preds_map.get(best_key) or [])
+                            predictions_clean[best_key] = to_float4_list(preds_map.get(best_key) or [])
                         else:
                             fallback_key = best_key or "mtf-0.5"
                             if fallback_key in preds_map:
-                                predictions_clean[fallback_key] = to_float_list(preds_map.get(fallback_key) or [])
+                                predictions_clean[fallback_key] = to_float4_list(preds_map.get(fallback_key) or [])
                             else:
                                 for k, arr in preds_map.items():
-                                    predictions_clean[k] = to_float_list(arr or [])
+                                    predictions_clean[k] = to_float4_list(arr or [])
                                     break
-                        actual_clean = to_float_list(vcr.actual_values or [])
+                        actual_clean = to_float4_list(vcr.actual_values or [])
 
                         chunk_payload = {
                             "unique_key": unique_key_val,
@@ -968,7 +986,7 @@ async def predict_validation_chunks_only(
                             "user_id": getattr(request, 'user_id', None),
                         }
 
-                        status_code, data, body_text = await pg.save_best_val_chunk(chunk_payload)
+                        status_code, data, body_text = await pg.save_best_val_chunk(_round_obj(chunk_payload))
                         if status_code == 0:
                             print(f"⚠️ 验证分块写入失败(chunk={vcr.chunk_index})，网络异常")
                             continue
@@ -1044,7 +1062,7 @@ async def predict_validation_chunks_only(
                 "user_id": 1,
             }
             with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(_round_obj(payload), f, ensure_ascii=False, indent=2)
             print(f"✅ 验证集分块响应已保存: {out_path}")
         except Exception as save_err:
             print(f"⚠️ 保存验证集分块响应 JSON 失败: {save_err}")
