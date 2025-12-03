@@ -192,3 +192,19 @@ export const strategyAPI = {
     return apiRequest('/strategy/list');
   },
 };
+
+export const quotesAPI = {
+  batchLatest: async (symbols: string[]): Promise<{ quotes: Array<{ symbol: string; latest_price?: number; change_percent?: number; trading_date?: string; turnover_rate?: number }> }> => {
+    return apiRequest('/quotes/batch-latest', {
+      method: 'POST',
+      body: JSON.stringify({ symbols }),
+    });
+  },
+};
+
+export const stocksAPI = {
+  lookupName: async (symbol: string, stockType: number): Promise<{ symbol: string; name: string }> => {
+    const params = new URLSearchParams({ symbol, stock_type: String(stockType) });
+    return apiRequest(`/stocks/lookup?${params.toString()}`, { method: 'GET' });
+  },
+};
