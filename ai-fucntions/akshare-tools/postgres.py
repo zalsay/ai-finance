@@ -491,11 +491,29 @@ class PostgresHandler:
                     return await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
                 return self._records_to_df([])
 
-            latest_dt = pd.to_datetime(df["datetime"], errors="coerce", utc=True).dt.tz_localize(None).max()
+            dt_series = pd.to_datetime(df["datetime"], errors="coerce", utc=True).dt.tz_localize(None)
+            earliest_dt = dt_series.min()
+            latest_dt = dt_series.max()
             trading_days = get_trading_days(start_compact, end_compact, need_=False)
             if not trading_days:
                 return df
+            target_start_date = pd.Timestamp(trading_days[0]).date()
             target_end_date = pd.Timestamp(trading_days[-1]).date()
+
+            if pd.isna(earliest_dt) or pd.Timestamp(earliest_dt).date() > target_start_date:
+                if pd.isna(latest_dt):
+                    incr_start_compact = start_compact
+                else:
+                    incr_start_compact = self._to_yyyymmdd(pd.Timestamp(latest_dt).to_pydatetime() + timedelta(days=1))
+                    given_start_compact = start_compact
+                    if pd.Timestamp(given_start_compact) > pd.Timestamp(incr_start_compact):
+                        incr_start_compact = given_start_compact
+
+                logger.info(f"最早日期 {pd.Timestamp(earliest_dt).date() if not pd.isna(earliest_dt) else 'NaT'} 未覆盖到 {target_start_date}，增量同步: {symbol} {incr_start_compact}~{end_compact}")
+                await self.sync_stock(symbol, stock_type=stock_type, batch_size=batch_size)
+                if requery:
+                    return await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
+
             if pd.isna(latest_dt) or pd.Timestamp(latest_dt).date() < target_end_date:
                 if pd.isna(latest_dt):
                     incr_start_compact = start_compact

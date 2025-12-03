@@ -42,3 +42,8 @@
     - 内容：在 `ensure_date_range_df` 中去除时间偏移，统一将 `latest_dt` 与交易日 `target_end_date` 转为日期进行比较，避免出现“最新日期 00:00:00 未覆盖到 08:00:00”的误判。
     - 逻辑：`latest_dt_date < target_end_date` 触发增量同步；相等视为已覆盖。
     - 语法校验：执行 `python3 -m py_compile ai-fucntions/akshare-tools/postgres.py` 通过。
+41. Python：新增 start_date 覆盖判断并触发增量
+    - 修改文件：`ai-fucntions/akshare-tools/postgres.py`
+    - 内容：在 `ensure_date_range_df` 增加对区间起始覆盖的判断，比较 `earliest_dt_date` 与交易日 `target_start_date`，若最早日期晚于起始交易日则同样触发 `sync_stock`。
+    - 逻辑：`earliest_dt_date > target_start_date` 或 `latest_dt_date < target_end_date` 均触发增量；任一满足即重读区间数据。
+    - 语法校验：执行 `python3 -m py_compile ai-fucntions/akshare-tools/postgres.py` 通过。
