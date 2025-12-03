@@ -199,12 +199,15 @@ async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
             stock_code=req_stock_code,
             stock_type=data.get("stock_type", 1),
             time_step=data.get("time_step", 0),
-            years=data.get("years", 10),
+            years=data.get("years", 12),
             horizon_len=data.get("horizon_len", 7),
             context_len=data.get("context_len", 2048),
             timesfm_version=data.get("timesfm_version", "2.5"),
+            user_id=data.get("user_id", None),
         )
         req_stock_code = request.stock_code
+        request.start_date = "20100101"
+        request.end_date = "20251201"
         logger.info(f"predict_for_best received: {request}")
         background_tasks.add_task(predict_chunked_mode_for_best, request)
         return JSONResponse(
