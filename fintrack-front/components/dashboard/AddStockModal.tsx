@@ -5,9 +5,10 @@ interface AddStockModalProps {
     isOpen: boolean;
     onClose: () => void;
     onAdd: (symbol: string) => Promise<void>;
+    onAuthError?: () => void;
 }
 
-const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd }) => {
+const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd, onAuthError }) => {
     const { t } = useLanguage();
     const [exchange, setExchange] = useState<'sh' | 'sz'>('sh');
     const [stockCode, setStockCode] = useState('');
@@ -38,7 +39,15 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
             setExchange('sh');
             onClose();
         } catch (err: any) {
-            setError(err.message || '添加股票失败');
+            if (onAuthError && err.message && (
+                err.message.includes('Authorization header required') || 
+                err.message.includes('401') ||
+                err.message.includes('Unauthorized')
+            )) {
+                onAuthError();
+            } else {
+                setError(err.message || '添加股票失败');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -126,7 +135,10 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
 
                     {/* Error Message */}
                     {error && (
-                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                        <div 
+                            onClick={onAuthError}
+                            className={`p-3 bg-red-500/10 border border-red-500/20 rounded-lg ${onAuthError ? 'cursor-pointer hover:bg-red-500/20 transition-colors' : ''}`}
+                        >
                             <p className="text-red-400 text-sm">{error}</p>
                         </div>
                     )}

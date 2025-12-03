@@ -32,6 +32,26 @@ CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
 CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(user_id);
 CREATE INDEX IF NOT EXISTS idx_strategy_params_unique_key ON timesfm_strategy_params(unique_key);
 CREATE INDEX IF NOT EXISTS idx_strategy_params_user_unique_key ON timesfm_strategy_params(user_id, unique_key);
+
+-- LLM Token Usage Tracking Table
+CREATE TABLE IF NOT EXISTS llm_token_usage (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    provider VARCHAR(50) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    prompt_tokens INTEGER NOT NULL,
+    completion_tokens INTEGER NOT NULL,
+    total_tokens INTEGER NOT NULL,
+    request_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_token_usage_user_id ON llm_token_usage(user_id);
+CREATE INDEX IF NOT EXISTS idx_llm_token_usage_provider ON llm_token_usage(provider);
+CREATE INDEX IF NOT EXISTS idx_llm_token_usage_request_time ON llm_token_usage(request_time);
+CREATE INDEX IF NOT EXISTS idx_llm_token_usage_user_time ON llm_token_usage(user_id, request_time DESC);
+
 -- 创建用户和权限（如果需要额外用户）
 -- CREATE USER fintrack_user WITH PASSWORD 'fintrack_password';
 -- GRANT ALL PRIVILEGES ON DATABASE fintrack TO fintrack_user;

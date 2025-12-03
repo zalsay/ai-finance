@@ -27,6 +27,7 @@ const AppContent: React.FC = () => {
 
     const [showLogin, setShowLogin] = useState<boolean>(false);
     const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+    const [authRedirecting, setAuthRedirecting] = useState<boolean>(false);
 
     // 检查用户是否已登录
     useEffect(() => {
@@ -47,6 +48,17 @@ const AppContent: React.FC = () => {
         checkAuth();
     }, []);
 
+    const handleAuthError = useCallback(() => {
+        setAuthRedirecting(true);
+        setTimeout(() => {
+            localStorage.removeItem('authToken');
+            setIsAuthenticated(false);
+            setIsDemoMode(false);
+            setShowLogin(true);
+            setAuthRedirecting(false);
+        }, 1500);
+    }, []);
+
     const fetchPredictions = useCallback(async () => {
         setIsLoading(true);
         setError(null);
@@ -58,12 +70,21 @@ const AppContent: React.FC = () => {
                 prediction: predictions[stock.symbol] || stock.prediction,
             })));
         } catch (err: any) {
-            setError(err.message);
-            console.error(err);
+            // 如果是授权错误，自动跳转登录
+            if (err.message && (
+                err.message.includes('Authorization header required') || 
+                err.message.includes('401') ||
+                err.message.includes('Unauthorized')
+            )) {
+                handleAuthError();
+            } else {
+                setError(err.message);
+                console.error(err);
+            }
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [handleAuthError]);
 
     useEffect(() => {
         if (isAuthenticated || isDemoMode) {
@@ -91,9 +112,17 @@ const AppContent: React.FC = () => {
     const renderView = () => {
         switch (currentView) {
             case 'dashboard':
-                return <Dashboard stocks={stocks} isLoading={isLoading} error={error} />;
+                return <Dashboard 
+                    stocks={stocks} 
+                    isLoading={isLoading} 
+                    error={error} 
+                    onAuthError={handleAuthError}
+                />;
             case 'watchlist':
-                return <Watchlist initialStocks={INITIAL_STOCKS} />;
+                return <Watchlist 
+                    initialStocks={INITIAL_STOCKS} 
+                    onAuthError={handleAuthError}
+                />;
             case 'pricing':
                 return <Pricing />;
             case 'portfolio':
@@ -127,6 +156,22 @@ const AppContent: React.FC = () => {
 
     return (
         <div className="flex min-h-screen">
+            {/* Auth Redirect Overlay */}
+            {authRedirecting && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-card-dark border border-white/10 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4 text-center transform transition-all">
+                        <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4">
+                            <span className="material-symbols-outlined text-primary text-2xl">lock</span>
+                        </div>
+                        <h3 className="text-xl font-bold text-white mb-2">{t('auth.sessionExpired')}</h3>
+                        <p className="text-white/60 mb-6">{t('auth.redirectingLogin')}</p>
+                        <div className="w-full bg-white/10 rounded-full h-1 overflow-hidden">
+                            <div className="bg-primary h-full rounded-full w-full animate-[pulse_1.5s_ease-in-out_infinite]"></div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <Sidebar currentView={currentView} setCurrentView={setCurrentView} onLogout={handleLogout} />
 
             {/* Mobile Navigation */}

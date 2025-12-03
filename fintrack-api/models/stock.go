@@ -137,118 +137,118 @@ type SaveTimesfmBestRequest struct {
 }
 
 type SaveTimesfmValChunkRequest struct {
-        UniqueKey   string                 `json:"unique_key" binding:"required"`
-        ChunkIndex  int                    `json:"chunk_index" binding:"gte=0"`
-        StartDate   string                 `json:"start_date" binding:"required"`
-        EndDate     string                 `json:"end_date" binding:"required"`
-        Symbol      string                 `json:"symbol"`
-        UserID      *int                   `json:"user_id"`
-        Predictions map[string]interface{} `json:"predictions" binding:"required"` // best item vector or all columns
-        Actual      []float64              `json:"actual_values" binding:"required"`
-        Dates       []string               `json:"dates" binding:"required"`
+	UniqueKey   string                 `json:"unique_key" binding:"required"`
+	ChunkIndex  int                    `json:"chunk_index" binding:"gte=0"`
+	StartDate   string                 `json:"start_date" binding:"required"`
+	EndDate     string                 `json:"end_date" binding:"required"`
+	Symbol      string                 `json:"symbol"`
+	UserID      *int                   `json:"user_id"`
+	Predictions map[string]interface{} `json:"predictions" binding:"required"` // best item vector or all columns
+	Actual      []float64              `json:"actual_values" binding:"required"`
+	Dates       []string               `json:"dates" binding:"required"`
 }
 
 // 保存 TimesFM 回测结果的请求模型
 type SaveTimesfmBacktestRequest struct {
-        UniqueKey   string                 `json:"unique_key" binding:"required"`
-        Symbol      string                 `json:"symbol" binding:"required"`
-        TimesfmVersion string              `json:"timesfm_version" binding:"required"`
-        ContextLen  int                    `json:"context_len" binding:"required"`
-        HorizonLen  int                    `json:"horizon_len" binding:"required"`
-        UserID      *int                   `json:"user_id"`
+	UniqueKey      string `json:"unique_key" binding:"required"`
+	Symbol         string `json:"symbol" binding:"required"`
+	TimesfmVersion string `json:"timesfm_version" binding:"required"`
+	ContextLen     int    `json:"context_len" binding:"required"`
+	HorizonLen     int    `json:"horizon_len" binding:"required"`
+	UserID         *int   `json:"user_id"`
 
-        UsedQuantile string                `json:"used_quantile"`
-        BuyThresholdPct float64            `json:"buy_threshold_pct"`
-        SellThresholdPct float64           `json:"sell_threshold_pct"`
-        TradeFeeRate float64               `json:"trade_fee_rate"`
-        TotalFeesPaid float64              `json:"total_fees_paid"`
-        ActualTotalReturnPct float64       `json:"actual_total_return_pct"`
+	UsedQuantile         string  `json:"used_quantile"`
+	BuyThresholdPct      float64 `json:"buy_threshold_pct"`
+	SellThresholdPct     float64 `json:"sell_threshold_pct"`
+	TradeFeeRate         float64 `json:"trade_fee_rate"`
+	TotalFeesPaid        float64 `json:"total_fees_paid"`
+	ActualTotalReturnPct float64 `json:"actual_total_return_pct"`
 
-        BenchmarkReturnPct float64         `json:"benchmark_return_pct"`
-        BenchmarkAnnualizedReturnPct float64 `json:"benchmark_annualized_return_pct"`
-        PeriodDays int                     `json:"period_days"`
+	BenchmarkReturnPct           float64 `json:"benchmark_return_pct"`
+	BenchmarkAnnualizedReturnPct float64 `json:"benchmark_annualized_return_pct"`
+	PeriodDays                   int     `json:"period_days"`
 
-        ValidationStartDate string         `json:"validation_start_date"`
-        ValidationEndDate string           `json:"validation_end_date"`
-        ValidationBenchmarkReturnPct float64   `json:"validation_benchmark_return_pct"`
-        ValidationBenchmarkAnnualizedReturnPct float64 `json:"validation_benchmark_annualized_return_pct"`
-        ValidationPeriodDays int           `json:"validation_period_days"`
+	ValidationStartDate                    string  `json:"validation_start_date"`
+	ValidationEndDate                      string  `json:"validation_end_date"`
+	ValidationBenchmarkReturnPct           float64 `json:"validation_benchmark_return_pct"`
+	ValidationBenchmarkAnnualizedReturnPct float64 `json:"validation_benchmark_annualized_return_pct"`
+	ValidationPeriodDays                   int     `json:"validation_period_days"`
 
-        PositionControl map[string]interface{} `json:"position_control"`
-        PredictedChangeStats map[string]interface{} `json:"predicted_change_stats"`
-        PerChunkSignals []map[string]interface{}   `json:"per_chunk_signals"`
+	PositionControl      map[string]interface{}   `json:"position_control"`
+	PredictedChangeStats map[string]interface{}   `json:"predicted_change_stats"`
+	PerChunkSignals      []map[string]interface{} `json:"per_chunk_signals"`
 
-        EquityCurveValues []float64        `json:"equity_curve_values"`
-        EquityCurvePct []float64           `json:"equity_curve_pct"`
-        EquityCurvePctGross []float64      `json:"equity_curve_pct_gross"`
-        CurveDates []string                `json:"curve_dates"`
-        ActualEndPrices []float64          `json:"actual_end_prices"`
-        Trades []map[string]interface{}    `json:"trades"`
+	EquityCurveValues   []float64                `json:"equity_curve_values"`
+	EquityCurvePct      []float64                `json:"equity_curve_pct"`
+	EquityCurvePctGross []float64                `json:"equity_curve_pct_gross"`
+	CurveDates          []string                 `json:"curve_dates"`
+	ActualEndPrices     []float64                `json:"actual_end_prices"`
+	Trades              []map[string]interface{} `json:"trades"`
 }
 
 type TimesfmPredictRequest struct {
-    Symbol string `json:"symbol" binding:"required"`
-    Years *int `json:"years,omitempty"`
-    HorizonLen *int `json:"horizon_len,omitempty"`
-    ContextLen *int `json:"context_len,omitempty"`
-    TimeStep *int `json:"time_step,omitempty"`
-    IncludeTechnicalIndicators *bool `json:"include_technical_indicators,omitempty"`
-    FixedEndDate *string `json:"fixed_end_date,omitempty"`
-    PredictionMode *int `json:"prediction_mode,omitempty"`
+	Symbol                     string  `json:"symbol" binding:"required"`
+	Years                      *int    `json:"years,omitempty"`
+	HorizonLen                 *int    `json:"horizon_len,omitempty"`
+	ContextLen                 *int    `json:"context_len,omitempty"`
+	TimeStep                   *int    `json:"time_step,omitempty"`
+	IncludeTechnicalIndicators *bool   `json:"include_technical_indicators,omitempty"`
+	FixedEndDate               *string `json:"fixed_end_date,omitempty"`
+	PredictionMode             *int    `json:"prediction_mode,omitempty"`
 }
 
 type TimesfmBacktestRequest struct {
-    Symbol string `json:"symbol" binding:"required"`
-    StockType *string `json:"stock_type,omitempty"`
-    Years *int `json:"years,omitempty"`
-    HorizonLen *int `json:"horizon_len,omitempty"`
-    ContextLen *int `json:"context_len,omitempty"`
-    TimeStep *int `json:"time_step,omitempty"`
-    StartDate *string `json:"start_date,omitempty"`
-    EndDate *string `json:"end_date,omitempty"`
-    TimesfmVersion *string `json:"timesfm_version,omitempty"`
-    UserID *int `json:"user_id,omitempty"`
-    BuyThresholdPct *float64 `json:"buy_threshold_pct,omitempty"`
-    SellThresholdPct *float64 `json:"sell_threshold_pct,omitempty"`
-    InitialCash *float64 `json:"initial_cash,omitempty"`
-    EnableRebalance *bool `json:"enable_rebalance,omitempty"`
-    MaxPositionPct *float64 `json:"max_position_pct,omitempty"`
-    MinPositionPct *float64 `json:"min_position_pct,omitempty"`
-    SlopePositionPerPct *float64 `json:"slope_position_per_pct,omitempty"`
-    RebalanceTolerancePct *float64 `json:"rebalance_tolerance_pct,omitempty"`
-    TradeFeeRate *float64 `json:"trade_fee_rate,omitempty"`
-    TakeProfitThresholdPct *float64 `json:"take_profit_threshold_pct,omitempty"`
-    TakeProfitSellFrac *float64 `json:"take_profit_sell_frac,omitempty"`
+	Symbol                 string   `json:"symbol" binding:"required"`
+	StockType              *string  `json:"stock_type,omitempty"`
+	Years                  *int     `json:"years,omitempty"`
+	HorizonLen             *int     `json:"horizon_len,omitempty"`
+	ContextLen             *int     `json:"context_len,omitempty"`
+	TimeStep               *int     `json:"time_step,omitempty"`
+	StartDate              *string  `json:"start_date,omitempty"`
+	EndDate                *string  `json:"end_date,omitempty"`
+	TimesfmVersion         *string  `json:"timesfm_version,omitempty"`
+	UserID                 *int     `json:"user_id,omitempty"`
+	BuyThresholdPct        *float64 `json:"buy_threshold_pct,omitempty"`
+	SellThresholdPct       *float64 `json:"sell_threshold_pct,omitempty"`
+	InitialCash            *float64 `json:"initial_cash,omitempty"`
+	EnableRebalance        *bool    `json:"enable_rebalance,omitempty"`
+	MaxPositionPct         *float64 `json:"max_position_pct,omitempty"`
+	MinPositionPct         *float64 `json:"min_position_pct,omitempty"`
+	SlopePositionPerPct    *float64 `json:"slope_position_per_pct,omitempty"`
+	RebalanceTolerancePct  *float64 `json:"rebalance_tolerance_pct,omitempty"`
+	TradeFeeRate           *float64 `json:"trade_fee_rate,omitempty"`
+	TakeProfitThresholdPct *float64 `json:"take_profit_threshold_pct,omitempty"`
+	TakeProfitSellFrac     *float64 `json:"take_profit_sell_frac,omitempty"`
 }
 
 type StrategyParams struct {
-    UniqueKey              string   `json:"unique_key" db:"unique_key"`
-    UserID                 *int     `json:"user_id" db:"user_id"`
-    BuyThresholdPct        float64  `json:"buy_threshold_pct" db:"buy_threshold_pct"`
-    SellThresholdPct       float64  `json:"sell_threshold_pct" db:"sell_threshold_pct"`
-    InitialCash            float64  `json:"initial_cash" db:"initial_cash"`
-    EnableRebalance        bool     `json:"enable_rebalance" db:"enable_rebalance"`
-    MaxPositionPct         float64  `json:"max_position_pct" db:"max_position_pct"`
-    MinPositionPct         float64  `json:"min_position_pct" db:"min_position_pct"`
-    SlopePositionPerPct    float64  `json:"slope_position_per_pct" db:"slope_position_per_pct"`
-    RebalanceTolerancePct  float64  `json:"rebalance_tolerance_pct" db:"rebalance_tolerance_pct"`
-    TradeFeeRate           float64  `json:"trade_fee_rate" db:"trade_fee_rate"`
-    TakeProfitThresholdPct float64  `json:"take_profit_threshold_pct" db:"take_profit_threshold_pct"`
-    TakeProfitSellFrac     float64  `json:"take_profit_sell_frac" db:"take_profit_sell_frac"`
+	UniqueKey              string  `json:"unique_key" db:"unique_key"`
+	UserID                 *int    `json:"user_id" db:"user_id"`
+	BuyThresholdPct        float64 `json:"buy_threshold_pct" db:"buy_threshold_pct"`
+	SellThresholdPct       float64 `json:"sell_threshold_pct" db:"sell_threshold_pct"`
+	InitialCash            float64 `json:"initial_cash" db:"initial_cash"`
+	EnableRebalance        bool    `json:"enable_rebalance" db:"enable_rebalance"`
+	MaxPositionPct         float64 `json:"max_position_pct" db:"max_position_pct"`
+	MinPositionPct         float64 `json:"min_position_pct" db:"min_position_pct"`
+	SlopePositionPerPct    float64 `json:"slope_position_per_pct" db:"slope_position_per_pct"`
+	RebalanceTolerancePct  float64 `json:"rebalance_tolerance_pct" db:"rebalance_tolerance_pct"`
+	TradeFeeRate           float64 `json:"trade_fee_rate" db:"trade_fee_rate"`
+	TakeProfitThresholdPct float64 `json:"take_profit_threshold_pct" db:"take_profit_threshold_pct"`
+	TakeProfitSellFrac     float64 `json:"take_profit_sell_frac" db:"take_profit_sell_frac"`
 }
 
 type SaveStrategyParamsRequest struct {
-    UniqueKey              string   `json:"unique_key" binding:"required"`
-    UserID                 *int     `json:"user_id"`
-    BuyThresholdPct        float64  `json:"buy_threshold_pct"`
-    SellThresholdPct       float64  `json:"sell_threshold_pct"`
-    InitialCash            float64  `json:"initial_cash"`
-    EnableRebalance        bool     `json:"enable_rebalance"`
-    MaxPositionPct         float64  `json:"max_position_pct"`
-    MinPositionPct         float64  `json:"min_position_pct"`
-    SlopePositionPerPct    float64  `json:"slope_position_per_pct"`
-    RebalanceTolerancePct  float64  `json:"rebalance_tolerance_pct"`
-    TradeFeeRate           float64  `json:"trade_fee_rate"`
-    TakeProfitThresholdPct float64  `json:"take_profit_threshold_pct"`
-    TakeProfitSellFrac     float64  `json:"take_profit_sell_frac"`
+	UniqueKey              string  `json:"unique_key" binding:"required"`
+	UserID                 *int    `json:"user_id"`
+	BuyThresholdPct        float64 `json:"buy_threshold_pct"`
+	SellThresholdPct       float64 `json:"sell_threshold_pct"`
+	InitialCash            float64 `json:"initial_cash"`
+	EnableRebalance        bool    `json:"enable_rebalance"`
+	MaxPositionPct         float64 `json:"max_position_pct"`
+	MinPositionPct         float64 `json:"min_position_pct"`
+	SlopePositionPerPct    float64 `json:"slope_position_per_pct"`
+	RebalanceTolerancePct  float64 `json:"rebalance_tolerance_pct"`
+	TradeFeeRate           float64 `json:"trade_fee_rate"`
+	TakeProfitThresholdPct float64 `json:"take_profit_threshold_pct"`
+	TakeProfitSellFrac     float64 `json:"take_profit_sell_frac"`
 }

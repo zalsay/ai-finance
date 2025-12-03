@@ -1122,3 +1122,114 @@ func (h *DatabaseHandler) getIndexDailyByDateRangeHandler(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
 }
+
+// saveLlmTokenUsageHandler saves a new LLM token usage record
+func (h *DatabaseHandler) saveLlmTokenUsageHandler(c *gin.Context) {
+	var usage LlmTokenUsage
+	if err := c.ShouldBindJSON(&usage); err != nil {
+		c.JSON(http.StatusBadRequest, ApiResponse{Code: 400, Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	// Validate required fields
+	if usage.UserID == 0 {
+		c.JSON(http.StatusBadRequest, ApiResponse{Code: 400, Message: "user_id is required"})
+		return
+	}
+	if usage.Provider == "" {
+		c.JSON(http.StatusBadRequest, ApiResponse{Code: 400, Message: "provider is required"})
+		return
+	}
+	if usage.Model == "" {
+		c.JSON(http.StatusBadRequest, ApiResponse{Code: 400, Message: "model is required"})
+		return
+	}
+
+	if err := h.SaveLlmTokenUsage(&usage); err != nil {
+		slog.Error("Failed to save LLM token usage", "error", err)
+		c.JSON(http.StatusInternalServerError, ApiResponse{Code: 500, Message: fmt.Sprintf("Failed to save token usage: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, ApiResponse{Code: 0, Message: "success", Data: usage})
+}
+
+// getLlmTokenUsageByUserHandler retrieves LLM token usage records for a user
+func (h *DatabaseHandler) getLlmTokenUsageByUserHandler(c *gin.Context) {
+	userIDStr := c.Param("user_id")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ApiResponse{Code: 400, Message: "Invalid user_id"})
+		return
+	}
+
+	// Parse query parameters
+	limitStr := c.DefaultQuery("limit", "100")
+	offsetStr := c.DefaultQuery("offset", "0")
+	limit, _ := strconv.Atoi(limitStr)
+	offset, _ := strconv.Atoi(offsetStr)
+
+	var startDate, endDate *time.Time
+	if startDateStr := c.Query("start_date"); startDateStr != "" {
+		parsed, err := time.Parse(time.RFC3339, startDateStr)
+		if err == nil {
+			startDate = &parsed
+		}
+	}
+	if endDateStr := c.Query("end_date"); endDateStr != "" {
+		parsed, err := time.Parse(time.RFC3339, endDateStr)
+		if err == nil {
+			endDate = &parsed
+		}
+	}
+
+	var provider, model *string
+	if p := c.Query("provider"); p != "" {
+		provider = &p
+	}
+	if m := c.Query("model"); m != "" {
+		model = &m
+	}
+
+	records, err := h.GetLlmTokenUsageByUser(userID, limit, offset, startDate, endDate, provider, model)
+	if err != nil {
+		slog.Error("Failed to get LLM token usage", "error", err, "user_id", userID)
+		c.JSON(http.StatusInternalServerError, ApiResponse{Code: 500, Message: fmt.Sprintf("Failed to retrieve token usage: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, ApiResponse{Code: 0, Message: "success", Data: records})
+}
+
+// getLlmTokenUsageStatsHandler retrieves aggregated token usage statistics for a user
+func (h *DatabaseHandler) getLlmTokenUsageStatsHandler(c *gin.Context) {
+	userIDStr := c.Param("user_id")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ApiResponse{Code: 400, Message: "Invalid user_id"})
+		return
+	}
+
+	var startDate, endDate *time.Time
+	if startDateStr := c.Query("start_date"); startDateStr != "" {
+		parsed, err := time.Parse(time.RFC3339, startDateStr)
+		if err == nil {
+			startDate = &parsed
+		}
+	}
+	if endDateStr := c.Query("end_date"); endDateStr != "" {
+		parsed, err := time.Parse(time.RFC3339, endDateStr)
+		if err == nil {
+			endDate = &parsed
+		}
+	}
+
+	stats, err := h.GetLlmTokenUsageStats(userID, startDate, endDate)
+	if err != nil {
+		slog.Error("Failed to get LLM token usage stats", "error", err, "user_id", userID)
+		c.JSON(http.StatusInternalServerError, ApiResponse{Code: 500, Message: fmt.Sprintf("Failed to retrieve token usage stats: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, ApiResponse{Code: 0, Message: "success", Data: stats})
+}

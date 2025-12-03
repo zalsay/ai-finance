@@ -46,3 +46,17 @@
     - 徽章“上下文”显示与 `Dashboard.tsx` 的分析字符串一致：小于 `1024` 直接显示数值；否则显示 `Math.round(value/1024)+'K'`；空值显示为 `?`。
 - **效果**：
     - 前后两处展示规则一致，避免 `512` 被显示为 `1K` 的不一致情况，提升信息准确性与一致性。
+
+### 49. 前端优化：支持授权错误自动跳转登录（全面覆盖）
+- **修改文件**：
+    - `fintrack-front/App.tsx`
+    - `fintrack-front/components/dashboard/Dashboard.tsx`
+    - `fintrack-front/components/watchlist/Watchlist.tsx`
+    - `fintrack-front/components/dashboard/AddStockModal.tsx`
+    - `fintrack-front/contexts/LanguageContext.tsx`
+- **变更内容**：
+    - `App.tsx`: 修复 `handleAuthError` 初始化顺序问题，确保在 `fetchPredictions` 调用前已定义；实现“显示模态框 -> 延迟1.5秒 -> 跳转登录”的平滑流程；在数据请求（`fetchPredictions`）捕获到授权错误（Authorization/401）时，**自动触发**该流程，不再设置错误状态。
+    - `Watchlist.tsx` / `AddStockModal.tsx`: 在捕获到 API 授权错误时，**优先触发** `onAuthError` 进行自动跳转，而非显示错误信息。
+    - `LanguageContext.tsx`: 新增 `auth.sessionExpired` 和 `auth.redirectingLogin` 多语言字段。
+- **效果**：
+    - 当用户遇到认证错误（如 Token 过期、Authorization header required）时，系统会**自动**弹出全屏提示框告知“会话已过期”，并自动跳转至登录页，无需用户手动点击错误提示，体验更加智能流畅。

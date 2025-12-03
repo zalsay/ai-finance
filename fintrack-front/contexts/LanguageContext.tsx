@@ -112,6 +112,10 @@ const translations = {
     'login.continueWithGoogle': 'Continue with Google',
     'login.loginButton': 'Login',
     'login.registerButton': 'Register',
+
+    // Auth
+    'auth.sessionExpired': 'Session Expired',
+    'auth.redirectingLogin': 'Please login first, redirecting...',
     
     // Language
     'language.switch': 'Language',
@@ -218,6 +222,10 @@ const translations = {
     'login.continueWithGoogle': '使用Google继续',
     'login.loginButton': '登录',
     'login.registerButton': '注册',
+
+    // Auth
+    'auth.sessionExpired': '会话已过期',
+    'auth.redirectingLogin': '请先登录，正在跳转...',
     
     // Language
     'language.switch': '语言',

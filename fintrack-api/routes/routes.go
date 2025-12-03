@@ -54,10 +54,12 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 	// 初始化服务
 	authService := services.NewAuthService(db)
 	watchlistService := services.NewWatchlistService(db, cfg)
+	llmService := services.NewLLMService(cfg)
 
 	// 初始化处理器
 	authHandler := handlers.NewAuthHandler(authService)
 	watchlistHandler := handlers.NewWatchlistHandler(watchlistService)
+	llmHandler := handlers.NewLLMHandler(llmService, cfg)
 
 	// 健康检查
 	router.GET("/health", func(c *gin.Context) {
@@ -108,6 +110,14 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 		{
 			strategy.POST("/params", watchlistHandler.SaveStrategyParams)
 			strategy.GET("/params/by-unique", watchlistHandler.GetStrategyParamsByUniqueKey)
+		}
+
+		// LLM 路由 (需要鉴权)
+		llm := v1.Group("/llm")
+		llm.Use(authHandler.AuthMiddleware())
+		{
+			llm.POST("/chat", llmHandler.Chat)
+			llm.GET("/models", llmHandler.GetModels)
 		}
 
 		// 股票相关路由（预留）
