@@ -1146,10 +1146,10 @@ if __name__ == "__main__":
     test_request = ChunkedPredictionRequest(
         stock_code="sh510300",
         years=15,
-        horizon_len=7,
+        horizon_len=3,
         start_date="",
         end_date="20251201",
-        context_len=256,
+        context_len=2048,
         time_step=0,
         stock_type=2,
         timesfm_version="2.5",
