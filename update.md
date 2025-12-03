@@ -29,3 +29,11 @@
 29→    - 新增函数：`fetch_strategy_params(unique_key)`，从 `fintrack-api` 的 `GET /api/v1/strategy/params/by-unique` 读取参数。
 30→    - 在 `run_backtest` 开始处，根据 `unique_key` 覆盖参数：`buy_threshold_pct`、`sell_threshold_pct`、`initial_cash`、`enable_rebalance`、`max_position_pct`、`min_position_pct`、`slope_position_per_pct`、`rebalance_tolerance_pct`、`trade_fee_rate`、`take_profit_threshold_pct`、`take_profit_sell_frac`。
 31→    - 语法校验：执行 `python3 -m py_compile ai-fucntions/timesfm_inference/exchange_server.py` 通过。
+32→
+33→18. Python：分块预测持久化统一四位小数
+34→    - 修改文件：`ai-fucntions/timesfm_inference/predict_chunked_functions.py`
+35→    - 内容：新增 `_round4` 与 `_round_obj`，在保存到数据库与JSON文件前对所有计算结果统一保留四位小数。
+36→      - 覆盖项：`best_metrics`、`validation_results`、分块 `metrics`、`predictions`、`actual_values`、`concatenated_predictions`、`concatenated_actual`、`processing_time` 等。
+37→      - 数据库：`save_best_prediction` 与 `save_best_val_chunk` 的payload进行四位小数处理。
+38→      - JSON：最佳分位JSON与`chunked_response.json`的payload进行四位小数处理。
+39→    - 语法校验：执行 `python3 -m py_compile ai-fucntions/timesfm_inference/predict_chunked_functions.py` 通过。
