@@ -55,7 +55,7 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
         
         try {
             setIsLoading(true);
-            await watchlistAPI.addToWatchlist(newSymbol.toUpperCase());
+            await watchlistAPI.addToWatchlist({ symbol: newSymbol.toUpperCase() });
             setNewSymbol('');
             await loadWatchlist(); // 重新加载列表
         } catch (err: any) {

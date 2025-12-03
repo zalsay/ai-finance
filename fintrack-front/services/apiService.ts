@@ -4,7 +4,7 @@ import { PublicPredictionResponse } from '../types';
 const DEV_BASE = (import.meta.env as any).VITE_API_BASE_URL_DEV as string | undefined;
 const PROD_BASE = (import.meta.env as any).VITE_API_BASE_URL_PROD as string | undefined;
 const API_BASE_URL = (import.meta.env as any).DEV
-  ? (DEV_BASE || 'http://localhost:9000/api/v1')
+  ? (DEV_BASE || 'http://localhost:59000/api/v1')
   : (PROD_BASE || 'http://go-api.meetlife.com.cn:9000/api/v1');
 
 // 存储认证token
@@ -57,6 +57,10 @@ export interface WatchlistItem {
 export interface WatchlistResponse {
   count: number;
   watchlist: WatchlistItem[];
+}
+
+export interface AddToWatchlistRequest {
+  symbol: string;
 }
 
 // 设置认证token
@@ -157,7 +161,7 @@ export const watchlistAPI = {
 };
 
 export const getPublicPredictions = async (): Promise<PublicPredictionResponse> => {
-  return apiRequest<PublicPredictionResponse>('/predictions/public', { method: 'GET' });
+  return apiRequest<PublicPredictionResponse>('/get-predictions/mtf-best/public', { method: 'GET' });
 };
 
 export const getMarketStatus = async () => {
