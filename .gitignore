@@ -85,6 +85,3 @@ ai-fucntions/timesfm_inference/timesfm-2p5-functions/timesfm-2.5
 *.json
 *.txt
 run
-
-# Vendored binaries: ignore pyarrow directory to avoid huge files in repo
-ai-fucntions/akshare-server/pyarrow/

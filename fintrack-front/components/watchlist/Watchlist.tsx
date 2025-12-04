@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { StockData } from '../../types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getChangeColors } from '../../utils/colorUtils';
-import { watchlistAPI, WatchlistItem, quotesAPI } from '../../services/apiService';
+import { watchlistAPI, WatchlistItem, quotesAPI, getPublicPredictions } from '../../services/apiService';
 import AddStockModal from '../dashboard/AddStockModal';
 import ConfirmModal from '../common/ConfirmModal';
+import PredictionChart from '../common/PredictionChart';
 
 interface WatchlistProps {
     initialStocks: StockData[];
@@ -28,7 +29,10 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [stockToDelete, setStockToDelete] = useState<{ id: number; symbol: string } | null>(null);
+    const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
+    const [chartOpen, setChartOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [isChartLoading, setIsChartLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [latestQuotes, setLatestQuotes] = useState<Record<string, { latest_price?: number; change_percent?: number; trading_date?: string; turnover_rate?: number }>>({});
 
@@ -122,6 +126,110 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
         }
     };
 
+    const handleShowChart = async (item: WatchlistItem) => {
+        const symbol = item.stock?.symbol || '';
+        if (!symbol) return;
+        
+        setChartOpen(true);
+        setIsChartLoading(true);
+        
+        // Set basic info first
+        const currentPrice = latestQuotes[symbol]?.latest_price ?? item.current_price?.price ?? 0;
+        const changePercent = latestQuotes[symbol]?.change_percent ?? item.current_price?.change_percent ?? 0;
+        
+        setSelectedStock({
+            symbol: symbol,
+            companyName: item.stock?.company_name || '',
+            currentPrice: currentPrice,
+            changePercent: changePercent,
+        } as StockData);
+
+        try {
+            const res = await getPublicPredictions();
+            if (res && res.items) {
+                const found = res.items.find(i => i.best.symbol === symbol);
+                if (found) {
+                    const bestItemKey = found.best.best_prediction_item;
+                    const contextLen = found.best.context_len;
+                    const horizonLen = found.best.horizon_len;
+                    const sortedChunks = (found.chunks || []).sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+                    
+                    let allDates: string[] = [];
+                    let allActuals: number[] = [];
+                    let allPreds: number[] = [];
+
+                    sortedChunks.forEach(chunk => {
+                        if (chunk.dates && chunk.dates.length > 0) {
+                            allDates = allDates.concat(chunk.dates);
+                            allActuals = allActuals.concat(chunk.actual_values || []);
+                            const chunkPreds = chunk.predictions[bestItemKey] || [];
+                            allPreds = allPreds.concat(chunkPreds as number[]);
+                        }
+                    });
+
+                    if (allDates.length > 0) {
+                         const lastActual = allActuals.length > 0 ? allActuals[allActuals.length - 1] : 0;
+                         const lastPred = allPreds.length > 0 ? allPreds[allPreds.length - 1] : 0;
+                         
+                         // Logic from Dashboard.tsx to match display
+                         const price = lastActual || lastPred;
+
+                         // Calculate change based on first and last actual values
+                         let startPrice = 0;
+                         if (allActuals.length > 0) {
+                             startPrice = allActuals[0];
+                         }
+                         const change = startPrice > 0 ? ((lastActual - startPrice) / startPrice) * 100 : 0;
+
+                         // Calculate predicted change
+                         let startPred = 0;
+                         if (allPreds.length > 0) {
+                             startPred = allPreds[0];
+                         }
+                         const predictedChange = startPred > 0 ? ((lastPred - startPred) / startPred) * 100 : 0;
+
+                         // Calculate confidence
+                         let confidence = 85;
+                         try {
+                             const metrics = JSON.parse(found.best.best_metrics);
+                             if (metrics && typeof metrics.composite_score === 'number') {
+                                 confidence = 100 - metrics.composite_score;
+                             }
+                         } catch (e) { }
+
+                         setSelectedStock({
+                             symbol: found.best.symbol,
+                             companyName: found.best.short_name || found.best.symbol,
+                             currentPrice: price,
+                             changePercent: change,
+                             predictedChangePercent: predictedChange,
+                             prediction: {
+                                 predicted_high: lastPred,
+                                 predicted_low: lastPred,
+                                 confidence: parseFloat(confidence.toFixed(4)),
+                                 sentiment: predictedChange > 0 ? 'Bullish' : 'Bearish',
+                                 analysis: '',
+                                 modelName: bestItemKey,
+                                 contextLen: contextLen,
+                                 horizonLen: horizonLen,
+                                 maxDeviationPercent: found.max_deviation_percent,
+                                 chartData: {
+                                     dates: allDates,
+                                     actuals: allActuals,
+                                     predictions: allPreds
+                                 }
+                             }
+                         } as StockData);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch prediction for chart", e);
+        } finally {
+            setIsChartLoading(false);
+        }
+    };
+
     const filteredItems = watchlistItems.filter(item => {
         const matchesSearch = (item.stock?.symbol || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (item.stock?.company_name || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -144,7 +252,17 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                     onClick={onAuthError}
                     className={`mx-4 mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg ${onAuthError ? 'cursor-pointer hover:bg-red-500/20 transition-colors' : ''}`}
                 >
-                    <p className="text-red-400 text-sm">{language === 'zh' ? (error.includes('symbol not found') ? '未找到该代码，请使用完整代码格式，例如：sz000001 或 sh600519' : (error.includes('User not authenticated') || error.includes('Unauthorized') ? '请先登录' : error)) : error}</p>
+                    <p className="text-red-400 text-sm">
+                        {(() => {
+                            if (error.includes('symbol not found')) {
+                                return t('addStock.errorNotFound');
+                            }
+                            if (error.includes('User not authenticated') || error.includes('Unauthorized')) {
+                                return t('addStock.errorAuth');
+                            }
+                            return error;
+                        })()}
+                    </p>
                 </div>
             )}
 
@@ -196,13 +314,164 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                 isOpen={deleteModalOpen}
                 onClose={() => setDeleteModalOpen(false)}
                 onConfirm={handleRemoveStock}
-                title={language === 'zh' ? '删除自选' : 'Remove Stock'}
-                message={language === 'zh' ? `确认删除 ${stockToDelete?.symbol}？` : `Are you sure you want to remove ${stockToDelete?.symbol}?`}
-                confirmText={language === 'zh' ? '删除' : 'Delete'}
-                cancelText={language === 'zh' ? '取消' : 'Cancel'}
+                title={t('modal.deleteTitle')}
+                message={t('modal.deleteMessage').replace('{symbol}', stockToDelete?.symbol || '')}
+                confirmText={t('modal.deleteConfirm')}
+                cancelText={t('modal.deleteCancel')}
                 isDanger={true}
                 isLoading={isLoading}
             />
+
+            {/* Chart Modal */}
+            {chartOpen && selectedStock && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-5xl bg-card-dark border border-white/10 rounded-xl overflow-hidden flex flex-col max-h-[90vh]">
+                         <div className="flex items-center justify-between p-6 border-b border-white/10">
+                             <div>
+                                 <h3 className="text-xl font-bold text-white">{selectedStock.companyName}</h3>
+                                 <p className="text-sm text-white/60">{selectedStock.symbol}</p>
+                             </div>
+                             <button 
+                                 onClick={() => setChartOpen(false)}
+                                 className="p-2 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                             >
+                                 <span className="material-symbols-outlined">close</span>
+                             </button>
+                         </div>
+                         <div className="p-6 overflow-y-auto flex-1 min-h-[300px] flex flex-col bg-card-dark">
+                             {isChartLoading ? (
+                                 <div className="flex-1 flex items-center justify-center">
+                                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+                                 </div>
+                             ) : (
+                                 <>
+                                     {/* Badges Row */}
+                                     {selectedStock.prediction?.modelName && (
+                                        <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
+                                            {(() => {
+                                                const isPositive = selectedStock.changePercent >= 0;
+                                                const { hexColor, textClass } = getChangeColors(isPositive, language);
+                                                const isPredPositive = (selectedStock.predictedChangePercent || 0) >= 0;
+                                                const confidenceColor = selectedStock.prediction?.confidence ?? 0 > 85 ? 'text-primary' : (selectedStock.prediction?.confidence ?? 0) > 70 ? 'text-yellow-400' : 'text-red-400';
+
+                                                return (
+                                                    <>
+                                                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                                                <span className="material-symbols-outlined text-xs text-white/80">smart_toy</span>
+                                                                <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.model')}</span>
+                                                            </div>
+                                                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                                                <span className="text-xs font-bold text-white/90 leading-tight">{selectedStock.prediction?.modelName}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                                                <span className="material-symbols-outlined text-xs text-white/80">memory</span>
+                                                                <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.context')}</span>
+                                                            </div>
+                                                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                                                <span className="text-xs font-bold text-white/90 leading-tight">
+                                                                    {selectedStock.prediction?.contextLen 
+                                                                        ? (selectedStock.prediction.contextLen < 1024 
+                                                                            ? selectedStock.prediction.contextLen 
+                                                                            : Math.round(selectedStock.prediction.contextLen / 1024) + 'K') 
+                                                                        : '?'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                                                <span className="material-symbols-outlined text-xs text-white/80">calendar_today</span>
+                                                                <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.horizon')}</span>
+                                                            </div>
+                                                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                                                <span className="text-xs font-bold text-white/90 leading-tight">
+                                                                    {selectedStock.prediction?.horizonLen || '?'} {t('prediction.days')}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                                                <span className="material-symbols-outlined text-xs text-white/80">query_stats</span>
+                                                                <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.maxDev')}</span>
+                                                            </div>
+                                                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                                                <span className="text-xs font-bold text-white/90 leading-tight">
+                                                                    {selectedStock.prediction?.maxDeviationPercent?.toFixed(2) ?? '0.00'}%
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                                                <span className="material-symbols-outlined text-xs text-white/80">grade</span>
+                                                                <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.score')}</span>
+                                                            </div>
+                                                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                                                <span className={`text-xs font-bold leading-tight ${confidenceColor}`}>
+                                                                    {(selectedStock.prediction?.confidence || 0).toFixed(4)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                                                <span className="material-symbols-outlined text-xs text-white/80">trending_up</span>
+                                                                <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.actChg')}</span>
+                                                            </div>
+                                                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                                                <span className={`text-xs font-bold leading-tight ${textClass}`}>
+                                                                    {isPositive ? '+' : ''}{Math.abs(selectedStock.changePercent).toFixed(2)}%
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {selectedStock.predictedChangePercent !== undefined && (
+                                                            <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                                                <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                                                    <span className="material-symbols-outlined text-xs text-white/80">online_prediction</span>
+                                                                    <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.predChg')}</span>
+                                                                </div>
+                                                                <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                                                    <span className="text-xs font-bold leading-tight text-primary">
+                                                                        {isPredPositive ? '+' : ''}{Math.abs(selectedStock.predictedChangePercent).toFixed(2)}%
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                     )}
+
+                                     {/* Chart Section */}
+                                     <div className="flex flex-1 min-h-[350px] flex-col gap-4 py-4">
+                                        <PredictionChart 
+                                            change={selectedStock.changePercent} 
+                                            chartData={selectedStock.prediction?.chartData}
+                                            currentPrice={selectedStock.currentPrice}
+                                            startPrice={selectedStock.currentPrice / (1 + selectedStock.changePercent / 100)}
+                                        />
+                                     </div>
+
+                                     {/* Fallback/Empty State */}
+                                     {!selectedStock.prediction && (
+                                         <div className="flex flex-col items-center justify-center text-center gap-2 py-12">
+                                            <div className="w-5 h-5 border-2 border-dashed rounded-full animate-spin border-primary"></div>
+                                            <span className="text-xs text-white/60">{t('watchlist.noPredictionData') || "No prediction data available."}</span>
+                                        </div>
+                                     )}
+                                 </>
+                             )}
+                         </div>
+                    </div>
+                </div>
+            )}
 
             {watchlistItems.length > 0 ? (
                 <div className="px-4 py-2 @container">
@@ -211,10 +480,10 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                             <thead className="border-b border-b-[#2D2D2D]">
                                 <tr>
                                     <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{t('watchlist.ticker')}</th>
-                                    <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{language === 'zh' ? '最新日期' : 'Latest Date'}</th>
+                                    <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{t('watchlist.latestDate')}</th>
                                     <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal hidden sm:table-cell">{t('watchlist.lastPrice')}</th>
                                     <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{t('watchlist.todayChange')}</th>
-                                    <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{language === 'zh' ? '换手率' : 'Turnover Rate'}</th>
+                                    <th className="px-4 py-3 text-left text-white/60 text-sm font-medium leading-normal">{t('watchlist.turnoverRate')}</th>
                                     <th className="px-4 py-3 text-right text-white/60 text-sm font-medium leading-normal">{t('watchlist.actions')}</th>
                                 </tr>
                             </thead>
@@ -248,6 +517,14 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                                 {latestQuotes[item.stock?.symbol || '']?.turnover_rate != null ? `${(latestQuotes[item.stock?.symbol || '']!.turnover_rate! * 100).toFixed(2)}%` : '—'}
                                             </td>
                                             <td className="h-[72px] px-4 py-2 text-white/40 text-sm font-bold leading-normal tracking-[0.015em] text-right">
+                                                <button
+                                                    onClick={() => handleShowChart(item)}
+                                                    className="p-2 rounded-full hover:bg-white/10 text-primary transition-colors mr-1"
+                                                    disabled={isLoading}
+                                                    title={t('watchlist.showChart') || "Show Chart"}
+                                                >
+                                                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>show_chart</span>
+                                                </button>
                                                 <button
                                                     onClick={() => confirmRemove(item.id)}
                                                     className="p-2 rounded-full hover:bg-white/10 text-red-500 transition-colors disabled:opacity-50"

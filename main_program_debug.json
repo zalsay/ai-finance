@@ -1,9 +1,0 @@
-{
-  "execution_time": "2025-10-28T00:30:12.777210",
-  "parameters": {},
-  "data_processing": {},
-  "prediction_results": {},
-  "errors": [
-    "预测过程出错: 'NoneType' object is not subscriptable"
-  ]
-}

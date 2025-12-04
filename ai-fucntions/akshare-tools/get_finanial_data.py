@@ -31,28 +31,14 @@ logger = logging.getLogger(__name__)
 def scf_invoke(event0, context0=None):
     """
     调用腾讯云SCF云函数获取数据
-    
-    Args:
-        event0 (dict): 包含functionName, type, code, start_date, end_date的参数
-        context0: 上下文参数（可选）
-        
-    Returns:
-        str: JSON格式的响应数据
     """
-    # 从环境变量读取凭证，避免在仓库中存放敏感信息
-    secret_id = os.getenv("TENCENT_SECRET_ID")
-    secret_key = os.getenv("TENCENT_SECRET_KEY")
+    from tencentserverless.scf import Client
+    from tencentserverless.exception import TencentServerlessSDKException
+    from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
+    secret_id = os.getenv("TENCENT_SECRET_ID", "")
+    secret_key = os.getenv("TENCENT_SECRET_KEY", "")
     region = os.getenv("TENCENT_REGION", "ap-shanghai")
     token = os.getenv("TENCENT_TOKEN", "")
-    if not secret_id or not secret_key:
-        raise ValueError("Tencent Cloud credentials are missing in environment variables.")
-
-    try:
-        from tencentserverless.scf import Client
-    except Exception as e:
-        logger.error(f"SCF Client not available: {str(e)}")
-        raise
-
     scf_client = Client(
         secret_id=secret_id,
         secret_key=secret_key,

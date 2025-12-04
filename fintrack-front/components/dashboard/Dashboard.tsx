@@ -194,7 +194,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                     {filters.map(filter => (
                         <FilterChip
                             key={filter}
-                            label={t(`dashboard.filter${filter.replace(/\s+/g, '')}`)}
+                            label={t(`dashboard.filters.${filter.replace(/\s+/g, '').charAt(0).toLowerCase() + filter.replace(/\s+/g, '').slice(1)}`)}
                             active={activeFilter === filter}
                             onClick={() => setActiveFilter(filter)}
                         />
