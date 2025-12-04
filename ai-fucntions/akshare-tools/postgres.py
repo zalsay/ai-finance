@@ -640,6 +640,7 @@ class SyncDataHanlder:
         """
         从本地数据库获取该股票的最新记录
         """
+        import akshare as ak
         event = {}
         if stock_type == 1:
             event["type"] = "stock"
@@ -657,11 +658,11 @@ class SyncDataHanlder:
         if stock_type == 1:
             event["code"] = symbol
             event["adjust"] = adjust
-            result = stock_zh_a_daily(event["code"], event["start_date"], event["end_date"], adjust)
+            result = ak.stock_zh_a_daily(event["code"], event["start_date"], event["end_date"], adjust)
         elif stock_type == 2:
             event["code"] = symbol
             event["adjust"] = adjust
-            import akshare as ak
+            
             result = ak.fund_etf_hist_sina(symbol=event["code"])
 
         if result is None or result.empty:
