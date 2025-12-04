@@ -1144,7 +1144,7 @@ if __name__ == "__main__":
     import asyncio
     from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
-        stock_code="sh510300",
+        stock_code="sz000001",
         years=15,
         horizon_len=3,
         start_date="",
