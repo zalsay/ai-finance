@@ -25,12 +25,12 @@ import pandas as pd
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 ai_functions_dir = os.path.dirname(current_dir)
-akshare__server_dir = os.path.join(ai_functions_dir, "akshare-server")
+# akshare__server_dir = os.path.join(ai_functions_dir, "akshare-server")
 
 pre_data_dir = os.path.join(ai_functions_dir, "preprocess_data")
-print(pre_data_dir)
-sys.path.append(akshare__server_dir)
-from ak_functions import *
+# print(pre_data_dir)
+# sys.path.append(akshare__server_dir)
+# from ak_functions import *
 
 sys.path.append(pre_data_dir)
 from trading_date_processor import *
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 class PostgresHandler:
-    def __init__(self, base_url: str = "http://go-api.meetlife.com.cn:8000", timeout: int = 30, api_token: Optional[str] = None, allow_get_fallback: bool = True):
+    def __init__(self, base_url: str = "http://go-api.meetlife.com.cn:58005", timeout: int = 30, api_token: Optional[str] = None, allow_get_fallback: bool = True):
         """初始化PG后端API客户端（异步版，使用 httpx.AsyncClient）"""
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -128,6 +128,18 @@ class PostgresHandler:
         assert self._client is not None
         headers = {"Authorization": f"Bearer {self.api_token}"}
         resp = await self._client.post("/api/v1/save-predictions/mtf-best/val-chunk", json=payload, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        return resp.status_code, data, resp.text
+
+    async def get_latest_val_chunk(self, unique_key: str) -> tuple:
+        await self.open()
+        assert self._client is not None
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        params = {"unique_key": unique_key}
+        resp = await self._client.get("/api/v1/save-predictions/mtf-best/val-chunk/latest", params=params, headers=headers)
         try:
             data = resp.json()
         except Exception:
@@ -640,6 +652,7 @@ class SyncDataHanlder:
         """
         从本地数据库获取该股票的最新记录
         """
+        import akshare as ak
         event = {}
         if stock_type == 1:
             event["type"] = "stock"
@@ -657,11 +670,11 @@ class SyncDataHanlder:
         if stock_type == 1:
             event["code"] = symbol
             event["adjust"] = adjust
-            result = stock_zh_a_daily(event["code"], event["start_date"], event["end_date"], adjust)
+            result = ak.stock_zh_a_daily(event["code"], event["start_date"], event["end_date"], adjust)
         elif stock_type == 2:
             event["code"] = symbol
             event["adjust"] = adjust
-            import akshare as ak
+            
             result = ak.fund_etf_hist_sina(symbol=event["code"])
 
         if result is None or result.empty:
