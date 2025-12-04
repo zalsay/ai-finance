@@ -53,7 +53,7 @@ const CheckboxField: React.FC<CheckboxFieldProps> = ({ id, label, checked, onCha
         <input
             type="checkbox"
             id={id}
-            className="h-4 w-4 rounded border-gray-600 bg-[#2a2a2a] text-primary focus:ring-primary/50 focus:ring-offset-[#1E1E1E]"
+            className="h-4 w-4 rounded border-gray-600 bg-[#2a2a2a] text-[#91caae] focus:ring-[#91caae]/50 focus:ring-offset-[#1E1E1E]"
             checked={checked}
             onChange={(e) => onChange(e.target.checked)}
             disabled={disabled}

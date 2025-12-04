@@ -885,7 +885,7 @@ async def save_backtest_result_to_pg(request, response, result):
             "trades": _round_obj(result.get("trades", [])),
         }
 
-    base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:58005')
+        base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
         async with PostgresHandler(base_url=base_url, api_token="fintrack-dev-token") as pg:
             status_code, data, body_text = await pg.save_backtest_result(payload)
         if status_code == 200:

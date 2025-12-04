@@ -1,8 +1,0 @@
-httpx
-timesfm
-torch
-exchange_calendars
-matplotlib
-pandas
-akshare
-plotly
