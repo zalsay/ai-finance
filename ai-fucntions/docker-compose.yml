@@ -15,7 +15,7 @@ services:
       - JAX_PMAP_USE_TENSORSTORE=false
       - RUNTIME_API=docker
       - FINTRACK_API_URL=http://go-api.meetlife.com.cn:9000
-      - POSTGRES_API=http://go-api.meetlife.com.cn:8000
+      - POSTGRES_API=http://go-api.meetlife.com.cn:58005
     ports:
       - "58000:8000"
     volumes:
@@ -53,7 +53,7 @@ services:
       - JAX_PMAP_USE_TENSORSTORE=false
       - RUNTIME_API=docker
       - FINTRACK_API_URL=http://go-api.meetlife.com.cn:9000
-      - POSTGRES_API=http://go-api.meetlife.com.cn:8000
+      - POSTGRES_API=http://go-api.meetlife.com.cn:58005
     ports:
       - "58001:8001"
     volumes:
