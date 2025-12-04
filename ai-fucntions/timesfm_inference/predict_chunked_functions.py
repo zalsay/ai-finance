@@ -119,6 +119,7 @@ async def predict_next_chunk_by_unique_key(
         next_chunk_index = 0
         got_latest_idx = False
         pg_tmp = None
+        stock_type = 1
         try:
             base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
             pg_tmp = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
@@ -127,14 +128,14 @@ async def predict_next_chunk_by_unique_key(
             if sc_latest == 200 and isinstance(data_latest, dict):
                 d = data_latest.get('data') if 'data' in data_latest else data_latest
                 if isinstance(d, dict):
-                    last_end = d.get('end_date')
-                if last_end:
+                    last_start = d.get('start_date')
+                    stock_type = d.get('stock_type', 1)
+                if last_start:
                     try:
-                        last_end_dt = pd.to_datetime(last_end).date()
-                        start_date = (pd.Timestamp(last_end_dt) + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+                        last_start_dt = pd.to_datetime(last_start).date()
                         # 若用户未显式指定 end_date，则按 horizon_len 推导
-                        end_date = (pd.Timestamp(start_date) + pd.Timedelta(days=horizon_len-1)).strftime('%Y-%m-%d')
-                        print(f"✅ 基于最新验证分块结束日期 {last_end} 推导下一分块日期窗口: {start_date} -> {end_date}")
+                        end_date = (pd.Timestamp(last_start_dt)).strftime('%Y-%m-%d')
+                        print(f"✅ 基于最新验证分块开始日期 {last_start} 推导end日期窗口 -> {end_date}")
                     except Exception:
                         pass
         except Exception:
@@ -147,32 +148,17 @@ async def predict_next_chunk_by_unique_key(
 
         # 预处理数据（在确定 start_date/end_date 后进行）
         df_original, df_train, df_test, df_val = await df_preprocess(
-            symbol,
-            1,
-            start_date,
-            end_date,
-            0,
+            stock_code=symbol,
+            stock_type=stock_type,
+            start_date=None,
+            end_date=end_date,
+            time_step=0,
             years=15,
             horizon_len=horizon_len,
         )
-        if df_train is None or df_test is None or df_val is None:
+        if df_original is None:
             print(f"❌ 数据预处理失败: {symbol}")
             return None
-
-        # 若未获得后端最新分块索引，则基于本地测试集分块数量回退
-        if not got_latest_idx:
-            try:
-                test_chunks = create_chunks_from_test_data(df_test, horizon_len)
-                next_chunk_index = len(test_chunks)
-            except Exception:
-                next_chunk_index = 0
-
-        # 填充唯一ID（先处理训练/测试/验证集，df_original 后置处理）
-        for df_ in (df_train, df_test, df_val):
-            try:
-                df_["unique_id"] = df_["stock_code"].astype(str)
-            except Exception:
-                pass
 
         # 构造训练窗口：在确定了 start_date/end_date 后再使用初始获取的 df_original 作为训练历史
         df_hist = df_original
