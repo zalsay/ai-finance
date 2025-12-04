@@ -39,12 +39,13 @@ type StockPrediction struct {
 }
 
 type UserWatchlist struct {
-	ID        int       `json:"id" db:"id"`
-	UserID    int       `json:"user_id" db:"user_id"`
-	StockID   int       `json:"stock_id" db:"stock_id"`
-	AddedAt   time.Time `json:"added_at" db:"added_at"`
-	Notes     *string   `json:"notes" db:"notes"`
-	StockType *int      `json:"stock_type" db:"stock_type"`
+	ID                int       `json:"id" db:"id"`
+	UserID            int       `json:"user_id" db:"user_id"`
+	StockID           int       `json:"stock_id" db:"stock_id"`
+	AddedAt           time.Time `json:"added_at" db:"added_at"`
+	Notes             *string   `json:"notes" db:"notes"`
+	StockType         *int      `json:"stock_type" db:"stock_type"`
+	StrategyUniqueKey *string   `json:"strategy_unique_key" db:"strategy_unique_key"`
 }
 
 type UserPortfolio struct {
@@ -68,14 +69,16 @@ type StockData struct {
 }
 
 type WatchlistItem struct {
-	ID           int              `json:"id"`
-	Stock        Stock            `json:"stock"`
-	CurrentPrice *StockPrice      `json:"current_price,omitempty"`
-	Prediction   *StockPrediction `json:"prediction,omitempty"`
-	AddedAt      time.Time        `json:"added_at"`
-	Notes        *string          `json:"notes"`
-	UniqueKey    string           `json:"unique_key,omitempty"`
-	StockType    *int             `json:"stock_type"`
+	ID                int              `json:"id"`
+	Stock             Stock            `json:"stock"`
+	CurrentPrice      *StockPrice      `json:"current_price,omitempty"`
+	Prediction        *StockPrediction `json:"prediction,omitempty"`
+	AddedAt           time.Time        `json:"added_at"`
+	Notes             *string          `json:"notes"`
+	UniqueKey         string           `json:"unique_key,omitempty"`
+	StockType         *int             `json:"stock_type"`
+	StrategyUniqueKey string           `json:"strategy_unique_key,omitempty"`
+	StrategyName      string           `json:"strategy_name,omitempty"`
 }
 
 type AddToWatchlistRequest struct {
@@ -86,6 +89,11 @@ type AddToWatchlistRequest struct {
 
 type UpdateWatchlistRequest struct {
 	Notes *string `json:"notes"`
+}
+
+type BindStrategyRequest struct {
+	Symbol            string `json:"symbol" binding:"required"`
+	StrategyUniqueKey string `json:"strategy_unique_key" binding:"required"`
 }
 
 type PortfolioItem struct {
@@ -240,6 +248,7 @@ type StrategyParams struct {
 	UniqueKey              string  `json:"unique_key" db:"unique_key"`
 	UserID                 *int    `json:"user_id" db:"user_id"`
 	Name                   *string `json:"name" db:"name"`
+	IsPublic               int     `json:"is_public" db:"is_public"`
 	BuyThresholdPct        float64 `json:"buy_threshold_pct" db:"buy_threshold_pct"`
 	SellThresholdPct       float64 `json:"sell_threshold_pct" db:"sell_threshold_pct"`
 	InitialCash            float64 `json:"initial_cash" db:"initial_cash"`

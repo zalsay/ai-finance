@@ -110,7 +110,7 @@ const AddStrategyModal: React.FC<AddStrategyModalProps> = ({ isOpen, onClose, on
                                                 id={key}
                                                 checked={(formData as any)[key]}
                                                 onChange={handleChange}
-                                                className="w-5 h-5 rounded border-white/20 bg-white/5 text-primary focus:ring-primary"
+                                                className="w-5 h-5 rounded border-white/20 bg-white/5 text-[#91caae] focus:ring-[#91caae]"
                                             />
                                             <label htmlFor={key} className="text-sm text-white/80 font-medium cursor-pointer">
                                                 {labels[key] || key}

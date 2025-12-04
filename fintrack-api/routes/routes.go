@@ -89,6 +89,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			watchlist.GET("", watchlistHandler.GetWatchlist)
 			watchlist.DELETE("/:id", watchlistHandler.RemoveFromWatchlist)
 			watchlist.PUT("/:id", watchlistHandler.UpdateWatchlistItem)
+			watchlist.POST("/bind", watchlistHandler.BindStrategy)
 		}
 
 		quotes := v1.Group("/quotes")

@@ -7,7 +7,7 @@ import requests
 
 
 # Go 服务地址与鉴权配置
-GO_API_URL = os.getenv("GO_API_URL", "http://127.0.0.1:8080")
+GO_API_URL = os.getenv("GO_API_URL", "http://go-api.meetlife.com.cn:8000")
 API_TOKEN = os.getenv("API_TOKEN", "fintrack-dev-token")
 
 

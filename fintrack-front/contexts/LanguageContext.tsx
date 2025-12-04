@@ -5,7 +5,7 @@ export type Language = 'en' | 'zh';
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: string) => string;
+  t: (key: string, fallback?: string) => string;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
@@ -27,6 +27,8 @@ const translations = {
     'common.comingSoonDesc': 'This feature is currently under development.',
     'common.settings': 'Settings',
     'common.logout': 'Logout',
+    'common.on': 'ON',
+    'common.off': 'OFF',
     
     // Dashboard
     'dashboard.title': 'Predicted Trends',
@@ -40,7 +42,47 @@ const translations = {
     'dashboard.filters.potentialGrowth': 'Potential Growth',
     'dashboard.filters.bullish': 'Bullish',
     'dashboard.filters.bearish': 'Bearish',
+    'dashboard.noStocks': 'No stocks found matching your criteria.',
     
+    // Add Stock Modal
+    'addStock.title': 'Add to Watchlist',
+    'addStock.type': 'Type',
+    'addStock.typeStock': 'Stock',
+    'addStock.typeEtf': 'ETF',
+    'addStock.exchange': 'Exchange',
+    'addStock.exchangeSh': 'Shanghai (sh)',
+    'addStock.exchangeSz': 'Shenzhen (sz)',
+    'addStock.stockCode': 'Stock Code',
+    'addStock.stockCodeHint': '(6 digits)',
+    'addStock.stockCodePlaceholder': 'e.g. 600000',
+    'addStock.fullCode': 'Full Code:',
+    'addStock.errorLength': 'Please enter 6 digits',
+    'addStock.errorNumeric': 'Code must contain only numbers',
+    'addStock.errorNotFound': 'Code not found, please use full format e.g. sz000001 or sh600519',
+    'addStock.errorAuth': 'Please login first',
+    'addStock.errorDuplicate': 'Already in watchlist',
+    'addStock.errorGeneric': 'Failed to add',
+
+    // Modal Common
+    'modal.deleteTitle': 'Remove Stock',
+    'modal.deleteMessage': 'Are you sure you want to remove {symbol}?',
+    'modal.deleteConfirm': 'Delete',
+    'modal.deleteCancel': 'Cancel',
+    
+    // Watchlist Extra
+    'watchlist.latestDate': 'Latest Date',
+    'watchlist.turnoverRate': 'Turnover Rate',
+    
+    // Strategy
+    'strategy.badge': 'Strategy',
+    'strategy.configure': 'Configure Parameters',
+    'strategy.initialCash': 'Initial Cash',
+    'strategy.rebalance': 'Rebalance',
+    'strategy.threshold': 'Buy/Sell Threshold',
+    'strategy.position': 'Position Range',
+    'strategy.noConfig': 'No strategy configured',
+    'strategy.configureNow': 'Configure Now',
+
     // Watchlist
     'watchlist.title': 'My Watchlist',
     'watchlist.subtitle': 'Track your favorite stocks and monitor their performance.',
@@ -48,7 +90,7 @@ const translations = {
     'watchlist.addStock': 'Add Watching',
     'watchlist.ticker': 'Code / Company',
     'watchlist.lastPrice': 'Last Price',
-    'watchlist.todayChange': 'Today\'s Change',
+    'watchlist.todayChange': 'Latest Change',
     'watchlist.chart': 'Chart',
     'watchlist.actions': 'Actions',
     'watchlist.tabStock': 'Stocks',
@@ -123,6 +165,34 @@ const translations = {
     'language.switch': 'Language',
     'language.english': 'English',
     'language.chinese': '中文',
+
+    // Sidebar
+    'sidebar.hello': 'Hello',
+    'sidebar.loading': 'Loading...',
+    'sidebar.title': 'MeetLife AI',
+    
+    // Landing Page
+    'landing.startForFree': 'Start for Free',
+    'landing.viewDemo': 'View Demo',
+    'landing.features.aiPredictions': 'AI Predictions',
+    'landing.features.aiPredictionsDesc': 'Advanced machine learning algorithms forecasting stock movements.',
+    'landing.features.realTimeAnalysis': 'Real-time Analysis',
+    'landing.features.realTimeAnalysisDesc': 'Live market data analysis to keep you ahead of the curve.',
+    'landing.features.securePortfolio': 'Secure Portfolio',
+    'landing.features.securePortfolioDesc': 'Bank-grade security to protect your investment data.',
+    'landing.footer.rights': '© 2024 FinTrack. All rights reserved.',
+
+    // Stock Prediction Card
+    'prediction.model': 'Model',
+    'prediction.context': 'Context',
+    'prediction.horizon': 'Horizon',
+    'prediction.days': 'days',
+    'prediction.maxDev': 'Max Dev',
+    'prediction.score': 'Score',
+    'prediction.actual': 'Actual',
+    'prediction.pred': 'Pred',
+    'prediction.actChg': 'Act Chg',
+    'prediction.predChg': 'Pred Chg',
   },
   zh: {
     // Navigation
@@ -152,7 +222,47 @@ const translations = {
     'dashboard.filters.potentialGrowth': '潜在增长',
     'dashboard.filters.bullish': '看涨',
     'dashboard.filters.bearish': '看跌',
+    'dashboard.noStocks': '没有找到符合条件的股票。',
     
+    // Add Stock Modal
+    'addStock.title': '添加关注',
+    'addStock.type': '类型',
+    'addStock.typeStock': '股票',
+    'addStock.typeEtf': 'ETF基金',
+    'addStock.exchange': '交易所',
+    'addStock.exchangeSh': '沪市 (sh)',
+    'addStock.exchangeSz': '深市 (sz)',
+    'addStock.stockCode': '股票代码',
+    'addStock.stockCodeHint': '(6位数字)',
+    'addStock.stockCodePlaceholder': '例如: 600000',
+    'addStock.fullCode': '完整代码:',
+    'addStock.errorLength': '请输入6位股票代码',
+    'addStock.errorNumeric': '股票代码只能包含数字',
+    'addStock.errorNotFound': '未找到该代码，请使用完整代码格式，例如：sz000001 或 sh600519',
+    'addStock.errorAuth': '请先登录',
+    'addStock.errorDuplicate': '该代码已添加关注',
+    'addStock.errorGeneric': '添加失败',
+
+    // Modal Common
+    'modal.deleteTitle': '删除自选',
+    'modal.deleteMessage': '确认删除 {symbol}？',
+    'modal.deleteConfirm': '删除',
+    'modal.deleteCancel': '取消',
+    
+    // Watchlist Extra
+    'watchlist.latestDate': '最新日期',
+    'watchlist.turnoverRate': '换手率',
+    
+    // Strategy
+    'strategy.badge': '策略',
+    'strategy.configure': '配置参数',
+    'strategy.initialCash': '初始资金',
+    'strategy.rebalance': '动态平衡',
+    'strategy.threshold': '买/卖阈值',
+    'strategy.position': '仓位范围',
+    'strategy.noConfig': '未配置策略参数',
+    'strategy.configureNow': '立即配置',
+
     // Watchlist
     'watchlist.title': '我的关注列表',
     'watchlist.subtitle': '跟踪您喜爱的股票并监控其表现。',
@@ -160,7 +270,7 @@ const translations = {
     'watchlist.addStock': '添加关注',
     'watchlist.ticker': '代码 / 公司',
     'watchlist.lastPrice': '最新价格',
-    'watchlist.todayChange': '今日变化',
+    'watchlist.todayChange': '最新涨跌',
     'watchlist.chart': '图表',
     'watchlist.actions': '操作',
     'watchlist.tabStock': '股票',
@@ -235,6 +345,34 @@ const translations = {
     'language.switch': '语言',
     'language.english': 'English',
     'language.chinese': '中文',
+
+    // Sidebar
+    'sidebar.hello': '你好',
+    'sidebar.loading': '加载中...',
+    'sidebar.title': 'MeetLife AI',
+
+    // Landing Page
+    'landing.startForFree': '免费开始',
+    'landing.viewDemo': '查看演示',
+    'landing.features.aiPredictions': 'AI 预测',
+    'landing.features.aiPredictionsDesc': '先进的机器学习算法预测股票走势。',
+    'landing.features.realTimeAnalysis': '实时分析',
+    'landing.features.realTimeAnalysisDesc': '实时市场数据分析，助您领先一步。',
+    'landing.features.securePortfolio': '安全投资组合',
+    'landing.features.securePortfolioDesc': '银行级安全保障，保护您的投资数据。',
+    'landing.footer.rights': '© 2024 FinTrack. 保留所有权利。',
+
+    // Stock Prediction Card
+    'prediction.model': '模型',
+    'prediction.context': '上下文',
+    'prediction.horizon': '周期',
+    'prediction.days': '天',
+    'prediction.maxDev': '最大偏差',
+    'prediction.score': '最佳得分',
+    'prediction.actual': '实际',
+    'prediction.pred': '预测',
+    'prediction.actChg': '实际涨跌',
+    'prediction.predChg': '预测涨跌',
   }
 };
 
@@ -260,8 +398,8 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   };
 
   // 翻译函数
-  const t = (key: string): string => {
-    return translations[language][key] || key;
+  const t = (key: string, fallback?: string): string => {
+    return translations[language][key] || fallback || key;
   };
 
   const value: LanguageContextType = {

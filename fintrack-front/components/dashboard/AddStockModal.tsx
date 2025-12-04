@@ -24,12 +24,12 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
 
         // Validate stock code
         if (!stockCode || stockCode.length !== 6) {
-            setError('请输入6位股票代码');
+            setError(t('addStock.errorLength'));
             return;
         }
 
         if (!/^\d{6}$/.test(stockCode)) {
-            setError('股票代码只能包含数字');
+            setError(t('addStock.errorNumeric'));
             return;
         }
 
@@ -42,7 +42,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
             setExchange('sh');
             onClose();
         } catch (err: any) {
-            const msg = err.message || '添加失败';
+            const msg = err.message || t('addStock.errorGeneric');
             setError(msg);
         } finally {
             setIsLoading(false);
@@ -74,7 +74,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                 })
                 .catch(err => {
                     if (lookupKeyRef.current !== myKey) return;
-                    const msg = err?.message || '未找到该代码';
+                    const msg = err?.message || t('addStock.errorNotFound');
                     setResolvedName(null);
                     setError(msg);
                 });
@@ -88,7 +88,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
             <div className="w-full max-w-md bg-card-dark rounded-xl shadow-2xl border border-white/10 overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-white">添加</h2>
+                    <h2 className="text-xl font-bold text-white">{t('addStock.title')}</h2>
                     <button
                         onClick={handleClose}
                         disabled={isLoading}
@@ -104,7 +104,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     {/* Type Selection */}
                     <div className="flex flex-col">
-                        <label className="text-white/80 text-sm font-medium mb-2">类型</label>
+                        <label className="text-white/80 text-sm font-medium mb-2">{t('addStock.type')}</label>
                         <div className="flex gap-3">
                             <button
                                 type="button"
@@ -115,7 +115,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                                         : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                                     } disabled:opacity-50`}
                             >
-                                股票
+                                {t('addStock.typeStock')}
                             </button>
                             <button
                                 type="button"
@@ -126,14 +126,14 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                                         : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                                     } disabled:opacity-50`}
                             >
-                                ETF基金
+                                {t('addStock.typeEtf')}
                             </button>
                         </div>
                     </div>
 
                     {/* Exchange Selection */}
                     <div className="flex flex-col">
-                        <label className="text-white/80 text-sm font-medium mb-2">交易所</label>
+                        <label className="text-white/80 text-sm font-medium mb-2">{t('addStock.exchange')}</label>
                         <div className="flex gap-3">
                             <button
                                 type="button"
@@ -144,7 +144,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                                         : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                                     } disabled:opacity-50`}
                             >
-                                沪市 (sh)
+                                {t('addStock.exchangeSh')}
                             </button>
                             <button
                                 type="button"
@@ -155,7 +155,7 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                                         : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                                     } disabled:opacity-50`}
                             >
-                                深市 (sz)
+                                {t('addStock.exchangeSz')}
                             </button>
                         </div>
                     </div>
@@ -163,21 +163,21 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                     {/* Stock Code Input */}
                     <div className="flex flex-col">
                         <label className="text-white/80 text-sm font-medium mb-2">
-                            股票代码
-                            <span className="text-white/40 ml-2">(6位数字)</span>
+                            {t('addStock.stockCode')}
+                            <span className="text-white/40 ml-2">{t('addStock.stockCodeHint')}</span>
                         </label>
                         <input
                             type="text"
                             value={stockCode}
                             onChange={(e) => setStockCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                            placeholder="例如: 600000"
+                            placeholder={t('addStock.stockCodePlaceholder')}
                             disabled={isLoading}
                             className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent disabled:opacity-50"
                             maxLength={6}
                             autoFocus
                         />
                         <p className="text-white/40 text-xs mt-2">
-                            完整代码: <span className="text-primary font-mono">{exchange}{stockCode || '______'}</span>{resolvedName ? <span className="ml-2 text-white/60">{resolvedName}</span> : null}
+                            {t('addStock.fullCode')} <span className="text-primary font-mono">{exchange}{stockCode || '______'}</span>{resolvedName ? <span className="ml-2 text-white/60">{resolvedName}</span> : null}
                         </p>
                     </div>
 
@@ -187,13 +187,13 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                             <p className="text-red-400 text-xs">
                                 {(() => {
                                     if (error.includes('symbol not found')) {
-                                        return '未找到该代码，请使用完整代码格式，例如：sz000001 或 sh600519';
+                                        return t('addStock.errorNotFound');
                                     }
                                     if (error.includes('User not authenticated') || error.includes('Unauthorized')) {
-                                        return '请先登录';
+                                        return t('addStock.errorAuth');
                                     }
                                     if (error.includes('duplicate symbol')) {
-                                        return '该代码已添加关注';
+                                        return t('addStock.errorDuplicate');
                                     }
                                     return error;
                                 })()}
@@ -201,38 +201,18 @@ const AddStockModal: React.FC<AddStockModalProps> = ({ isOpen, onClose, onAdd })
                         </div>
                     )}
 
-                    {/* Info Box */}
-                    <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                        <p className="text-blue-300 text-xs">
-                            添加成功后将自动同步该股票的历史数据
-                        </p>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-3 pt-2">
-                        <button
-                            type="button"
-                            onClick={handleClose}
-                            disabled={isLoading}
-                            className="flex-1 px-4 py-3 bg-white/5 text-white rounded-lg font-medium hover:bg-white/10 transition-colors disabled:opacity-50"
-                        >
-                            取消
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isLoading || !stockCode || stockCode.length !== 6}
-                            className="flex-1 px-4 py-3 bg-primary text-background-dark rounded-lg font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            {isLoading ? (
-                                <>
-                                    <div className="w-4 h-4 border-2 border-background-dark border-t-transparent rounded-full animate-spin"></div>
-                                    添加中...
-                                </>
-                            ) : (
-                                `添加${type === 1 ? '股票' : 'ETF'}`
-                            )}
-                        </button>
-                    </div>
+                    {/* Submit Button */}
+                    <button
+                        type="submit"
+                        disabled={isLoading || stockCode.length !== 6}
+                        className="w-full py-3 px-4 bg-primary text-background-dark font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                        {isLoading ? (
+                            <div className="w-5 h-5 border-2 border-background-dark/30 border-t-background-dark rounded-full animate-spin"></div>
+                        ) : (
+                            t('addStock.title')
+                        )}
+                    </button>
                 </form>
             </div>
         </div>

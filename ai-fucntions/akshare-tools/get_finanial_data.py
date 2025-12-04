@@ -31,19 +31,19 @@ logger = logging.getLogger(__name__)
 def scf_invoke(event0, context0=None):
     """
     调用腾讯云SCF云函数获取数据
-    
-    Args:
-        event0 (dict): 包含functionName, type, code, start_date, end_date的参数
-        context0: 上下文参数（可选）
-        
-    Returns:
-        str: JSON格式的响应数据
     """
+    from tencentserverless.scf import Client
+    from tencentserverless.exception import TencentServerlessSDKException
+    from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
+    secret_id = os.getenv("TENCENT_SECRET_ID", "")
+    secret_key = os.getenv("TENCENT_SECRET_KEY", "")
+    region = os.getenv("TENCENT_REGION", "ap-shanghai")
+    token = os.getenv("TENCENT_TOKEN", "")
     scf_client = Client(
-        secret_id="AKID636teCcN3cAWeifRNuNnIqYHuR7sjTFv",
-        secret_key="gEzreGhy42uM3lbJxiP0rfPIFSgouuro",
-        region="ap-shanghai",
-        token=""
+        secret_id=secret_id,
+        secret_key=secret_key,
+        region=region,
+        token=token
     )
     
     try:
