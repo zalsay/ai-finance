@@ -41,7 +41,8 @@ func RegisterRoutes(r *gin.Engine, handler *DatabaseHandler, apiToken string) {
 		api.POST("/timesfm/forecast/query", handler.getTimesfmForecastBySymbolVersionHorizon)
 
 		api.POST("/stock/comment/daily/batch", handler.batchInsertAStockCommentDailyHandler)
-		api.POST("/stock/comment/daily/search", handler.getAStockCommentDailyByNameHandler)
+		api.POST("/stock/comment/daily/search/name", handler.getAStockCommentDailyByNameHandler)
+		api.POST("/stock/comment/daily/search/code", handler.getAStockCommentDailyByCodeHandler)
 
 		// 同步 fintrack-api 路由：保存 TimesFM 最佳分位、验证块、查询以及回测
 		api.POST("/save-predictions/mtf-best", handler.saveTimesfmBestHandler)

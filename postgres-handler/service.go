@@ -271,6 +271,48 @@ func (h *DatabaseHandler) BatchUpsertAStockCommentDaily(list []StockCommentDaily
 	return nil
 }
 
+func (h *DatabaseHandler) GetAStockCommentDailyByCode(code string, limit int, offset int) ([]StockCommentDaily, error) {
+	rows, err := h.db.Raw(`
+    SELECT 
+        code,
+        trading_date,
+        COALESCE(name, ''),
+        COALESCE(latest_price, 0),
+        COALESCE(change_percent, 0),
+        COALESCE(turnover_rate, 0),
+        COALESCE(pe_ratio, 0),
+        COALESCE(main_cost, 0),
+        COALESCE(institution_participation, 0),
+        COALESCE(composite_score, 0),
+        COALESCE(rise, 0),
+        COALESCE(current_rank, 0),
+        COALESCE(attention_index, 0)
+    FROM a_stock_comment_daily
+    WHERE code ILIKE $1
+    ORDER BY trading_date DESC
+    LIMIT $2 OFFSET $3`, "%"+code+"%", limit, offset).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query a_stock_comment_daily by code: %v", err)
+	}
+	defer rows.Close()
+	var result []StockCommentDaily
+	for rows.Next() {
+		var item StockCommentDaily
+		if err := rows.Scan(
+			&item.Code, &item.TradingDate, &item.Name, &item.LatestPrice,
+			&item.ChangePercent, &item.TurnoverRate, &item.PeRatio, &item.MainCost,
+			&item.InstitutionParticipation, &item.CompositeScore, &item.Rise,
+			&item.CurrentRank, &item.AttentionIndex,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan a_stock_comment_daily row: %v", err)
+		}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
 func (h *DatabaseHandler) GetAStockCommentDailyByName(name string, limit int, offset int) ([]StockCommentDaily, error) {
 	rows, err := h.db.Raw(`
     SELECT 

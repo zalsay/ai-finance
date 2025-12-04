@@ -182,7 +182,13 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 			}
 		}
 		if req.StockType == 1 {
-			req.ShortName = req.Symbol
+			stockData, errStock := h.GetAStockCommentDailyByCode(req.Symbol, 1, 0)
+			slog.Info("GetAStockCommentDailyByCode", "symbol", req.Symbol, "data", stockData, "err", errStock)
+			if errStock == nil {
+				if len(stockData) > 0 {
+					req.ShortName = stockData[0].Name
+				}
+			}
 		}
 	}
 	err = h.db.Exec(`
@@ -192,14 +198,14 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
             train_start_date, train_end_date,
             test_start_date, test_end_date,
             val_start_date, val_end_date,
-            context_len, horizon_len, short_name
+            context_len, horizon_len, short_name, stock_type
         ) VALUES (
             $1, $2, $3, $4, $5::jsonb,
             $6,
             $7::date, $8::date,
             $9::date, $10::date,
             $11::date, $12::date,
-            $13, $14, $15
+            $13, $14, $15, $16
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             symbol = EXCLUDED.symbol,
@@ -216,13 +222,14 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
             context_len = EXCLUDED.context_len,
             horizon_len = EXCLUDED.horizon_len,
             short_name = EXCLUDED.short_name,
+			stock_type = EXCLUDED.stock_type,
             updated_at = CURRENT_TIMESTAMP`,
 		req.UniqueKey, req.Symbol, req.TimesfmVersion, req.BestPredictionItem, string(metricsJSON),
 		isPublic,
 		req.TrainStartDate, req.TrainEndDate,
 		req.TestStartDate, req.TestEndDate,
 		req.ValStartDate, req.ValEndDate,
-		req.ContextLen, req.HorizonLen, req.ShortName,
+		req.ContextLen, req.HorizonLen, req.ShortName, req.StockType,
 	).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_best_predictions: %v", err)})
@@ -1109,6 +1116,8 @@ func (h *DatabaseHandler) getAStockCommentDailyByNameHandler(c *gin.Context) {
 		Name   string `json:"name"`
 		Limit  *int   `json:"limit"`
 		Offset *int   `json:"offset"`
+		StockType int `json:"stock_type"`
+		Symbol    string `json:"symbol"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
@@ -1133,6 +1142,20 @@ func (h *DatabaseHandler) getAStockCommentDailyByNameHandler(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
 }
+
+func (h *DatabaseHandler) getAStockCommentDailyByCodeHandler (c *gin.Context) {
+	code := c.Param("code")
+	limit := 1
+	offset := 0
+	data, err := h.GetAStockCommentDailyByCode(code, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
+}
+
+
 
 func (h *DatabaseHandler) getIndexDailyHandler(c *gin.Context) {
 	code := c.Param("code")
