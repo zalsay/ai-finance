@@ -1,7 +1,7 @@
 
 from urllib import request
 from req_res_types import *
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 import sys
 import pandas as pd
@@ -16,14 +16,6 @@ sys.path.append(pre_data_dir)
 ak_tools_dir = os.path.join(parent_dir, 'akshare-tools')
 sys.path.append(ak_tools_dir)
 
-def _round4(x):
-    try:
-        import numpy as _np
-        if isinstance(x, (float, _np.floating)):
-            return round(float(x), 4)
-        return x
-    except Exception:
-        return x
 
 def _round_obj(o):
     import numpy as _np
@@ -59,6 +51,318 @@ def import_predict_2p5():
     finally:
         # 恢复原始sys.path
         sys.path = original_sys_path
+
+def _parse_unique_key(unique_key: str) -> Optional[Dict[str, Any]]:
+    """
+    解析 unique_key，格式约定：
+    "{symbol}_best_hlen_{horizon_len}_clen_{context_len}_v_{timesfm_version}"
+
+    返回 dict：{
+        'symbol': str,
+        'horizon_len': int,
+        'context_len': int,
+        'timesfm_version': str,
+    }
+    """
+    try:
+        s = str(unique_key).strip()
+        parts = s.split("_best_hlen_")
+        if len(parts) != 2:
+            return None
+        symbol = parts[0]
+        rest = parts[1]
+        # rest is like: "{hlen}_clen_{clen}_v_{ver}"
+        if "_clen_" not in rest:
+            return None
+        hlen_str, rest2 = rest.split("_clen_", 1)
+        if "_v_" not in rest2:
+            return None
+        clen_str, ver = rest2.split("_v_", 1)
+        return {
+            "symbol": symbol,
+            "horizon_len": int(hlen_str),
+            "context_len": int(clen_str),
+            "timesfm_version": ver,
+        }
+    except Exception:
+        return None
+
+async def predict_next_chunk_by_unique_key(
+        unique_key: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        user_id: Optional[int] = None,
+        persist: bool = True,
+    ) -> Optional[ChunkPredictionResult]:
+    """
+    根据 unique_key 解析出 symbol、horizon_len、context_len、timesfm_version，并预测“下一个分块”。
+
+    逻辑：
+    - 解析 unique_key（格式："{symbol}_best_hlen_{hlen}_clen_{clen}_v_{ver}"）
+    - 依据 processor.df_preprocess 获取数据集（可选 start_date/end_date 约束）
+    - 用测试集最后一个分块的历史来推断“下一分块”的训练窗口（训练+测试+验证历史到最新）
+    - 创建一个长度为 horizon_len 的未来日期窗口作为“下一个分块”的 df_test（若无法确定日期则回退到验证集末尾后的顺延）
+    - 使用 predict_single_chunk_mode1 做一次预测
+    - 若 persist，则调用 PostgresHandler 保存到 /save-predictions/mtf-best/val-chunk（沿用唯一键，chunk_index 使用连续下标）
+    """
+    try:
+        info = _parse_unique_key(unique_key)
+        if not info:
+            print(f"❌ 无法解析 unique_key: {unique_key}")
+            return None
+        symbol = info["symbol"]
+        horizon_len = int(info["horizon_len"])
+        context_len = int(info["context_len"])
+        timesfm_version = str(info["timesfm_version"]).strip()
+
+        # 计算下一分块的索引：优先使用后端最新验证分块的 chunk_index+1；否则基于本地数据计算
+        next_chunk_index = 0
+        got_latest_idx = False
+        pg_tmp = None
+        try:
+            base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+            pg_tmp = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
+            await pg_tmp.open()
+            sc_latest, data_latest, _ = await pg_tmp.get_latest_val_chunk(unique_key)
+            if sc_latest == 200 and isinstance(data_latest, dict):
+                d = data_latest.get('data') if 'data' in data_latest else data_latest
+                if isinstance(d, dict):
+                    last_end = d.get('end_date')
+                if last_end:
+                    try:
+                        last_end_dt = pd.to_datetime(last_end).date()
+                        start_date = (pd.Timestamp(last_end_dt) + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+                        # 若用户未显式指定 end_date，则按 horizon_len 推导
+                        end_date = (pd.Timestamp(start_date) + pd.Timedelta(days=horizon_len-1)).strftime('%Y-%m-%d')
+                        print(f"✅ 基于最新验证分块结束日期 {last_end} 推导下一分块日期窗口: {start_date} -> {end_date}")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        finally:
+            try:
+                await pg_tmp.close()
+            except Exception:
+                pass
+
+        # 预处理数据（在确定 start_date/end_date 后进行）
+        df_original, df_train, df_test, df_val = await df_preprocess(
+            symbol,
+            1,
+            start_date,
+            end_date,
+            0,
+            years=15,
+            horizon_len=horizon_len,
+        )
+        if df_train is None or df_test is None or df_val is None:
+            print(f"❌ 数据预处理失败: {symbol}")
+            return None
+
+        # 若未获得后端最新分块索引，则基于本地测试集分块数量回退
+        if not got_latest_idx:
+            try:
+                test_chunks = create_chunks_from_test_data(df_test, horizon_len)
+                next_chunk_index = len(test_chunks)
+            except Exception:
+                next_chunk_index = 0
+
+        # 填充唯一ID（先处理训练/测试/验证集，df_original 后置处理）
+        for df_ in (df_train, df_test, df_val):
+            try:
+                df_["unique_id"] = df_["stock_code"].astype(str)
+            except Exception:
+                pass
+
+        # 构造训练窗口：在确定了 start_date/end_date 后再使用初始获取的 df_original 作为训练历史
+        df_hist = df_original
+        try:
+            df_hist["unique_id"] = df_hist["stock_code"].astype(str)
+        except Exception:
+            pass
+
+        # 构造“下一分块”的日期窗口：优先使用上一步推导的 start_date/end_date；否则从验证集末尾日期+1
+        try:
+            if start_date and end_date:
+                future_dates = pd.date_range(start=pd.to_datetime(start_date), end=pd.to_datetime(end_date), freq="D")
+                if len(future_dates) > horizon_len:
+                    future_dates = future_dates[:horizon_len]
+                elif len(future_dates) < horizon_len:
+                    # 若不足，则按 horizon_len 重新生成
+                    future_dates = pd.date_range(start=pd.to_datetime(start_date), periods=horizon_len, freq="D")
+            else:
+                last_date = pd.to_datetime(df_hist["ds"].max())
+                future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=horizon_len, freq="D")
+        except Exception:
+            future_dates = pd.date_range(start=pd.to_datetime("today"), periods=horizon_len, freq="D")
+
+        # 以历史最后一天价格为基准，构造一个占位的 df_test 结构（实际值未知，预测时只需要长度与日期）
+        try:
+            base_price = float(df_hist.iloc[-1]["close"]) if "close" in df_hist.columns else None
+        except Exception:
+            base_price = None
+        if base_price is None or base_price <= 0:
+            base_price = 1.0
+
+        df_next = pd.DataFrame({
+            "ds": future_dates,
+            "close": [base_price] * horizon_len,
+            "stock_code": [symbol] * horizon_len,
+            "unique_id": [symbol] * horizon_len,
+        })
+
+        # 初始化模型（2.0 版本需要、2.5 由内部函数处理）
+        tfm = None
+        if timesfm_version == "2.0":
+            tfm = init_timesfm(horizon_len=horizon_len, context_len=context_len)
+
+        req = ChunkedPredictionRequest(
+            stock_code=symbol,
+            years=10,
+            horizon_len=horizon_len,
+            start_date=start_date,
+            end_date=end_date,
+            context_len=context_len,
+            time_step=0,
+            stock_type=1,
+            timesfm_version=timesfm_version,
+            user_id=user_id,
+        )
+
+        result = predict_single_chunk_mode1(
+            df_train=df_hist,
+            df_test=df_next,
+            tfm=tfm,
+            chunk_index=next_chunk_index,
+            request=req,
+        )
+
+        # 持久化到后端（作为新的验证分块）
+        if persist and result and len(result.actual_values) > 0:
+            try:
+                base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+                pg = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
+                await pg.open()
+
+                start_date_str = str(result.chunk_start_date)
+                end_date_str = str(result.chunk_end_date)
+                size = len(result.actual_values)
+                chunk_dates = pd.date_range(
+                    start=pd.to_datetime(start_date_str, errors='coerce'),
+                    end=pd.to_datetime(end_date_str, errors='coerce'),
+                    freq='D'
+                )[:size]
+                dates_str = [d.strftime('%Y-%m-%d') for d in chunk_dates]
+
+                # 仅保留一个分位（优先 mtf-0.5）以减少存储
+                preds_map = result.predictions or {}
+                chosen_key = None
+                if 'mtf-0.5' in preds_map:
+                    chosen_key = 'mtf-0.5'
+                else:
+                    for k in preds_map.keys():
+                        chosen_key = k
+                        break
+                predictions_clean = {}
+                if chosen_key:
+                    predictions_clean[chosen_key] = [
+                        round(float(x), 4) if x is not None else None for x in preds_map.get(chosen_key, [])
+                    ]
+
+                # 确保存在 timesfm_best_predictions 记录，避免外键约束导致写入失败
+                best_confirmed = False
+                try:
+                    status_code_best, data_best, body_best = await pg.get_best_by_unique(unique_key)
+                    best_confirmed = (status_code_best == 200)
+                except Exception:
+                    best_confirmed = False
+
+                if not best_confirmed:
+                    try:
+                        def to_date_str(val):
+                            try:
+                                dt = pd.to_datetime(val, errors='coerce')
+                                return dt.strftime('%Y-%m-%d') if not pd.isna(dt) else str(val)
+                            except Exception:
+                                return str(val)
+
+                        train_start_date = to_date_str(df_train['ds'].min())
+                        train_end_date = to_date_str(df_train['ds'].max())
+                        test_start_date = to_date_str(df_test['ds'].min())
+                        test_end_date = to_date_str(df_test['ds'].max())
+                        val_start_date = to_date_str(df_val['ds'].min())
+                        val_end_date = to_date_str(df_val['ds'].max())
+
+                        best_metrics_payload = {
+                            'best_prediction_item': chosen_key,
+                            'source': 'next-chunk-persist'
+                        }
+                        go_payload = {
+                            "unique_key": unique_key,
+                            "symbol": symbol,
+                            "timesfm_version": timesfm_version,
+                            "best_prediction_item": chosen_key or "mtf-0.5",
+                            "best_metrics": _round_obj(best_metrics_payload),
+                            "train_start_date": train_start_date,
+                            "train_end_date": train_end_date,
+                            "test_start_date": test_start_date,
+                            "test_end_date": test_end_date,
+                            "val_start_date": val_start_date,
+                            "val_end_date": val_end_date,
+                            "context_len": int(context_len),
+                            "horizon_len": int(horizon_len),
+                            "user_id": user_id,
+                            "is_public": 1 if (user_id == 1) else 0,
+                        }
+                        sc_upsert, data_upsert, body_upsert = await pg.save_best_prediction(go_payload)
+                        best_confirmed = (sc_upsert == 200)
+                        if best_confirmed:
+                            print(f"✅ 已补写timesfm-best: unique_key={unique_key}")
+                        else:
+                            print(f"⚠️ 补写timesfm-best失败: status={sc_upsert}, body={body_upsert}")
+                    except Exception as add_err:
+                        print(f"⚠️ 尝试补写timesfm-best异常: {add_err}")
+
+                if not best_confirmed:
+                    print(f"⚠️ 跳过下一分块写入：未找到timesfm-best(unique_key={unique_key})，避免外键冲突")
+                    try:
+                        await pg.close()
+                    except Exception:
+                        pass
+                    return result
+
+                payload = {
+                    "unique_key": unique_key,
+                    "chunk_index": int(next_chunk_index),
+                    "start_date": start_date_str,
+                    "end_date": end_date_str,
+                    "predictions": predictions_clean,
+                    "actual_values": [round(float(x), 4) if x is not None else None for x in result.actual_values],
+                    "dates": dates_str,
+                    "symbol": symbol,
+                    "is_public": 1 if (user_id == 1) else 0,
+                    "user_id": user_id,
+                }
+
+                status_code, data, body_text = await pg.save_best_val_chunk(_round_obj(payload))
+                if status_code == 200:
+                    print(f"✅ 下一分块已保存: unique_key={unique_key}, chunk_index={next_chunk_index}")
+                else:
+                    print(f"⚠️ 下一分块保存失败: status={status_code}, body={body_text}")
+                try:
+                    await pg.close()
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"⚠️ 持久化下一分块异常: {e}")
+
+        return result
+    except Exception as e:
+        try:
+            print(f"❌ 预测下一分块失败: {e}")
+        except Exception:
+            pass
+        return None
 
 def predict_single_chunk_mode1(
         df_train: pd.DataFrame,
@@ -1140,11 +1444,11 @@ async def predict_validation_chunks_only(
             processing_time=processing_time
         )
 
-if __name__ == "__main__":
+def main():
     import asyncio
-    from timesfm_init import init_timesfm
+    # from timesfm_init import init_timesfm
     test_request = ChunkedPredictionRequest(
-        stock_code="sh510300",
+        stock_code="sz000001",
         years=15,
         horizon_len=3,
         start_date="",
@@ -1156,7 +1460,7 @@ if __name__ == "__main__":
         user_id=1
     )
     if test_request.timesfm_version == "2.0":
-        tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
+        # tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
         response = asyncio.run(predict_chunked_mode_for_best(test_request))
     else:
         response = asyncio.run(predict_chunked_mode_for_best(test_request))
@@ -1177,4 +1481,17 @@ if __name__ == "__main__":
     except Exception as plot_error:
         print(f"⚠️ 绘图失败: {str(plot_error)}")
     
+def test_next_chunked_prediction():
+    import asyncio
+    res = asyncio.run(predict_next_chunk_by_unique_key(
+        unique_key="sz000001_best_hlen_3_clen_2048_v_2.5",
+        user_id=1,
+        persist=True,
+    ))
+    print(res)
+
+if __name__ == "__main__":
+    # main()
+    test_next_chunked_prediction()
+
     
