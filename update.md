@@ -142,3 +142,9 @@
         - `git merge -s ours github/main -m "synthetic merge base: enable PR between unrelated histories"`
         - `git push github internal-sync`
 - **效果**：不改变 `internal-sync` 的文件内容，仅创建一个可比较的合并祖先；随后即可在 GitHub 上正常创建 PR 并选择 “Squash and merge”。
+### 76. 版本控制维护：清理历史同步分支
+- **背景**：为解决 GitHub 无法比较不同历史分支的问题，已采用 `sync-compare` 作为基于 `main` 的比较分支。
+- **清理**：
+    - 删除 GitHub 远程分支：`internal-sync`、`sync-to-main`。
+    - 删除本地分支：`internal-sync`（`sync-to-main` 本地不存在无需删除）。
+- **当前建议分支**：使用 `sync-compare` 在 GitHub 发起 PR 合并到 `main`。
