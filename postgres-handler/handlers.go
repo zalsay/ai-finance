@@ -182,7 +182,8 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 			}
 		}
 		if req.StockType == 1 {
-			stockData, errStock := h.GetAStockCommentDailyByCode(req.Symbol, 1, 0)
+			code := strings.TrimLeft(req.Symbol, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+			stockData, errStock := h.GetAStockCommentDailyByCode(code, 1, 0)
 			slog.Info("GetAStockCommentDailyByCode", "symbol", req.Symbol, "data", stockData, "err", errStock)
 			if errStock == nil {
 				if len(stockData) > 0 {
