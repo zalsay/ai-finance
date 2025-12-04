@@ -6,6 +6,7 @@ import App from './App';
 import '@fontsource/noto-sans-sc/400.css';
 import '@fontsource/noto-sans-sc/500.css';
 import '@fontsource/noto-sans-sc/700.css';
+import 'material-symbols/outlined.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

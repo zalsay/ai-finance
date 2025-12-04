@@ -90,11 +90,15 @@ func (s *WatchlistService) GetLatestQuotesBySymbols(symbols []string) ([]models.
     }
 
     codes := make([]string, 0, len(symbols))
-    codeToSymbol := make(map[string]string, len(symbols))
+    symbolsLower := make([]string, 0, len(symbols))
+    codeToSymbol := make(map[string]string, len(symbols)*2)
     for _, sym := range symbols {
-        c := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(sym), "sh"), "sz")
+        lower := strings.ToLower(sym)
+        c := strings.TrimPrefix(strings.TrimPrefix(lower, "sh"), "sz")
         codes = append(codes, c)
+        symbolsLower = append(symbolsLower, lower)
         codeToSymbol[c] = sym
+        codeToSymbol[lower] = sym
     }
 
     placeholders := make([]string, len(codes))
@@ -143,14 +147,25 @@ func (s *WatchlistService) GetLatestQuotesBySymbols(symbols []string) ([]models.
         quotes[code] = p
     }
 
+    etfPlaceholders := make([]string, len(symbolsLower))
+    etfArgs := make([]interface{}, 0, len(codes)+len(symbolsLower))
+    // numeric code placeholders first
+    etfArgs = append(etfArgs, args...)
+    for i := range symbolsLower {
+        etfPlaceholders[i] = fmt.Sprintf("$%d", len(etfArgs)+i+1)
+    }
+    for _, sl := range symbolsLower {
+        etfArgs = append(etfArgs, sl)
+    }
+
     qEtf := fmt.Sprintf(`
         SELECT DISTINCT ON (code) code, trading_date, latest_price, change_percent
         FROM etf_daily
-        WHERE code IN (%s)
+        WHERE code IN (%s) OR LOWER(code) IN (%s)
         ORDER BY code, trading_date DESC
-    `, strings.Join(placeholders, ","))
+    `, strings.Join(placeholders, ","), strings.Join(etfPlaceholders, ","))
 
-    rows2, err := s.db.Conn.Query(qEtf, args...)
+    rows2, err := s.db.Conn.Query(qEtf, etfArgs...)
     if err != nil {
         return nil, fmt.Errorf("failed to query etf_daily: %v", err)
     }
@@ -164,6 +179,10 @@ func (s *WatchlistService) GetLatestQuotesBySymbols(symbols []string) ([]models.
             return nil, fmt.Errorf("failed to scan etf_daily: %v", err)
         }
         sym := codeToSymbol[code]
+        if sym == "" {
+            norm := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(code), "sh"), "sz")
+            sym = codeToSymbol[norm]
+        }
         p := models.LatestQuote{Symbol: sym}
         ds := dt.Format("2006-01-02")
         p.TradingDate = &ds
@@ -174,7 +193,9 @@ func (s *WatchlistService) GetLatestQuotesBySymbols(symbols []string) ([]models.
             p.ChangePercent = &change.Float64
         }
         if _, exists := quotes[code]; !exists {
-            quotes[code] = p
+            // Always store by normalized numeric code to align with stock side mapping
+            norm := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(code), "sh"), "sz")
+            quotes[norm] = p
         }
     }
 
@@ -225,7 +246,9 @@ func (s *WatchlistService) GetWatchlist(userID int) ([]models.WatchlistItem, err
 			uw.id, uw.symbol, uw.added_at, uw.notes, COALESCE(uw.stock_type, 1),
 			COALESCE(s.company_name, ''),
 			COALESCE(tbp.unique_key, ''),
-			COALESCE(tbp.timesfm_version, '')
+			COALESCE(tbp.timesfm_version, ''),
+			COALESCE(uw.strategy_unique_key, ''),
+			COALESCE(tsp.name, '')
 		FROM user_watchlist uw
 		LEFT JOIN stocks s ON uw.symbol = s.symbol
 		LEFT JOIN LATERAL (
@@ -235,6 +258,7 @@ func (s *WatchlistService) GetWatchlist(userID int) ([]models.WatchlistItem, err
 			ORDER BY created_at DESC
 			LIMIT 1
 		) tbp ON true
+		LEFT JOIN timesfm_strategy_params tsp ON uw.strategy_unique_key = tsp.unique_key
 		WHERE uw.user_id = $1
 		ORDER BY uw.added_at DESC
 	`, userID)
@@ -247,13 +271,14 @@ func (s *WatchlistService) GetWatchlist(userID int) ([]models.WatchlistItem, err
 	items := []models.WatchlistItem{}
 	for rows.Next() {
 		var item models.WatchlistItem
-		var uniqueKey, version string
+		var uniqueKey, version, strategyKey, strategyName string
 		var stockType int
 
 		err := rows.Scan(
 			&item.ID, &item.Stock.Symbol, &item.AddedAt, &item.Notes, &stockType,
 			&item.Stock.CompanyName,
 			&uniqueKey, &version,
+			&strategyKey, &strategyName,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan watchlist item: %v", err)
@@ -261,10 +286,46 @@ func (s *WatchlistService) GetWatchlist(userID int) ([]models.WatchlistItem, err
 
 		item.UniqueKey = uniqueKey
 		item.StockType = &stockType
+		item.StrategyUniqueKey = strategyKey
+		item.StrategyName = strategyName
 		items = append(items, item)
 	}
 
 	return items, nil
+}
+
+func (s *WatchlistService) BindStrategy(userID int, req *models.BindStrategyRequest) error {
+	// Check if strategy exists
+	var exists bool
+	err := s.db.Conn.QueryRow(`
+		SELECT EXISTS(SELECT 1 FROM timesfm_strategy_params WHERE unique_key = $1 AND (user_id = $2 OR user_id IS NULL))
+	`, req.StrategyUniqueKey, userID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to check strategy existence: %v", err)
+	}
+	if !exists {
+		return fmt.Errorf("strategy not found")
+	}
+
+	// Update user_watchlist
+	// Note: symbol in request might need normalization or we assume it matches what's in DB
+	// Assuming symbol matches.
+	res, err := s.db.Conn.Exec(`
+		UPDATE user_watchlist 
+		SET strategy_unique_key = $1
+		WHERE user_id = $2 AND symbol = $3
+	`, req.StrategyUniqueKey, userID, req.Symbol)
+	
+	if err != nil {
+		return fmt.Errorf("failed to bind strategy: %v", err)
+	}
+	
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("watchlist item not found for symbol %s", req.Symbol)
+	}
+
+	return nil
 }
 
 func (s *WatchlistService) RemoveFromWatchlist(userID, watchlistID int) error {
@@ -950,7 +1011,7 @@ func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequ
 
 func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*models.StrategyParams, error) {
 	row := s.db.Conn.QueryRow(`
-        SELECT unique_key, user_id, name,
+        SELECT unique_key, user_id, name, is_public,
                buy_threshold_pct, sell_threshold_pct, initial_cash,
                enable_rebalance, max_position_pct, min_position_pct,
                slope_position_per_pct, rebalance_tolerance_pct,
@@ -962,7 +1023,7 @@ func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*mode
 	var item models.StrategyParams
 	var uid sql.NullInt64
 	err := row.Scan(
-		&item.UniqueKey, &uid, &item.Name,
+		&item.UniqueKey, &uid, &item.Name, &item.IsPublic,
 		&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
 		&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
 		&item.SlopePositionPerPct, &item.RebalanceTolerancePct,
@@ -983,17 +1044,17 @@ func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*mode
 	return &item, nil
 }
 
-// 获取用户的所有策略
+// 获取用户的所有策略（包括系统预设策略）
 func (s *WatchlistService) GetUserStrategies(userID int) ([]models.StrategyParams, error) {
 	rows, err := s.db.Conn.Query(`
-        SELECT unique_key, user_id, name,
+        SELECT unique_key, user_id, name, is_public,
                buy_threshold_pct, sell_threshold_pct, initial_cash,
                enable_rebalance, max_position_pct, min_position_pct,
                slope_position_per_pct, rebalance_tolerance_pct,
                trade_fee_rate, take_profit_threshold_pct, take_profit_sell_frac
         FROM timesfm_strategy_params
-        WHERE user_id = $1
-        ORDER BY updated_at DESC
+        WHERE user_id = $1 OR is_public = 1
+        ORDER BY is_public DESC, updated_at DESC
     `, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query user strategies: %v", err)
@@ -1005,7 +1066,7 @@ func (s *WatchlistService) GetUserStrategies(userID int) ([]models.StrategyParam
 		var item models.StrategyParams
 		var uid sql.NullInt64
 		err := rows.Scan(
-			&item.UniqueKey, &uid, &item.Name,
+			&item.UniqueKey, &uid, &item.Name, &item.IsPublic,
 			&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
 			&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
 			&item.SlopePositionPerPct, &item.RebalanceTolerancePct,

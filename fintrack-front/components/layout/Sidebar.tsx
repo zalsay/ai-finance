@@ -10,13 +10,19 @@ interface SidebarProps {
   currentView: View;
   setCurrentView: (view: View) => void;
   onLogout: () => void;
+  isDemoMode?: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout, isDemoMode = false }) => {
     const { t } = useLanguage();
     const [userEmail, setUserEmail] = useState<string>('');
 
     useEffect(() => {
+        if (isDemoMode) {
+            setUserEmail('Demo User');
+            return;
+        }
+        
         const fetchProfile = async () => {
             try {
                 const user = await authAPI.getProfile();
@@ -26,20 +32,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout
             }
         };
         fetchProfile();
-    }, []);
+    }, [isDemoMode]);
     
     return (
         <aside className="w-64 shrink-0 bg-background-dark p-4 flex-col justify-between hidden lg:flex">
             <div className="flex flex-col gap-8">
                 <div className="flex items-center gap-2 px-2">
                     <span className="material-symbols-outlined text-primary text-3xl">trending_up</span>
-                    <h1 className="text-white text-xl font-bold">MeetLife AI</h1>
+                    <h1 className="text-white text-xl font-bold">{t('sidebar.title')}</h1>
                 </div>
                 <div className="flex flex-col gap-4">
                     <div className="flex gap-3 px-2">
                         <div className="flex flex-col">
-                            <h2 className="text-white text-base font-medium leading-normal">Hello</h2>
-                            <p className="text-white/60 text-sm font-normal leading-normal">{userEmail || 'Loading...'}</p>
+                            <h2 className="text-white text-base font-medium leading-normal">{t('sidebar.hello')}</h2>
+                            <p className="text-white/60 text-sm font-normal leading-normal">{userEmail || t('sidebar.loading')}</p>
                         </div>
                     </div>
                     

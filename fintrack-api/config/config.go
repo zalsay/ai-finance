@@ -99,7 +99,7 @@ func LoadConfig() (*Config, error) {
 			Expiration: getEnvAsInt("JWT_EXPIRATION_HOURS", 24),
 		},
 		CORS: CORSConfig{
-			AllowedOrigins:   strings.Split(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003"), ","),
+			AllowedOrigins:   strings.Split(getEnv("CORS_ALLOWED_ORIGINS", "*"), ","),
 			AllowedMethods:   strings.Split(getEnv("CORS_ALLOWED_METHODS", "GET,POST,PUT,DELETE,OPTIONS"), ","),
 			AllowedHeaders:   strings.Split(getEnv("CORS_ALLOWED_HEADERS", "Content-Type,Authorization"), ","),
 			AllowCredentials: getEnvAsBool("CORS_ALLOW_CREDENTIALS", true),

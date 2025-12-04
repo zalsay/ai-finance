@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { StockData } from '../../types';
 import StrategyCard from '../dashboard/StrategyCard';
 import CreateStrategyModal from '../dashboard/CreateStrategyModal';
+import BindStrategyModal from './BindStrategyModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { watchlistAPI, strategyAPI } from '../../services/apiService';
 
@@ -19,6 +20,7 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [bindingLoading, setBindingLoading] = useState<string | null>(null); // symbol being bound
+    const [bindModalData, setBindModalData] = useState<{symbol: string, currentKey: string | null} | null>(null);
 
     const fetchWatchlist = useCallback(async () => {
         setIsFetching(true);
@@ -41,7 +43,7 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                     if (!item.unique_key) return null;
                     return {
                         symbol: item.stock.symbol,
-                        uniqueKey: item.unique_key, 
+                        uniqueKey: item.strategy_unique_key || item.unique_key, 
                         companyName: item.stock.company_name || item.stock.symbol,
                         currentPrice: item.current_price?.price || 0, 
                         changePercent: item.current_price?.change_percent || 0,
@@ -73,19 +75,12 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
         setRefreshKey(prev => prev + 1);
     };
 
-    const handleBind = async (stockUniqueKey: string, templateKey: string) => {
-        if (!stockUniqueKey || !templateKey) return;
-        setBindingLoading(stockUniqueKey);
+    const handleBind = async (symbol: string, strategyKey: string) => {
+        if (!symbol || !strategyKey) return;
+        setBindingLoading(symbol);
         try {
-            const template = userStrategies.find(s => s.unique_key === templateKey);
-            if (!template) return;
-            
-            // Save params using the stock's uniqueKey but template's values
-            await strategyAPI.saveParams({
-                ...template,
-                unique_key: stockUniqueKey
-            });
-            
+            await watchlistAPI.bindStrategy(symbol, strategyKey);
+            await fetchWatchlist();
             handleSuccess();
         } catch (e: any) {
             console.error(e);
@@ -121,27 +116,53 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                     {fetchError}
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {portfolioStocks.map((stock: any) => (
-                            stock.uniqueKey ? (
-                            <StrategyCard 
-                                key={`strat-${stock.uniqueKey}`} 
-                                uniqueKey={stock.uniqueKey} 
-                                symbol={stock.symbol}
-                            />
-                            ) : null
-                    ))}
-                    
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="rounded-xl bg-white/5 border border-dashed border-white/20 hover:border-primary/50 hover:bg-white/10 transition-all p-5 flex flex-col items-center justify-center h-full min-h-[200px] group"
-                    >
-                        <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                            <span className="material-symbols-outlined text-2xl">add</span>
+                <div className="space-y-8">
+                    {/* Official Strategies */}
+                    {userStrategies.some(s => s.is_public === 1) && (
+                        <div className="space-y-3">
+                            <h3 className="text-white/60 text-sm font-medium uppercase tracking-wider">{language === 'zh' ? '官方推荐' : 'Official Recommended'}</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {userStrategies
+                                    .filter(s => s.is_public === 1)
+                                    .map((strategy) => (
+                                        <StrategyCard 
+                                            key={`strat-${strategy.unique_key}`} 
+                                            uniqueKey={strategy.unique_key} 
+                                            symbol={strategy.name || 'Strategy'}
+                                        />
+                                    ))
+                                }
+                            </div>
                         </div>
-                        <span className="text-white font-bold text-lg">{language === 'zh' ? '添加策略' : 'Add Strategy'}</span>
-                        <p className="text-white/40 text-xs mt-1">{language === 'zh' ? '为新股票配置策略' : 'Configure strategy for new stock'}</p>
-                    </button>
+                    )}
+
+                    {/* Personal Strategies */}
+                    <div className="space-y-3">
+                        <h3 className="text-white/60 text-sm font-medium uppercase tracking-wider">{language === 'zh' ? '个人策略' : 'My Strategies'}</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {userStrategies
+                                .filter(s => s.is_public !== 1)
+                                .map((strategy) => (
+                                    <StrategyCard 
+                                        key={`strat-${strategy.unique_key}`} 
+                                        uniqueKey={strategy.unique_key} 
+                                        symbol={strategy.name || 'Strategy'}
+                                    />
+                                ))
+                            }
+                            
+                            <button
+                                onClick={() => setIsModalOpen(true)}
+                                className="rounded-xl bg-white/5 border border-dashed border-white/20 hover:border-primary/50 hover:bg-white/10 transition-all p-5 flex flex-col items-center justify-center h-full min-h-[200px] group"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                    <span className="material-symbols-outlined text-2xl">add</span>
+                                </div>
+                                <span className="text-white font-bold text-lg">{language === 'zh' ? '添加策略' : 'Add Strategy'}</span>
+                                <p className="text-white/40 text-xs mt-1">{language === 'zh' ? '为新股票配置策略' : 'Configure strategy for new stock'}</p>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
             
@@ -167,8 +188,8 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {watchlistItems.map((item) => {
-                                const currentStrategy = userStrategies.find(s => s.unique_key === item.unique_key);
-                                const isBinding = bindingLoading === item.unique_key;
+                                const currentStrategy = userStrategies.find(s => s.unique_key === item.strategy_unique_key);
+                                const isBinding = bindingLoading === item.stock.symbol;
                                 
                                 return (
                                     <tr key={item.id} className="hover:bg-white/5 transition-colors">
@@ -182,8 +203,17 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                                             {currentStrategy ? (
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-primary font-medium">{currentStrategy.name || 'Unnamed Strategy'}</span>
+                                                    {currentStrategy.is_public === 1 ? (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium whitespace-nowrap">
+                                                            {language === 'zh' ? '官方' : 'Official'}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium whitespace-nowrap">
+                                                            {language === 'zh' ? '个人' : 'Personal'}
+                                                        </span>
+                                                    )}
                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary/80 font-mono">
-                                                        {currentStrategy.buy_threshold_pct}% / {currentStrategy.sell_threshold_pct}%
+                                                        {currentStrategy.buy_threshold_pct}% | {currentStrategy.sell_threshold_pct}%
                                                     </span>
                                                 </div>
                                             ) : (
@@ -193,27 +223,18 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                                         <td className="px-6 py-4">
                                             {item.unique_key ? (
                                                 <div className="flex items-center gap-2">
-                                                    <select 
-                                                        className="bg-black/20 border border-white/10 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-primary"
-                                                        onChange={(e) => {
-                                                            if (e.target.value) {
-                                                                handleBind(item.unique_key, e.target.value);
-                                                                e.target.value = ''; // Reset select
-                                                            }
-                                                        }}
+                                                    <button
+                                                        onClick={() => setBindModalData({
+                                                            symbol: item.stock.symbol,
+                                                            currentKey: item.strategy_unique_key || null
+                                                        })}
                                                         disabled={isBinding}
-                                                        defaultValue=""
+                                                        className="px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-white text-xs font-medium hover:bg-white/10 hover:border-white/20 transition-all min-w-[100px] text-center"
                                                     >
-                                                        <option value="" disabled>{language === 'zh' ? '选择策略应用...' : 'Apply strategy...'}</option>
-                                                        {userStrategies
-                                                            .filter(s => s.unique_key.startsWith('tpl_')) // Only show templates
-                                                            .map(s => (
-                                                                <option key={s.unique_key} value={s.unique_key}>
-                                                                    {s.name}
-                                                                </option>
-                                                            ))
-                                                        }
-                                                    </select>
+                                                        {item.strategy_unique_key 
+                                                            ? (language === 'zh' ? '换绑' : 'Change')
+                                                            : (language === 'zh' ? '绑定' : 'Bind')}
+                                                    </button>
                                                     {isBinding && <span className="material-symbols-outlined animate-spin text-primary text-sm">progress_activity</span>}
                                                 </div>
                                             ) : (
@@ -236,6 +257,15 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                     </table>
                 </div>
             </div>
+
+            <BindStrategyModal
+                isOpen={!!bindModalData}
+                onClose={() => setBindModalData(null)}
+                symbol={bindModalData?.symbol || ''}
+                strategies={userStrategies}
+                currentStrategyKey={bindModalData?.currentKey || undefined}
+                onBind={handleBind}
+            />
 
             <CreateStrategyModal 
                 isOpen={isModalOpen}
