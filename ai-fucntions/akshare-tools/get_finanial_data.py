@@ -39,11 +39,25 @@ def scf_invoke(event0, context0=None):
     Returns:
         str: JSON格式的响应数据
     """
+    # 从环境变量读取凭证，避免在仓库中存放敏感信息
+    secret_id = os.getenv("TENCENT_SECRET_ID")
+    secret_key = os.getenv("TENCENT_SECRET_KEY")
+    region = os.getenv("TENCENT_REGION", "ap-shanghai")
+    token = os.getenv("TENCENT_TOKEN", "")
+    if not secret_id or not secret_key:
+        raise ValueError("Tencent Cloud credentials are missing in environment variables.")
+
+    try:
+        from tencentserverless.scf import Client
+    except Exception as e:
+        logger.error(f"SCF Client not available: {str(e)}")
+        raise
+
     scf_client = Client(
-        ***REMOVED***,
-        ***REMOVED***,
-        region="ap-shanghai",
-        token=""
+        secret_id=secret_id,
+        secret_key=secret_key,
+        region=region,
+        token=token
     )
     
     try:
