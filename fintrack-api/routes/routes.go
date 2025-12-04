@@ -91,6 +91,12 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			watchlist.PUT("/:id", watchlistHandler.UpdateWatchlistItem)
 		}
 
+		quotes := v1.Group("/quotes")
+		quotes.Use(authHandler.AuthMiddleware())
+		{
+			quotes.POST("/batch-latest", watchlistHandler.GetBatchLatestQuotes)
+		}
+
 		getPredictions := v1.Group("/get-predictions")
 		{
 			// 需要鉴权，按当前登录用户查询其关联的best列表
@@ -130,6 +136,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			stocks.GET("/:symbol", func(c *gin.Context) {
 				c.JSON(200, gin.H{"message": "Stock detail endpoint - coming soon"})
 			})
+			stocks.GET("/lookup", watchlistHandler.LookupStockName)
 		}
 	}
 

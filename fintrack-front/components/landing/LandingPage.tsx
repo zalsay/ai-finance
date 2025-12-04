@@ -18,7 +18,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onRegister, onDemo }
                     <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                         <span className="material-symbols-outlined text-black text-xl">trending_up</span>
                     </div>
-                    <span className="text-xl font-bold text-white tracking-tight">MeetlifeTimesForecast-V1.0</span>
+                    <div className="flex flex-col">
+                        <span className="text-l font-bold text-white tracking-tight">MeetLife AI</span>
+                        <span className="text-sm text-white/80 tracking-tight">MTF v1.5</span>
+                    </div>
                 </div>
                 <div className="flex gap-4">
                     <button 
