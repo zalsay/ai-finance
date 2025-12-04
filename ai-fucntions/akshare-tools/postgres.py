@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 class PostgresHandler:
-    def __init__(self, base_url: str = "http://go-api.meetlife.com.cn:58005", timeout: int = 30, api_token: Optional[str] = None, allow_get_fallback: bool = True):
+    def __init__(self, base_url: str = "http://go-api.meetlife.com.cn:8000", timeout: int = 30, api_token: Optional[str] = None, allow_get_fallback: bool = True):
         """初始化PG后端API客户端（异步版，使用 httpx.AsyncClient）"""
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
