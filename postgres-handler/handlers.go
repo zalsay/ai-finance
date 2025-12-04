@@ -174,15 +174,13 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		if req.StockType == 2 {
 			// Try getting ETF data to fill ShortName. Use offset 0 to get the latest record.
 			etfData, errEtf := h.GetEtfDaily(req.Symbol, 1, 0)
+
 			slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
 			if errEtf == nil {
 				if len(etfData) > 0 {
 					req.ShortName = etfData[0].Name
 				}
 			}
-		}
-		if req.StockType == 1 {
-			req.ShortName = req.Symbol
 		}
 	}
 	err = h.db.Exec(`
@@ -339,71 +337,6 @@ func (h *DatabaseHandler) getTimesfmBestByUniqueKeyHandler(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: item})
-}
-
-// 获取指定 unique_key 的最新验证分块（按 chunk_index DESC 取一条）
-func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
-    uniqueKey := c.Query("unique_key")
-    if strings.TrimSpace(uniqueKey) == "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
-        return
-    }
-
-    row := h.db.Raw(`
-        SELECT 
-            unique_key, chunk_index, start_date::text, end_date::text, symbol,
-            predictions, actual_values, dates
-        FROM timesfm_best_validation_chunks
-        WHERE unique_key = $1
-        ORDER BY chunk_index DESC
-        LIMIT 1`, uniqueKey).Row()
-
-    var (
-        uk         string
-        chunkIndex int
-        startDate  string
-        endDate    string
-        symbol     string
-        predsJSON  []byte
-        actualJSON []byte
-        datesJSON  []byte
-    )
-
-    if err := row.Scan(&uk, &chunkIndex, &startDate, &endDate, &symbol, &predsJSON, &actualJSON, &datesJSON); err != nil {
-        if err == sql.ErrNoRows {
-            c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-            return
-        }
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-
-    var preds map[string]interface{}
-    var actual []float64
-    var dates []string
-    if err := json.Unmarshal(predsJSON, &preds); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal predictions"})
-        return
-    }
-    if err := json.Unmarshal(actualJSON, &actual); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal actual_values"})
-        return
-    }
-    if err := json.Unmarshal(datesJSON, &dates); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal dates"})
-        return
-    }
-
-    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{
-        "unique_key":  uk,
-        "chunk_index": chunkIndex,
-        "start_date":  startDate,
-        "end_date":    endDate,
-        "symbol":      symbol,
-        "predictions": preds,
-        "actual_values": actual,
-        "dates":         dates,
-    }})
 }
 
 func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {

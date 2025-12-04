@@ -1,8 +1,0 @@
-{
-    "start_time": "2025-09-05T15-28-00",
-    "save_directory": "/root/workers/Kronos/finetune/outputs/models/finetune_tokenizer_SH600000_SH600009_SH600010_SH600015_SH600016",
-    "world_size": 1,
-    "final_result": {
-        "best_val_loss": 0
-    }
-}

@@ -132,6 +132,32 @@ func (h *WatchlistHandler) UpdateWatchlistItem(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h *WatchlistHandler) BindStrategy(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	var req models.BindStrategyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.watchlistService.BindStrategy(userID.(int), &req)
+	if err != nil {
+		if err.Error() == "strategy not found" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Strategy bound successfully"})
+}
+
 func (h *WatchlistHandler) GetUserStrategies(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {

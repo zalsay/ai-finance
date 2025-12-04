@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS user_watchlist (
     symbol VARCHAR(20) NOT NULL,
     added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     notes TEXT,
+    strategy_unique_key VARCHAR(255),
     UNIQUE(user_id, symbol)
 );
 
@@ -110,3 +111,6 @@ CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(user_id);
+
+-- Add strategy_unique_key to existing user_watchlist table if it doesn't exist
+ALTER TABLE user_watchlist ADD COLUMN IF NOT EXISTS strategy_unique_key VARCHAR(255);

@@ -53,6 +53,8 @@ export interface WatchlistItem {
   notes?: string;
   unique_key?: string;
   stock_type?: number;
+  strategy_unique_key?: string;
+  strategy_name?: string;
 }
 
 export interface WatchlistResponse {
@@ -159,6 +161,12 @@ export const watchlistAPI = {
   },
   removeFromWatchlist: async (id: number) => {
     return apiRequest<{ message: string }>(`/watchlist/${id}`, { method: 'DELETE' });
+  },
+  bindStrategy: async (symbol: string, strategyUniqueKey: string) => {
+    return apiRequest<{ message: string }>('/watchlist/bind', {
+      method: 'POST',
+      body: JSON.stringify({ symbol, strategy_unique_key: strategyUniqueKey }),
+    });
   },
 };
 

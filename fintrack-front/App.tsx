@@ -104,7 +104,8 @@ const AppContent: React.FC = () => {
         } finally {
             localStorage.removeItem('authToken');  // 修复：使用正确的 key
             setIsAuthenticated(false);
-            setCurrentView('dashboard');
+            setIsDemoMode(false); // Exit demo mode on logout
+            setCurrentView('landing'); // Return to landing page
             setShowLogin(false); // Reset to landing page on logout
         }
     };
@@ -172,7 +173,7 @@ const AppContent: React.FC = () => {
                 </div>
             )}
 
-            <Sidebar currentView={currentView} setCurrentView={setCurrentView} onLogout={handleLogout} />
+            <Sidebar currentView={currentView} setCurrentView={setCurrentView} onLogout={handleLogout} isDemoMode={isDemoMode} />
 
             {/* Mobile Navigation */}
             <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#11221a] border-t border-white/10 z-50 safe-area-inset-bottom">

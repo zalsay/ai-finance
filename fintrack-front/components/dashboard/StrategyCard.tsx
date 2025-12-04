@@ -60,17 +60,25 @@ const StrategyCard: React.FC<StrategyCardProps> = ({ uniqueKey, symbol, onUpdate
                         <div>
                             <h3 className="text-lg font-bold text-white flex items-center gap-2">
                                 {strategy?.name || symbol} 
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium">
-                                    Strategy
-                                </span>
+                                {strategy?.is_public === 1 ? (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-medium">
+                                        {language === 'zh' ? '官方推荐' : 'Official'}
+                                    </span>
+                                ) : (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-medium">
+                                        {language === 'zh' ? '个人策略' : 'Personal'}
+                                    </span>
+                                )}
                             </h3>
                         </div>
-                        <button 
-                            onClick={() => setIsModalOpen(true)}
-                            className="p-2 rounded-lg bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-colors"
-                        >
-                            <span className="material-symbols-outlined text-lg">settings</span>
-                        </button>
+                        {strategy?.is_public !== 1 && (
+                            <button 
+                                onClick={() => setIsModalOpen(true)}
+                                className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+                            >
+                                <span className="material-symbols-outlined text-lg">settings</span>
+                            </button>
+                        )}
                     </div>
 
                     {strategy ? (
@@ -88,7 +96,7 @@ const StrategyCard: React.FC<StrategyCardProps> = ({ uniqueKey, symbol, onUpdate
                             <div className="flex flex-col">
                                 <span className="text-white/40 text-xs">{language === 'zh' ? '买/卖阈值' : 'Buy/Sell Threshold'}</span>
                                 <span className="text-white font-mono font-medium">
-                                    {strategy.buy_threshold_pct}% / {strategy.sell_threshold_pct}%
+                                    {strategy.buy_threshold_pct}% | {strategy.sell_threshold_pct}%
                                 </span>
                             </div>
                             <div className="flex flex-col">
