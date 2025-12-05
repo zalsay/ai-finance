@@ -555,10 +555,18 @@ func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
 		return
 	}
 
-	row := h.db.Raw(`
+    row := h.db.Raw(`
         SELECT 
-            unique_key, chunk_index, start_date::text, end_date::text, symbol,
-            predictions, actual_values, dates, stock_name, stock_type
+            unique_key,
+            chunk_index,
+            start_date::text,
+            end_date::text,
+            symbol,
+            predictions,
+            COALESCE(actual_values, '[]'::jsonb) AS actual_values,
+            COALESCE(dates, '[]'::jsonb) AS dates,
+            COALESCE(stock_name, '') AS stock_name,
+            COALESCE(stock_type, 1) AS stock_type
         FROM timesfm_best_validation_chunks
         WHERE unique_key = $1
         ORDER BY chunk_index DESC

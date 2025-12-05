@@ -15,6 +15,9 @@ sys.path.append(pre_data_dir)
 ak_tools_dir = os.path.join(parent_dir, 'akshare-tools')
 sys.path.append(ak_tools_dir)
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def _round_obj(o):
     import numpy as _np
@@ -130,7 +133,7 @@ async def predict_next_chunk_by_unique_key(
         chunks_num = 0
         try:
             base_url = os.environ.get('POSTGRES_URL', 'http://go-api.meetlife.com.cn:8000')
-            base_url = os.environ.get('POSTGRES_API', 'http://localhost:58004')
+            base_url = 'http://localhost:58004'
             pg_tmp = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
             await pg_tmp.open()
             sc_latest, data_latest, _ = await pg_tmp.get_latest_val_chunk(unique_key)

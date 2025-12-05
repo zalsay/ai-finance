@@ -237,6 +237,19 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if err := h.db.Exec(createStrategyParamsSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_strategy_params table: %v", err)
     }
+    // 为已存在的表补充唯一约束（如果缺失）
+    ensureUniqueConstraintSQL := `
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'uni_timesfm_strategy_params_unique_key'
+        ) THEN
+            ALTER TABLE timesfm_strategy_params
+            ADD CONSTRAINT uni_timesfm_strategy_params_unique_key UNIQUE (unique_key);
+        END IF;
+    END
+    $$;`
+    _ = h.db.Exec(ensureUniqueConstraintSQL).Error
     _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_symbol_ds ON timesfm_forecast (symbol, ds);`).Error
     _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_svhl_ds ON timesfm_forecast (symbol, version, horizon_len, ds);`).Error
 
@@ -258,6 +271,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
         context_len INTEGER NOT NULL,
         horizon_len INTEGER NOT NULL,
         short_name TEXT,
+        stock_type INTEGER,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
@@ -266,6 +280,8 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if err := h.db.Exec(createTimesfmBestSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_best_predictions table: %v", err)
     }
+    // 为已存在的表补充缺失列（如果缺失）
+    _ = h.db.Exec(`ALTER TABLE timesfm_best_predictions ADD COLUMN IF NOT EXISTS stock_type INTEGER`).Error
 
     createTimesfmValChunksSQL := `
     CREATE TABLE IF NOT EXISTS timesfm_best_validation_chunks (
@@ -279,6 +295,8 @@ func (h *DatabaseHandler) initializeDatabase() error {
         predictions JSONB NOT NULL,
         actual_values JSONB NOT NULL,
         dates JSONB NOT NULL,
+        stock_name TEXT,
+        stock_type INTEGER,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_timesfm_best FOREIGN KEY (unique_key)
@@ -291,6 +309,9 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if err := h.db.Exec(createTimesfmValChunksSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_best_validation_chunks table: %v", err)
     }
+    // 为已存在的表补充缺失列（如果缺失）
+    _ = h.db.Exec(`ALTER TABLE timesfm_best_validation_chunks ADD COLUMN IF NOT EXISTS stock_name TEXT`).Error
+    _ = h.db.Exec(`ALTER TABLE timesfm_best_validation_chunks ADD COLUMN IF NOT EXISTS stock_type INTEGER`).Error
 
     createTimesfmBacktestsSQL := `
     CREATE TABLE IF NOT EXISTS timesfm_backtests (
@@ -331,7 +352,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if err := h.db.Exec(createTimesfmBacktestsSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_backtests table: %v", err)
     }
-    if err := h.db.AutoMigrate(&EtfDailyData{}, &IndexInfo{}, &IndexDailyData{}, &StockCommentDaily{}, &TimesfmForecast{}, &StrategyParams{}); err != nil {
+    if err := h.db.AutoMigrate(&EtfDailyData{}, &IndexInfo{}, &IndexDailyData{}, &StockCommentDaily{}, &TimesfmForecast{}); err != nil {
         log.Printf("AutoMigrate warning: %v", err)
     }
     return nil
