@@ -174,10 +174,6 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		if req.StockType == 2 {
 			// Try getting ETF data to fill ShortName. Use offset 0 to get the latest record.
 			etfData, errEtf := h.GetEtfDaily(req.Symbol, 1, 0)
-<<<<<<< HEAD
-
-=======
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 			slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
 			if errEtf == nil {
 				if len(etfData) > 0 {
@@ -185,8 +181,6 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 				}
 			}
 		}
-<<<<<<< HEAD
-=======
 		if req.StockType == 1 {
 			code := strings.TrimLeft(req.Symbol, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 			stockData, errStock := h.GetAStockCommentDailyByCode(code, 1, 0)
@@ -197,7 +191,6 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 				}
 			}
 		}
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 	}
 	err = h.db.Exec(`
         INSERT INTO timesfm_best_predictions (
@@ -206,22 +199,14 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
             train_start_date, train_end_date,
             test_start_date, test_end_date,
             val_start_date, val_end_date,
-<<<<<<< HEAD
-            context_len, horizon_len, short_name
-=======
             context_len, horizon_len, short_name, stock_type
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
         ) VALUES (
             $1, $2, $3, $4, $5::jsonb,
             $6,
             $7::date, $8::date,
             $9::date, $10::date,
             $11::date, $12::date,
-<<<<<<< HEAD
-            $13, $14, $15
-=======
             $13, $14, $15, $16
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             symbol = EXCLUDED.symbol,
@@ -238,21 +223,14 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
             context_len = EXCLUDED.context_len,
             horizon_len = EXCLUDED.horizon_len,
             short_name = EXCLUDED.short_name,
-<<<<<<< HEAD
-=======
 			stock_type = EXCLUDED.stock_type,
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
             updated_at = CURRENT_TIMESTAMP`,
 		req.UniqueKey, req.Symbol, req.TimesfmVersion, req.BestPredictionItem, string(metricsJSON),
 		isPublic,
 		req.TrainStartDate, req.TrainEndDate,
 		req.TestStartDate, req.TestEndDate,
 		req.ValStartDate, req.ValEndDate,
-<<<<<<< HEAD
-		req.ContextLen, req.HorizonLen, req.ShortName,
-=======
 		req.ContextLen, req.HorizonLen, req.ShortName, req.StockType,
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 	).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_best_predictions: %v", err)})
@@ -272,13 +250,98 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 		Predictions map[string]interface{} `json:"predictions"`
 		Actual      []float64              `json:"actual_values"`
 		Dates       []string               `json:"dates"`
+		StockName   string                 `json:"stock_name"`
+		StockType   int                    `json:"stock_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
 		return
 	}
-	if strings.TrimSpace(req.UniqueKey) == "" || req.ChunkIndex < 0 || strings.TrimSpace(req.StartDate) == "" || strings.TrimSpace(req.EndDate) == "" || req.Predictions == nil || req.Actual == nil || req.Dates == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing required fields"})
+	// 基本键必填：用于定位或创建记录
+	if strings.TrimSpace(req.UniqueKey) == "" || req.ChunkIndex < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key and non-negative chunk_index are required"})
+		return
+	}
+
+	// 查询是否存在记录
+	var existingID int
+	row := h.db.Raw(`SELECT id FROM timesfm_best_validation_chunks WHERE unique_key = $1 AND chunk_index = $2 LIMIT 1`, req.UniqueKey, req.ChunkIndex).Row()
+	scanErr := row.Scan(&existingID)
+	if scanErr != nil && scanErr != sql.ErrNoRows {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": scanErr.Error()})
+		return
+	}
+
+	// 如果存在，则只更新非空字段；否则执行插入（插入时必须提供所有 NOT NULL 字段）
+	if scanErr == nil {
+		// 动态构造 UPDATE 语句
+		setParts := make([]string, 0)
+		args := make([]interface{}, 0)
+
+		if strings.TrimSpace(req.Symbol) != "" {
+			setParts = append(setParts, fmt.Sprintf("symbol = $%d", len(args)+1))
+			args = append(args, req.Symbol)
+		}
+		if strings.TrimSpace(req.StartDate) != "" {
+			setParts = append(setParts, fmt.Sprintf("start_date = $%d::date", len(args)+1))
+			args = append(args, req.StartDate)
+		}
+		if strings.TrimSpace(req.EndDate) != "" {
+			setParts = append(setParts, fmt.Sprintf("end_date = $%d::date", len(args)+1))
+			args = append(args, req.EndDate)
+		}
+		if req.Predictions != nil && len(req.Predictions) > 0 {
+			predsJSON, err := json.Marshal(req.Predictions)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "predictions must be JSON object"})
+				return
+			}
+			setParts = append(setParts, fmt.Sprintf("predictions = $%d::jsonb", len(args)+1))
+			args = append(args, string(predsJSON))
+		}
+		if req.Actual != nil && len(req.Actual) > 0 {
+			actualJSON, _ := json.Marshal(req.Actual)
+			setParts = append(setParts, fmt.Sprintf("actual_values = $%d::jsonb", len(args)+1))
+			args = append(args, string(actualJSON))
+		}
+		if req.Dates != nil && len(req.Dates) > 0 {
+			datesJSON, _ := json.Marshal(req.Dates)
+			setParts = append(setParts, fmt.Sprintf("dates = $%d::jsonb", len(args)+1))
+			args = append(args, string(datesJSON))
+		}
+		if req.UserID != nil {
+			setParts = append(setParts, fmt.Sprintf("user_id = $%d", len(args)+1))
+			args = append(args, *req.UserID)
+		}
+		if strings.TrimSpace(req.StockName) != "" {
+			setParts = append(setParts, fmt.Sprintf("stock_name = $%d", len(args)+1))
+			args = append(args, req.StockName)
+		}
+		if req.StockType > 0 {
+			setParts = append(setParts, fmt.Sprintf("stock_type = $%d", len(args)+1))
+			args = append(args, req.StockType)
+		}
+		if len(setParts) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+			return
+		}
+
+		// 拼接最终 SQL
+		updateSQL := fmt.Sprintf("UPDATE timesfm_best_validation_chunks SET %s, updated_at = CURRENT_TIMESTAMP WHERE unique_key = $%d AND chunk_index = $%d",
+			strings.Join(setParts, ", "), len(args)+1, len(args)+2,
+		)
+		args = append(args, req.UniqueKey, req.ChunkIndex)
+		if err := h.db.Exec(updateSQL, args...).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to update timesfm_best_validation_chunks: %v", err)})
+			return
+		}
+		c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success"})
+		return
+	}
+
+	// 不存在：执行插入，要求提供所有 NOT NULL 字段
+	if strings.TrimSpace(req.StartDate) == "" || strings.TrimSpace(req.EndDate) == "" || req.Predictions == nil || len(req.Predictions) == 0 || req.Actual == nil || len(req.Actual) == 0 || req.Dates == nil || len(req.Dates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing required fields for insert (start_date, end_date, predictions, actual_values, dates)"})
 		return
 	}
 	predsJSON, err := json.Marshal(req.Predictions)
@@ -294,23 +357,15 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 	} else {
 		uidArg = nil
 	}
-	err = h.db.Exec(`
+	if err := h.db.Exec(`
         INSERT INTO timesfm_best_validation_chunks (
             unique_key, chunk_index, user_id, symbol, start_date, end_date, predictions, actual_values, dates
         ) VALUES (
             $1, $2, $3, $4, $5::date, $6::date, $7::jsonb, $8::jsonb, $9::jsonb
-        )
-        ON CONFLICT (unique_key, chunk_index) DO UPDATE SET
-            start_date = EXCLUDED.start_date,
-            end_date = EXCLUDED.end_date,
-            predictions = EXCLUDED.predictions,
-            actual_values = EXCLUDED.actual_values,
-            dates = EXCLUDED.dates,
-            updated_at = CURRENT_TIMESTAMP`,
+        )`,
 		req.UniqueKey, req.ChunkIndex, uidArg, req.Symbol, req.StartDate, req.EndDate, string(predsJSON), string(actualJSON), string(datesJSON),
-	).Error
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_best_validation_chunks: %v", err)})
+	).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to insert timesfm_best_validation_chunks: %v", err)})
 		return
 	}
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success"})
@@ -371,17 +426,15 @@ func (h *DatabaseHandler) getTimesfmBestByUniqueKeyHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: item})
 }
 
-<<<<<<< HEAD
-=======
 // 获取指定 unique_key 的最新验证分块（按 chunk_index DESC 取一条）
 func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
-    uniqueKey := c.Query("unique_key")
-    if strings.TrimSpace(uniqueKey) == "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
-        return
-    }
+	uniqueKey := c.Query("unique_key")
+	if strings.TrimSpace(uniqueKey) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+		return
+	}
 
-    row := h.db.Raw(`
+	row := h.db.Raw(`
         SELECT 
             unique_key, chunk_index, start_date::text, end_date::text, symbol,
             predictions, actual_values, dates
@@ -390,55 +443,54 @@ func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
         ORDER BY chunk_index DESC
         LIMIT 1`, uniqueKey).Row()
 
-    var (
-        uk         string
-        chunkIndex int
-        startDate  string
-        endDate    string
-        symbol     string
-        predsJSON  []byte
-        actualJSON []byte
-        datesJSON  []byte
-    )
+	var (
+		uk         string
+		chunkIndex int
+		startDate  string
+		endDate    string
+		symbol     string
+		predsJSON  []byte
+		actualJSON []byte
+		datesJSON  []byte
+	)
 
-    if err := row.Scan(&uk, &chunkIndex, &startDate, &endDate, &symbol, &predsJSON, &actualJSON, &datesJSON); err != nil {
-        if err == sql.ErrNoRows {
-            c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-            return
-        }
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+	if err := row.Scan(&uk, &chunkIndex, &startDate, &endDate, &symbol, &predsJSON, &actualJSON, &datesJSON); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    var preds map[string]interface{}
-    var actual []float64
-    var dates []string
-    if err := json.Unmarshal(predsJSON, &preds); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal predictions"})
-        return
-    }
-    if err := json.Unmarshal(actualJSON, &actual); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal actual_values"})
-        return
-    }
-    if err := json.Unmarshal(datesJSON, &dates); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal dates"})
-        return
-    }
+	var preds map[string]interface{}
+	var actual []float64
+	var dates []string
+	if err := json.Unmarshal(predsJSON, &preds); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal predictions"})
+		return
+	}
+	if err := json.Unmarshal(actualJSON, &actual); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal actual_values"})
+		return
+	}
+	if err := json.Unmarshal(datesJSON, &dates); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal dates"})
+		return
+	}
 
-    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{
-        "unique_key":  uk,
-        "chunk_index": chunkIndex,
-        "start_date":  startDate,
-        "end_date":    endDate,
-        "symbol":      symbol,
-        "predictions": preds,
-        "actual_values": actual,
-        "dates":         dates,
-    }})
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{
+		"unique_key":    uk,
+		"chunk_index":   chunkIndex,
+		"start_date":    startDate,
+		"end_date":      endDate,
+		"symbol":        symbol,
+		"predictions":   preds,
+		"actual_values": actual,
+		"dates":         dates,
+	}})
 }
 
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {
 	var req struct {
 		UniqueKey                              string                   `json:"unique_key"`
@@ -1139,14 +1191,11 @@ func (h *DatabaseHandler) batchInsertAStockCommentDailyHandler(c *gin.Context) {
 
 func (h *DatabaseHandler) getAStockCommentDailyByNameHandler(c *gin.Context) {
 	var req struct {
-		Name   string `json:"name"`
-		Limit  *int   `json:"limit"`
-		Offset *int   `json:"offset"`
-<<<<<<< HEAD
-=======
-		StockType int `json:"stock_type"`
+		Name      string `json:"name"`
+		Limit     *int   `json:"limit"`
+		Offset    *int   `json:"offset"`
+		StockType int    `json:"stock_type"`
 		Symbol    string `json:"symbol"`
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 	}
 	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
@@ -1172,9 +1221,7 @@ func (h *DatabaseHandler) getAStockCommentDailyByNameHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
 }
 
-<<<<<<< HEAD
-=======
-func (h *DatabaseHandler) getAStockCommentDailyByCodeHandler (c *gin.Context) {
+func (h *DatabaseHandler) getAStockCommentDailyByCodeHandler(c *gin.Context) {
 	code := c.Param("code")
 	limit := 1
 	offset := 0
@@ -1186,9 +1233,6 @@ func (h *DatabaseHandler) getAStockCommentDailyByCodeHandler (c *gin.Context) {
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
 }
 
-
-
->>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 func (h *DatabaseHandler) getIndexDailyHandler(c *gin.Context) {
 	code := c.Param("code")
 	var req struct {

@@ -28,7 +28,7 @@ func main() {
     apiToken := getEnv("API_TOKEN", "fintrack-dev-token")
     RegisterRoutes(r, handler, apiToken)
 
-    port := getEnv("PORT", "58005")
+    port := getEnv("PORT", "58004")
     log.Printf("Server starting on port %s", port)
     if err := r.Run(":" + port); err != nil {
         log.Fatal("Server failed to start:", err)

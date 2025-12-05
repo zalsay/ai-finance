@@ -122,6 +122,7 @@ async def predict_next_chunk_by_unique_key(
         # 计算下一分块的索引：优先使用后端最新验证分块的 chunk_index+1；否则基于本地数据计算
         pg_tmp = None
         stock_type = 1
+        stock_name = ""
         # 统一为 Pandas Timestamp，避免与 datetime.date 的类型不一致导致减法报错
         today = pd.Timestamp.today().normalize()
         last_chunk_index = 0
@@ -129,13 +130,15 @@ async def predict_next_chunk_by_unique_key(
         next_date = None
         chunks_num = 0
         try:
-            base_url = os.environ.get('POSTGRES_API', 'http://localhost:8000')
+            base_url = os.environ.get('POSTGRES_API', 'http://localhost:58004')
             pg_tmp = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
             await pg_tmp.open()
             sc_latest, data_latest, _ = await pg_tmp.get_latest_val_chunk(unique_key)
             if sc_latest == 200 and isinstance(data_latest, dict):
                 d = data_latest.get('data') if 'data' in data_latest else data_latest
                 if isinstance(d, dict):
+                    stock_name = d.get('stock_name', "")
+                    stock_type = d.get('stock_type', 1)
                     last_start = d.get('start_date')
                     # 保持为 Timestamp 类型，后续与 today 做差不会类型冲突
                     next_date = pd.Timestamp(last_start) + pd.DateOffset(days=1)
@@ -160,7 +163,6 @@ async def predict_next_chunk_by_unique_key(
                     if last_end and pd.Timestamp(last_end) >= today:
                         print(f"⚠️ 今天{today} 小于最新验证分块结束日期 {last_end}, 无需预测")
                         return -1
-                    stock_type = d.get('stock_type', 1)
                 # if last_start:
                 #     try:
                 #         last_start_dt = pd.to_datetime(last_start).date()
@@ -228,7 +230,6 @@ async def predict_next_chunk_by_unique_key(
         for i in range(chunks_num):
             df_train_chunk = df_train.iloc[i * horizon_len: (i + 1) * horizon_len, :]
             trading_dates_chunk = trading_dates[i * horizon_len: (i + 1) * horizon_len]
-            print(f"✅ 预测日期窗口: {trading_dates_chunk}")
             result = predict_single_chunk_mode1(
                 df_train=df_train_chunk,
                 df_test=df_test,
@@ -243,30 +244,31 @@ async def predict_next_chunk_by_unique_key(
                 final_result = _round_obj(final_result)
                 if trading_dates_chunk:
                     dates_str = [d.strftime('%Y-%m-%d') for d in trading_dates_chunk]
-                payload = {
-                    "unique_key": unique_key,
-                    "chunk_index": last_chunk_index + 1 + i,
-                    "start_date": dates_str[0],
-                    "end_date": dates_str[-1],
-                    "predictions": final_result,
-                    "actual_values": [1.0,1.0,1.0],
-                    "dates": dates_str,
-                    "symbol": symbol,
-                    "is_public": 0,
-                    "user_id": user_id,
-                    
-                }
-                
-                print(f"✅ 下一分块数据: {payload}")
-                status_code, data, body_text = await pg_tmp.save_best_val_chunk(payload)
-                if status_code == 200:
-                    print(f"✅ 下一分块已保存: unique_key={unique_key}")
-                else:
-                    print(f"⚠️ 下一分块保存失败: status={status_code}, body={body_text}")
-                try:
-                    await pg_tmp.close()
-                except Exception:
-                    pass
+                    payload = {
+                        "unique_key": unique_key,
+                        "chunk_index": last_chunk_index + 1 + i,
+                        "start_date": dates_str[0],
+                        "end_date": dates_str[-1],
+                        # 服务端期望 predictions 为对象（map），不能是数组
+                        "predictions": {str(best_prediction_item): final_result},
+                        "actual_values": [],
+                        "dates": dates_str,
+                        "symbol": symbol,
+                        "is_public": 0,
+                        "user_id": user_id,
+                        "stock_name": stock_name,
+                        "stock_type": stock_type,
+                    }
+                    # print(f"✅ 下一分块数据: {payload}")
+                    status_code, data, body_text = await pg_tmp.save_best_val_chunk(payload)
+                    if status_code == 200:
+                        print(f"✅ 下一分块已保存: unique_key={unique_key}")
+                    else:
+                        print(f"⚠️ 下一分块保存失败: status={status_code}, body={body_text}")
+                    try:
+                        await pg_tmp.close()
+                    except Exception:
+                        pass
         return result
     except Exception as e:
         try:
