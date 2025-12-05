@@ -1,0 +1,12 @@
+{
+  "stock_code": "sz000001",
+  "best_prediction_item": "mtf-0.5",
+  "timesfm_version": "2.5",
+  "best_metrics": {
+    "mse": 0.1235,
+    "mae": 0.2434,
+    "return_diff": 9.7772,
+    "mle": 0.0516,
+    "composite_score": 4.021
+  }
+}

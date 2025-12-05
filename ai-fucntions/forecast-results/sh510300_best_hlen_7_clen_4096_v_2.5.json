@@ -1,0 +1,12 @@
+{
+  "stock_code": "sh510300",
+  "best_prediction_item": "mtf-0.5",
+  "timesfm_version": "2.5",
+  "best_metrics": {
+    "mse": 0.0066,
+    "mae": 0.0602,
+    "return_diff": 3.0082,
+    "mle": 0.0018,
+    "composite_score": 1.2233
+  }
+}

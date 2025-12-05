@@ -237,8 +237,3 @@ def get_trading_date_range(start_date, days):
         
         logger.info(f"回退方案找到的工作日: {result}")
         return result
-
-if __name__ == "__main__":
-    # 测试示例
-    test_date = datetime.now()
-    print(get_trading_date_range(test_date, 5))

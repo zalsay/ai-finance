@@ -174,7 +174,10 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		if req.StockType == 2 {
 			// Try getting ETF data to fill ShortName. Use offset 0 to get the latest record.
 			etfData, errEtf := h.GetEtfDaily(req.Symbol, 1, 0)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 			slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
 			if errEtf == nil {
 				if len(etfData) > 0 {
@@ -182,6 +185,19 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 				}
 			}
 		}
+<<<<<<< HEAD
+=======
+		if req.StockType == 1 {
+			code := strings.TrimLeft(req.Symbol, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+			stockData, errStock := h.GetAStockCommentDailyByCode(code, 1, 0)
+			slog.Info("GetAStockCommentDailyByCode", "symbol", req.Symbol, "data", stockData, "err", errStock)
+			if errStock == nil {
+				if len(stockData) > 0 {
+					req.ShortName = stockData[0].Name
+				}
+			}
+		}
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 	}
 	err = h.db.Exec(`
         INSERT INTO timesfm_best_predictions (
@@ -190,14 +206,22 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
             train_start_date, train_end_date,
             test_start_date, test_end_date,
             val_start_date, val_end_date,
+<<<<<<< HEAD
             context_len, horizon_len, short_name
+=======
+            context_len, horizon_len, short_name, stock_type
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
         ) VALUES (
             $1, $2, $3, $4, $5::jsonb,
             $6,
             $7::date, $8::date,
             $9::date, $10::date,
             $11::date, $12::date,
+<<<<<<< HEAD
             $13, $14, $15
+=======
+            $13, $14, $15, $16
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             symbol = EXCLUDED.symbol,
@@ -214,13 +238,21 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
             context_len = EXCLUDED.context_len,
             horizon_len = EXCLUDED.horizon_len,
             short_name = EXCLUDED.short_name,
+<<<<<<< HEAD
+=======
+			stock_type = EXCLUDED.stock_type,
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
             updated_at = CURRENT_TIMESTAMP`,
 		req.UniqueKey, req.Symbol, req.TimesfmVersion, req.BestPredictionItem, string(metricsJSON),
 		isPublic,
 		req.TrainStartDate, req.TrainEndDate,
 		req.TestStartDate, req.TestEndDate,
 		req.ValStartDate, req.ValEndDate,
+<<<<<<< HEAD
 		req.ContextLen, req.HorizonLen, req.ShortName,
+=======
+		req.ContextLen, req.HorizonLen, req.ShortName, req.StockType,
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 	).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_best_predictions: %v", err)})
@@ -339,6 +371,74 @@ func (h *DatabaseHandler) getTimesfmBestByUniqueKeyHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: item})
 }
 
+<<<<<<< HEAD
+=======
+// 获取指定 unique_key 的最新验证分块（按 chunk_index DESC 取一条）
+func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
+    uniqueKey := c.Query("unique_key")
+    if strings.TrimSpace(uniqueKey) == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+        return
+    }
+
+    row := h.db.Raw(`
+        SELECT 
+            unique_key, chunk_index, start_date::text, end_date::text, symbol,
+            predictions, actual_values, dates
+        FROM timesfm_best_validation_chunks
+        WHERE unique_key = $1
+        ORDER BY chunk_index DESC
+        LIMIT 1`, uniqueKey).Row()
+
+    var (
+        uk         string
+        chunkIndex int
+        startDate  string
+        endDate    string
+        symbol     string
+        predsJSON  []byte
+        actualJSON []byte
+        datesJSON  []byte
+    )
+
+    if err := row.Scan(&uk, &chunkIndex, &startDate, &endDate, &symbol, &predsJSON, &actualJSON, &datesJSON); err != nil {
+        if err == sql.ErrNoRows {
+            c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    var preds map[string]interface{}
+    var actual []float64
+    var dates []string
+    if err := json.Unmarshal(predsJSON, &preds); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal predictions"})
+        return
+    }
+    if err := json.Unmarshal(actualJSON, &actual); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal actual_values"})
+        return
+    }
+    if err := json.Unmarshal(datesJSON, &dates); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal dates"})
+        return
+    }
+
+    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{
+        "unique_key":  uk,
+        "chunk_index": chunkIndex,
+        "start_date":  startDate,
+        "end_date":    endDate,
+        "symbol":      symbol,
+        "predictions": preds,
+        "actual_values": actual,
+        "dates":         dates,
+    }})
+}
+
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {
 	var req struct {
 		UniqueKey                              string                   `json:"unique_key"`
@@ -1042,6 +1142,11 @@ func (h *DatabaseHandler) getAStockCommentDailyByNameHandler(c *gin.Context) {
 		Name   string `json:"name"`
 		Limit  *int   `json:"limit"`
 		Offset *int   `json:"offset"`
+<<<<<<< HEAD
+=======
+		StockType int `json:"stock_type"`
+		Symbol    string `json:"symbol"`
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 	}
 	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
@@ -1067,6 +1172,23 @@ func (h *DatabaseHandler) getAStockCommentDailyByNameHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
 }
 
+<<<<<<< HEAD
+=======
+func (h *DatabaseHandler) getAStockCommentDailyByCodeHandler (c *gin.Context) {
+	code := c.Param("code")
+	limit := 1
+	offset := 0
+	data, err := h.GetAStockCommentDailyByCode(code, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: data})
+}
+
+
+
+>>>>>>> 9e0bf63cd390e146433445953006142655c70e24
 func (h *DatabaseHandler) getIndexDailyHandler(c *gin.Context) {
 	code := c.Param("code")
 	var req struct {
