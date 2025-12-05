@@ -22,7 +22,8 @@ const PredictionChart: React.FC<ChartProps> = ({ change, chartData, currentPrice
     
     if (chartData && (chartData.actuals.length > 0 || chartData.predictions.length > 0)) {
         const { actuals, predictions, dates } = chartData;
-        const allValues = [...actuals, ...predictions].filter(v => v !== null && v !== undefined);
+        // Filter out 0 values to avoid "cliff-like" drops in the chart
+        const allValues = [...actuals, ...predictions].filter(v => v !== null && v !== undefined && v !== 0);
         
         if (allValues.length > 0) {
             const min = Math.min(...allValues);
@@ -40,10 +41,17 @@ const PredictionChart: React.FC<ChartProps> = ({ change, chartData, currentPrice
             const generatePath = (data: number[]) => {
                 if (!data || data.length === 0) return "";
                 
+                // Filter out zero values but keep index for X position calculation
+                const validPointsData = data
+                    .map((val, index) => ({ val, index }))
+                    .filter(item => item.val !== 0 && item.val !== null && item.val !== undefined);
+
+                if (validPointsData.length === 0) return "";
+
                 // Helper to get point coordinates
-                const getPoint = (i: number) => {
-                    const x = i * stepX;
-                    const y = chartHeight - ((data[i] - min) / range) * (chartHeight - 20) - 10;
+                const getPoint = (item: { val: number, index: number }) => {
+                    const x = item.index * stepX;
+                    const y = chartHeight - ((item.val - min) / range) * (chartHeight - 20) - 10;
                     return [x, y];
                 };
 
@@ -72,7 +80,7 @@ const PredictionChart: React.FC<ChartProps> = ({ change, chartData, currentPrice
                     return [x, y];
                 };
 
-                const points = data.map((_, i) => getPoint(i));
+                const points = validPointsData.map(item => getPoint(item));
                 
                 return points.reduce((acc, point, i, a) => {
                     if (i === 0) return `M ${point[0]},${point[1]}`;
@@ -157,10 +165,10 @@ const PredictionChart: React.FC<ChartProps> = ({ change, chartData, currentPrice
                                     strokeWidth="1" 
                                     strokeDasharray="2 2"
                                 />
-                                {actuals[hoverIndex] !== undefined && actuals[hoverIndex] !== null && (
+                                {actuals[hoverIndex] !== undefined && actuals[hoverIndex] !== null && actuals[hoverIndex] !== 0 && (
                                     <circle cx={hoverIndex * stepX} cy={getY(actuals[hoverIndex])} r="3" fill={color} stroke="#1f2937" strokeWidth="1" />
                                 )}
-                                {predictions[hoverIndex] !== undefined && predictions[hoverIndex] !== null && (
+                                {predictions[hoverIndex] !== undefined && predictions[hoverIndex] !== null && predictions[hoverIndex] !== 0 && (
                                     <circle cx={hoverIndex * stepX} cy={getY(predictions[hoverIndex])} r="3" fill="currentColor" className="text-primary" stroke="#1f2937" strokeWidth="1" />
                                 )}
                             </>
@@ -189,13 +197,13 @@ const PredictionChart: React.FC<ChartProps> = ({ change, chartData, currentPrice
                             }}
                         >
                             <div className="text-white/60 mb-1">{dates[hoverIndex]}</div>
-                            {actuals[hoverIndex] !== undefined && actuals[hoverIndex] !== null && (
+                            {actuals[hoverIndex] !== undefined && actuals[hoverIndex] !== null && actuals[hoverIndex] !== 0 && (
                                 <div className="flex items-center gap-2">
                                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }}></div>
                                     <span className="text-white">{actualLabel}: {actuals[hoverIndex].toFixed(2)}</span>
                                 </div>
                             )}
-                            {predictions[hoverIndex] !== undefined && predictions[hoverIndex] !== null && (
+                            {predictions[hoverIndex] !== undefined && predictions[hoverIndex] !== null && predictions[hoverIndex] !== 0 && (
                                 <div className="flex items-center gap-2">
                                     <div className="w-2 h-2 rounded-full bg-primary"></div>
                                     <span className="text-primary font-medium">{predLabel}: {predictions[hoverIndex].toFixed(2)}</span>
@@ -205,14 +213,14 @@ const PredictionChart: React.FC<ChartProps> = ({ change, chartData, currentPrice
                     )}
 
                     {/* Start Price (Top Left) */}
-                    {startPrice !== undefined && (
+                    {startPrice !== undefined && Number.isFinite(startPrice) && (
                         <div className="absolute top-2 left-2 bg-black/30 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white/60 font-medium">
                             {startPrice.toFixed(2)}
                         </div>
                     )}
 
                     {/* Current Price (Top Right) */}
-                    {currentPrice !== undefined && (
+                    {currentPrice !== undefined && Number.isFinite(currentPrice) && (
                         <div className="absolute top-2 right-2 bg-black/30 backdrop-blur-sm px-1.5 py-0.5 rounded text-xs text-white font-bold">
                             {currentPrice.toFixed(2)}
                         </div>

@@ -174,6 +174,21 @@ export const getPublicPredictions = async (): Promise<PublicPredictionResponse> 
   return apiRequest<PublicPredictionResponse>('/get-predictions/mtf-best/public', { method: 'GET' });
 };
 
+export interface FuturePredictionsResponse {
+  unique_key: string;
+  dates: string[];
+  predictions: number[];
+  count: number;
+  predicted_latest?: number;
+  actual_latest?: number;
+  predicted_change_percent?: number;
+}
+
+export const getFuturePredictions = async (uniqueKey: string): Promise<FuturePredictionsResponse> => {
+  const params = new URLSearchParams({ unique_key: uniqueKey });
+  return apiRequest<FuturePredictionsResponse>(`/get-predictions/mtf-best/future?${params.toString()}`, { method: 'GET' });
+};
+
 export const getMarketStatus = async () => {
   // Mock data for market status
   return Promise.resolve({

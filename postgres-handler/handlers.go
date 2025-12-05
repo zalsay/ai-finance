@@ -174,7 +174,7 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		if req.StockType == 2 {
 			// Try getting ETF data to fill ShortName. Use offset 0 to get the latest record.
 			etfData, errEtf := h.GetEtfDaily(req.Symbol, 1, 0)
-			slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
+			// slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
 			if errEtf == nil {
 				if len(etfData) > 0 {
 					req.ShortName = etfData[0].Name
@@ -184,7 +184,7 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		if req.StockType == 1 {
 			code := strings.TrimLeft(req.Symbol, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 			stockData, errStock := h.GetAStockCommentDailyByCode(code, 1, 0)
-			slog.Info("GetAStockCommentDailyByCode", "symbol", req.Symbol, "data", stockData, "err", errStock)
+			// slog.Info("GetAStockCommentDailyByCode", "symbol", req.Symbol, "data", stockData, "err", errStock)
 			if errStock == nil {
 				if len(stockData) > 0 {
 					req.ShortName = stockData[0].Name
@@ -407,6 +407,7 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 		updateSQL := fmt.Sprintf("UPDATE timesfm_best_validation_chunks SET %s, updated_at = CURRENT_TIMESTAMP WHERE unique_key = $%d AND chunk_index = $%d",
 			strings.Join(setParts, ", "), len(args)+1, len(args)+2,
 		)
+		// slog.Info("updateSQL", updateSQL)
 		args = append(args, req.UniqueKey, req.ChunkIndex)
 		if err := h.db.Exec(updateSQL, args...).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to update timesfm_best_validation_chunks: %v", err)})
@@ -480,11 +481,11 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 	}
 	if err := h.db.Exec(`
         INSERT INTO timesfm_best_validation_chunks (
-            unique_key, chunk_index, user_id, symbol, start_date, end_date, predictions, actual_values, dates
+            unique_key, chunk_index, user_id, symbol, start_date, end_date, predictions, actual_values, dates, stock_name, stock_type
         ) VALUES (
-            $1, $2, $3, $4, $5::date, $6::date, $7::jsonb, $8::jsonb, $9::jsonb
+            $1, $2, $3, $4, $5::date, $6::date, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11
         )`,
-		req.UniqueKey, req.ChunkIndex, uidArg, req.Symbol, req.StartDate, req.EndDate, string(predsJSON), actualJSON, string(datesJSON),
+		req.UniqueKey, req.ChunkIndex, uidArg, req.Symbol, req.StartDate, req.EndDate, string(predsJSON), actualJSON, string(datesJSON), req.StockName, req.StockType,
 	).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to insert timesfm_best_validation_chunks: %v", err)})
 		return

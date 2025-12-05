@@ -104,6 +104,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			getPredictions.GET("/mtf-best", authHandler.AuthMiddleware(), watchlistHandler.ListTimesfmBestByUser)
 			// 公开查询：根据 is_public = 1 返回公开的 timesfm-best，并同步返回对应的验证集分块
 			getPredictions.GET("/mtf-best/public", watchlistHandler.ListPublicTimesfmBestWithValidation)
+			getPredictions.GET("/mtf-best/future", watchlistHandler.GetFuturePredictions)
 		}
 
 		// TimesFM 推理与回测代理路由

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { StockData } from '../../types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getChangeColors } from '../../utils/colorUtils';
-import { watchlistAPI, WatchlistItem, quotesAPI, getPublicPredictions } from '../../services/apiService';
+import { watchlistAPI, WatchlistItem, quotesAPI, getPublicPredictions, getFuturePredictions } from '../../services/apiService';
 import AddStockModal from '../dashboard/AddStockModal';
 import ConfirmModal from '../common/ConfirmModal';
 import PredictionChart from '../common/PredictionChart';
@@ -33,6 +33,7 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
     const [chartOpen, setChartOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isChartLoading, setIsChartLoading] = useState(false);
+    const [showLatest, setShowLatest] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [latestQuotes, setLatestQuotes] = useState<Record<string, { latest_price?: number; change_percent?: number; trading_date?: string; turnover_rate?: number }>>({});
 
@@ -158,6 +159,9 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                     let allActuals: number[] = [];
                     let allPreds: number[] = [];
 
+                    let latestDates: string[] = [];
+                    let latestPreds: number[] = [];
+
                     sortedChunks.forEach(chunk => {
                         if (chunk.dates && chunk.dates.length > 0) {
                             allDates = allDates.concat(chunk.dates);
@@ -165,7 +169,19 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                             const chunkPreds = chunk.predictions[bestItemKey] || [];
                             allPreds = allPreds.concat(chunkPreds as number[]);
                         }
+
+                        
                     });
+
+                    let futurePredictedChangePercent: number | undefined = undefined;
+                    try {
+                        const fut = await getFuturePredictions(found.best.unique_key);
+                        latestDates = fut?.dates || [];
+                        latestPreds = (fut?.predictions || []) as number[];
+                        if (typeof fut?.predicted_change_percent === 'number' && Number.isFinite(fut.predicted_change_percent)) {
+                            futurePredictedChangePercent = fut.predicted_change_percent;
+                        }
+                    } catch (e) {}
 
                     if (allDates.length > 0) {
                          const lastActual = allActuals.length > 0 ? allActuals[allActuals.length - 1] : 0;
@@ -197,17 +213,18 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                              }
                          } catch (e) { }
 
-                         setSelectedStock({
-                             symbol: found.best.symbol,
-                             companyName: found.best.short_name || found.best.symbol,
-                             currentPrice: price,
-                             changePercent: change,
-                             predictedChangePercent: predictedChange,
-                             prediction: {
-                                 predicted_high: lastPred,
-                                 predicted_low: lastPred,
-                                 confidence: parseFloat(confidence.toFixed(4)),
-                                 sentiment: predictedChange > 0 ? 'Bullish' : 'Bearish',
+                        setSelectedStock({
+                            symbol: found.best.symbol,
+                            companyName: found.best.short_name || found.best.symbol,
+                            currentPrice: price,
+                            changePercent: change,
+                            predictedChangePercent: predictedChange,
+                            futurePredictedChangePercent: futurePredictedChangePercent,
+                            prediction: {
+                                predicted_high: lastPred,
+                                predicted_low: lastPred,
+                                confidence: parseFloat(confidence.toFixed(4)),
+                                sentiment: predictedChange > 0 ? 'Bullish' : 'Bearish',
                                  analysis: '',
                                  modelName: bestItemKey,
                                  contextLen: contextLen,
@@ -217,9 +234,14 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                      dates: allDates,
                                      actuals: allActuals,
                                      predictions: allPreds
+                                 },
+                                 latestChartData: {
+                                     dates: latestDates,
+                                     actuals: [],
+                                     predictions: latestPreds
                                  }
-                             }
-                         } as StockData);
+                            }
+                        } as StockData);
                     }
                 }
             }
@@ -430,7 +452,10 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                                             </div>
                                                         </div>
 
-                                                        {selectedStock.predictedChangePercent !== undefined && (
+                                                        {(() => {
+                                                            const displayPredChg = showLatest ? selectedStock.futurePredictedChangePercent : selectedStock.predictedChangePercent;
+                                                            const isPredPositive = (displayPredChg || 0) >= 0;
+                                                            return (displayPredChg !== undefined && displayPredChg !== 0) ? (
                                                             <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
                                                                 <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
                                                                     <span className="material-symbols-outlined text-xs text-white/80">online_prediction</span>
@@ -438,11 +463,12 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                                                 </div>
                                                                 <div className="bg-white/5 px-2 py-1 flex justify-center">
                                                                     <span className="text-xs font-bold leading-tight text-primary">
-                                                                        {isPredPositive ? '+' : ''}{Math.abs(selectedStock.predictedChangePercent).toFixed(2)}%
+                                                                        {isPredPositive ? '+' : ''}{Math.abs(displayPredChg!).toFixed(2)}%
                                                                     </span>
                                                                 </div>
                                                             </div>
-                                                        )}
+                                                            ) : null;
+                                                        })()}
                                                     </>
                                                 );
                                             })()}
@@ -450,13 +476,32 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                      )}
 
                                      {/* Chart Section */}
-                                     <div className="flex flex-1 min-h-[350px] flex-col gap-4 py-4">
-                                        <PredictionChart 
-                                            change={selectedStock.changePercent} 
-                                            chartData={selectedStock.prediction?.chartData}
-                                            currentPrice={selectedStock.currentPrice}
-                                            startPrice={selectedStock.currentPrice / (1 + selectedStock.changePercent / 100)}
-                                        />
+                                     <div className="flex flex-1 min-h-[350px] flex-col gap-2 py-4">
+                                        <div className="flex items-center justify-end mb-2">
+                                            <button
+                                                onClick={() => setShowLatest(!showLatest)}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-medium border border-white/10 ${showLatest ? 'bg-primary text-black' : 'bg-white/5 text-white/80 hover:bg-white/10'}`}
+                                            >
+                                                {showLatest ? '显示历史验证' : '查看最新预测'}
+                                            </button>
+                                        </div>
+                                        {(() => {
+                                            const denom = 1 + selectedStock.changePercent / 100;
+                                            const sp = denom > 0 ? selectedStock.currentPrice / denom : undefined;
+                                            const safeStartPrice = (sp !== undefined && Number.isFinite(sp)) ? sp : undefined;
+                                            const data = showLatest ? selectedStock.prediction?.latestChartData : selectedStock.prediction?.chartData;
+                                            return (
+                                                <PredictionChart 
+                                                    change={selectedStock.changePercent} 
+                                                    chartData={data}
+                                                    currentPrice={selectedStock.currentPrice}
+                                                    startPrice={safeStartPrice}
+                                                />
+                                            );
+                                        })()}
+                                        {showLatest && ((selectedStock.prediction?.latestChartData?.predictions?.length || 0) === 0) && (
+                                            <div className="text-xs text-white/60 mt-2">暂无未来预测分块</div>
+                                        )}
                                      </div>
 
                                      {/* Fallback/Empty State */}

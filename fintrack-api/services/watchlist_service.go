@@ -2,11 +2,12 @@ package services
 
 import (
 	"bytes"
-	"errors"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -17,60 +18,60 @@ import (
 )
 
 type WatchlistService struct {
-    db     *database.DB
-    config *config.Config
+	db     *database.DB
+	config *config.Config
 }
 
 func NewWatchlistService(db *database.DB, cfg *config.Config) *WatchlistService {
-    return &WatchlistService{db: db, config: cfg}
+	return &WatchlistService{db: db, config: cfg}
 }
 
 var ErrSymbolNotFound = errors.New("symbol not found")
 var ErrDuplicateSymbol = errors.New("duplicate symbol")
 
 func (s *WatchlistService) AddToWatchlist(userID int, req *models.AddToWatchlistRequest) error {
-    stockType := 1
-    if req.StockType != nil {
-        stockType = *req.StockType
-    }
+	stockType := 1
+	if req.StockType != nil {
+		stockType = *req.StockType
+	}
 
-    var name sql.NullString
-    symLower := strings.ToLower(req.Symbol)
+	var name sql.NullString
+	symLower := strings.ToLower(req.Symbol)
 
-    var exists bool
-    if err := s.db.Conn.QueryRow(`SELECT EXISTS(SELECT 1 FROM user_watchlist WHERE user_id = $1 AND symbol = $2)`, userID, symLower).Scan(&exists); err != nil {
-        return fmt.Errorf("failed to check duplicate: %v", err)
-    }
-    if exists {
-        return ErrDuplicateSymbol
-    }
-    code := strings.TrimPrefix(strings.TrimPrefix(symLower, "sh"), "sz")
-    var table string
-    if stockType == 2 {
-        table = "etf_daily"
-    } else {
-        table = "a_stock_comment_daily"
-    }
-    query := fmt.Sprintf("SELECT COALESCE(name, '') FROM %s WHERE code = $1 OR code = $2 ORDER BY trading_date DESC LIMIT 1", table)
-    err := s.db.Conn.QueryRow(query, code, symLower).Scan(&name)
-    if err == sql.ErrNoRows {
-        return ErrSymbolNotFound
-    }
-    if err != nil {
-        return fmt.Errorf("failed to query %s: %v", table, err)
-    }
+	var exists bool
+	if err := s.db.Conn.QueryRow(`SELECT EXISTS(SELECT 1 FROM user_watchlist WHERE user_id = $1 AND symbol = $2)`, userID, symLower).Scan(&exists); err != nil {
+		return fmt.Errorf("failed to check duplicate: %v", err)
+	}
+	if exists {
+		return ErrDuplicateSymbol
+	}
+	code := strings.TrimPrefix(strings.TrimPrefix(symLower, "sh"), "sz")
+	var table string
+	if stockType == 2 {
+		table = "etf_daily"
+	} else {
+		table = "a_stock_comment_daily"
+	}
+	query := fmt.Sprintf("SELECT COALESCE(name, '') FROM %s WHERE code = $1 OR code = $2 ORDER BY trading_date DESC LIMIT 1", table)
+	err := s.db.Conn.QueryRow(query, code, symLower).Scan(&name)
+	if err == sql.ErrNoRows {
+		return ErrSymbolNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("failed to query %s: %v", table, err)
+	}
 
 	nameStr := strings.TrimSpace(name.String)
-    if nameStr != "" {
-        _, err = s.db.Conn.Exec(
-            `INSERT INTO stocks (symbol, company_name) VALUES ($1, $2)
+	if nameStr != "" {
+		_, err = s.db.Conn.Exec(
+			`INSERT INTO stocks (symbol, company_name) VALUES ($1, $2)
              ON CONFLICT (symbol) DO UPDATE SET company_name = EXCLUDED.company_name`,
-            symLower, nameStr,
-        )
-        if err != nil {
-            log.Printf("upsert stocks failed, continue without company_name: %v", err)
-        }
-    }
+			symLower, nameStr,
+		)
+		if err != nil {
+			log.Printf("upsert stocks failed, continue without company_name: %v", err)
+		}
+	}
 
 	_, err = s.db.Conn.Exec(`
 		INSERT INTO user_watchlist (user_id, symbol, notes, stock_type) 
@@ -85,159 +86,159 @@ func (s *WatchlistService) AddToWatchlist(userID int, req *models.AddToWatchlist
 }
 
 func (s *WatchlistService) GetLatestQuotesBySymbols(symbols []string) ([]models.LatestQuote, error) {
-    if len(symbols) == 0 {
-        return []models.LatestQuote{}, nil
-    }
+	if len(symbols) == 0 {
+		return []models.LatestQuote{}, nil
+	}
 
-    codes := make([]string, 0, len(symbols))
-    symbolsLower := make([]string, 0, len(symbols))
-    codeToSymbol := make(map[string]string, len(symbols)*2)
-    for _, sym := range symbols {
-        lower := strings.ToLower(sym)
-        c := strings.TrimPrefix(strings.TrimPrefix(lower, "sh"), "sz")
-        codes = append(codes, c)
-        symbolsLower = append(symbolsLower, lower)
-        codeToSymbol[c] = sym
-        codeToSymbol[lower] = sym
-    }
+	codes := make([]string, 0, len(symbols))
+	symbolsLower := make([]string, 0, len(symbols))
+	codeToSymbol := make(map[string]string, len(symbols)*2)
+	for _, sym := range symbols {
+		lower := strings.ToLower(sym)
+		c := strings.TrimPrefix(strings.TrimPrefix(lower, "sh"), "sz")
+		codes = append(codes, c)
+		symbolsLower = append(symbolsLower, lower)
+		codeToSymbol[c] = sym
+		codeToSymbol[lower] = sym
+	}
 
-    placeholders := make([]string, len(codes))
-    args := make([]interface{}, len(codes))
-    for i, c := range codes {
-        placeholders[i] = fmt.Sprintf("$%d", i+1)
-        args[i] = c
-    }
+	placeholders := make([]string, len(codes))
+	args := make([]interface{}, len(codes))
+	for i, c := range codes {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = c
+	}
 
-    qStock := fmt.Sprintf(`
+	qStock := fmt.Sprintf(`
         SELECT DISTINCT ON (code) code, trading_date, latest_price, change_percent, turnover_rate
         FROM a_stock_comment_daily
         WHERE code IN (%s)
         ORDER BY code, trading_date DESC
     `, strings.Join(placeholders, ","))
 
-    rows, err := s.db.Conn.Query(qStock, args...)
-    if err != nil {
-        return nil, fmt.Errorf("failed to query a_stock_comment_daily: %v", err)
-    }
-    defer rows.Close()
+	rows, err := s.db.Conn.Query(qStock, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query a_stock_comment_daily: %v", err)
+	}
+	defer rows.Close()
 
-    quotes := make(map[string]models.LatestQuote)
-    for rows.Next() {
-        var code string
-        var dt time.Time
-        var price sql.NullFloat64
-        var change sql.NullFloat64
-        var turnover sql.NullFloat64
-        if err := rows.Scan(&code, &dt, &price, &change, &turnover); err != nil {
-            return nil, fmt.Errorf("failed to scan a_stock_comment_daily: %v", err)
-        }
-        sym := codeToSymbol[code]
-        p := models.LatestQuote{Symbol: sym}
-        ds := dt.Format("2006-01-02")
-        p.TradingDate = &ds
-        if price.Valid {
-            p.LatestPrice = &price.Float64
-        }
-        if change.Valid {
-            p.ChangePercent = &change.Float64
-        }
-        if turnover.Valid {
-            p.TurnoverRate = &turnover.Float64
-        }
-        quotes[code] = p
-    }
+	quotes := make(map[string]models.LatestQuote)
+	for rows.Next() {
+		var code string
+		var dt time.Time
+		var price sql.NullFloat64
+		var change sql.NullFloat64
+		var turnover sql.NullFloat64
+		if err := rows.Scan(&code, &dt, &price, &change, &turnover); err != nil {
+			return nil, fmt.Errorf("failed to scan a_stock_comment_daily: %v", err)
+		}
+		sym := codeToSymbol[code]
+		p := models.LatestQuote{Symbol: sym}
+		ds := dt.Format("2006-01-02")
+		p.TradingDate = &ds
+		if price.Valid {
+			p.LatestPrice = &price.Float64
+		}
+		if change.Valid {
+			p.ChangePercent = &change.Float64
+		}
+		if turnover.Valid {
+			p.TurnoverRate = &turnover.Float64
+		}
+		quotes[code] = p
+	}
 
-    etfPlaceholders := make([]string, len(symbolsLower))
-    etfArgs := make([]interface{}, 0, len(codes)+len(symbolsLower))
-    // numeric code placeholders first
-    etfArgs = append(etfArgs, args...)
-    for i := range symbolsLower {
-        etfPlaceholders[i] = fmt.Sprintf("$%d", len(etfArgs)+i+1)
-    }
-    for _, sl := range symbolsLower {
-        etfArgs = append(etfArgs, sl)
-    }
+	etfPlaceholders := make([]string, len(symbolsLower))
+	etfArgs := make([]interface{}, 0, len(codes)+len(symbolsLower))
+	// numeric code placeholders first
+	etfArgs = append(etfArgs, args...)
+	for i := range symbolsLower {
+		etfPlaceholders[i] = fmt.Sprintf("$%d", len(etfArgs)+i+1)
+	}
+	for _, sl := range symbolsLower {
+		etfArgs = append(etfArgs, sl)
+	}
 
-    qEtf := fmt.Sprintf(`
+	qEtf := fmt.Sprintf(`
         SELECT DISTINCT ON (code) code, trading_date, latest_price, change_percent
         FROM etf_daily
         WHERE code IN (%s) OR LOWER(code) IN (%s)
         ORDER BY code, trading_date DESC
     `, strings.Join(placeholders, ","), strings.Join(etfPlaceholders, ","))
 
-    rows2, err := s.db.Conn.Query(qEtf, etfArgs...)
-    if err != nil {
-        return nil, fmt.Errorf("failed to query etf_daily: %v", err)
-    }
-    defer rows2.Close()
-    for rows2.Next() {
-        var code string
-        var dt time.Time
-        var price sql.NullFloat64
-        var change sql.NullFloat64
-        if err := rows2.Scan(&code, &dt, &price, &change); err != nil {
-            return nil, fmt.Errorf("failed to scan etf_daily: %v", err)
-        }
-        sym := codeToSymbol[code]
-        if sym == "" {
-            norm := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(code), "sh"), "sz")
-            sym = codeToSymbol[norm]
-        }
-        p := models.LatestQuote{Symbol: sym}
-        ds := dt.Format("2006-01-02")
-        p.TradingDate = &ds
-        if price.Valid {
-            p.LatestPrice = &price.Float64
-        }
-        if change.Valid {
-            p.ChangePercent = &change.Float64
-        }
-        if _, exists := quotes[code]; !exists {
-            // Always store by normalized numeric code to align with stock side mapping
-            norm := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(code), "sh"), "sz")
-            quotes[norm] = p
-        }
-    }
+	rows2, err := s.db.Conn.Query(qEtf, etfArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query etf_daily: %v", err)
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var code string
+		var dt time.Time
+		var price sql.NullFloat64
+		var change sql.NullFloat64
+		if err := rows2.Scan(&code, &dt, &price, &change); err != nil {
+			return nil, fmt.Errorf("failed to scan etf_daily: %v", err)
+		}
+		sym := codeToSymbol[code]
+		if sym == "" {
+			norm := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(code), "sh"), "sz")
+			sym = codeToSymbol[norm]
+		}
+		p := models.LatestQuote{Symbol: sym}
+		ds := dt.Format("2006-01-02")
+		p.TradingDate = &ds
+		if price.Valid {
+			p.LatestPrice = &price.Float64
+		}
+		if change.Valid {
+			p.ChangePercent = &change.Float64
+		}
+		if _, exists := quotes[code]; !exists {
+			// Always store by normalized numeric code to align with stock side mapping
+			norm := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(code), "sh"), "sz")
+			quotes[norm] = p
+		}
+	}
 
-    result := make([]models.LatestQuote, 0, len(symbols))
-    for _, c := range codes {
-        if q, ok := quotes[c]; ok {
-            result = append(result, q)
-        } else {
-            result = append(result, models.LatestQuote{Symbol: codeToSymbol[c]})
-        }
-    }
-    return result, nil
+	result := make([]models.LatestQuote, 0, len(symbols))
+	for _, c := range codes {
+		if q, ok := quotes[c]; ok {
+			result = append(result, q)
+		} else {
+			result = append(result, models.LatestQuote{Symbol: codeToSymbol[c]})
+		}
+	}
+	return result, nil
 }
 
 func (s *WatchlistService) LookupStockName(symbol string, stockType int) (string, error) {
-    var name sql.NullString
-    code := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(symbol), "sh"), "sz")
-    var table string
-    if stockType == 2 {
-        table = "etf_daily"
-        query := fmt.Sprintf("SELECT COALESCE(name, '') FROM %s WHERE code = $1 OR code = $2 ORDER BY trading_date DESC LIMIT 1", table)
-        err := s.db.Conn.QueryRow(query, code, symbol).Scan(&name)
-        if err == sql.ErrNoRows {
-            return "", ErrSymbolNotFound
-        }
-        if err != nil {
-            return "", fmt.Errorf("failed to query %s: %v", table, err)
-        }
-        return strings.TrimSpace(name.String), nil
-    } else {
-        table = "a_stock_comment_daily"
-        // 股票仅使用6位数字code进行匹配
-        query := fmt.Sprintf("SELECT COALESCE(name, '') FROM %s WHERE code = $1 ORDER BY trading_date DESC LIMIT 1", table)
-        err := s.db.Conn.QueryRow(query, code).Scan(&name)
-        if err == sql.ErrNoRows {
-            return "", ErrSymbolNotFound
-        }
-        if err != nil {
-            return "", fmt.Errorf("failed to query %s: %v", table, err)
-        }
-        return strings.TrimSpace(name.String), nil
-    }
+	var name sql.NullString
+	code := strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(symbol), "sh"), "sz")
+	var table string
+	if stockType == 2 {
+		table = "etf_daily"
+		query := fmt.Sprintf("SELECT COALESCE(name, '') FROM %s WHERE code = $1 OR code = $2 ORDER BY trading_date DESC LIMIT 1", table)
+		err := s.db.Conn.QueryRow(query, code, symbol).Scan(&name)
+		if err == sql.ErrNoRows {
+			return "", ErrSymbolNotFound
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to query %s: %v", table, err)
+		}
+		return strings.TrimSpace(name.String), nil
+	} else {
+		table = "a_stock_comment_daily"
+		// 股票仅使用6位数字code进行匹配
+		query := fmt.Sprintf("SELECT COALESCE(name, '') FROM %s WHERE code = $1 ORDER BY trading_date DESC LIMIT 1", table)
+		err := s.db.Conn.QueryRow(query, code).Scan(&name)
+		if err == sql.ErrNoRows {
+			return "", ErrSymbolNotFound
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to query %s: %v", table, err)
+		}
+		return strings.TrimSpace(name.String), nil
+	}
 }
 
 func (s *WatchlistService) GetWatchlist(userID int) ([]models.WatchlistItem, error) {
@@ -315,11 +316,11 @@ func (s *WatchlistService) BindStrategy(userID int, req *models.BindStrategyRequ
 		SET strategy_unique_key = $1
 		WHERE user_id = $2 AND symbol = $3
 	`, req.StrategyUniqueKey, userID, req.Symbol)
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to bind strategy: %v", err)
 	}
-	
+
 	rowsAffected, _ := res.RowsAffected()
 	if rowsAffected == 0 {
 		return fmt.Errorf("watchlist item not found for symbol %s", req.Symbol)
@@ -806,6 +807,128 @@ func (s *WatchlistService) ListValidationChunksByUniqueKey(uniqueKey string) ([]
 		chunks = append(chunks, req)
 	}
 	return chunks, nil
+}
+
+func (s *WatchlistService) ListFuturePredictionsByUniqueKey(uniqueKey string) ([]string, []float64, float64, float64, float64, error) {
+	row := s.db.Conn.QueryRow(`SELECT best_prediction_item FROM timesfm_best_predictions WHERE unique_key = $1 LIMIT 1`, uniqueKey)
+	var bestItem string
+	if err := row.Scan(&bestItem); err != nil {
+		return nil, nil, 0, 0, 0, fmt.Errorf("failed to get best_prediction_item: %v", err)
+	}
+
+	rows, err := s.db.Conn.Query(`
+        SELECT dates, predictions
+        FROM timesfm_best_validation_chunks
+        WHERE unique_key = $1 AND start_date >= CURRENT_DATE + INTERVAL '1 day'
+        ORDER BY chunk_index ASC
+    `, uniqueKey)
+	if err != nil {
+		return nil, nil, 0, 0, 0, fmt.Errorf("failed to query future validation chunks: %v", err)
+	}
+	defer rows.Close()
+
+	var outDates []string
+	var outPreds []float64
+	var predictedLatest float64 = 0
+
+	for rows.Next() {
+		var datesJSON, predsJSON []byte
+		if err := rows.Scan(&datesJSON, &predsJSON); err != nil {
+			return nil, nil, 0, 0, 0, fmt.Errorf("failed to scan future chunk: %v", err)
+		}
+		var dates []string
+		var preds map[string]interface{}
+		if err := json.Unmarshal(datesJSON, &dates); err != nil {
+			return nil, nil, 0, 0, 0, fmt.Errorf("failed to unmarshal dates: %v", err)
+		}
+		if err := json.Unmarshal(predsJSON, &preds); err != nil {
+			return nil, nil, 0, 0, 0, fmt.Errorf("failed to unmarshal predictions: %v", err)
+		}
+		val, ok := preds[bestItem]
+		if !ok {
+			continue
+		}
+		arr, ok := val.([]interface{})
+		if !ok {
+			continue
+		}
+		maxLen := len(dates)
+		if len(arr) < maxLen {
+			maxLen = len(arr)
+		}
+		for i := 0; i < maxLen; i++ {
+			var p float64
+			switch v := arr[i].(type) {
+			case float64:
+				p = v
+			case float32:
+				p = float64(v)
+			case int:
+				p = float64(v)
+			case int64:
+				p = float64(v)
+			case json.Number:
+				if f, e := v.Float64(); e == nil {
+					p = f
+				} else {
+					continue
+				}
+			default:
+				continue
+			}
+			if p == 0 || math.IsNaN(p) || math.IsInf(p, 0) {
+				continue
+			}
+			outDates = append(outDates, dates[i])
+			outPreds = append(outPreds, p)
+		}
+	}
+
+	// compute predicted latest price
+	for i := len(outPreds) - 1; i >= 0; i-- {
+		if outPreds[i] != 0 && !math.IsNaN(outPreds[i]) && !math.IsInf(outPreds[i], 0) {
+			predictedLatest = outPreds[i]
+			break
+		}
+	}
+
+	// fetch latest actual price from chunks with start_date <= CURRENT_DATE
+	var actualLatest float64 = 0
+	pastRows, err := s.db.Conn.Query(`
+        SELECT actual_values
+        FROM timesfm_best_validation_chunks
+        WHERE unique_key = $1 AND start_date <= CURRENT_DATE
+        ORDER BY chunk_index ASC
+    `, uniqueKey)
+	if err == nil {
+		defer pastRows.Close()
+		for pastRows.Next() {
+			var actualJSON []byte
+			if err := pastRows.Scan(&actualJSON); err != nil {
+				continue
+			}
+			var actuals []float64
+			// actual_values stored as JSON array of numbers
+			if err := json.Unmarshal(actualJSON, &actuals); err != nil {
+				continue
+			}
+			for i := len(actuals) - 1; i >= 0; i-- {
+				a := actuals[i]
+				if a != 0 && !math.IsNaN(a) && !math.IsInf(a, 0) {
+					actualLatest = a
+					break
+				}
+			}
+		}
+	}
+
+	// compute change percent between predicted latest vs latest actual
+	var changePercent float64 = 0
+	if actualLatest > 0 && predictedLatest > 0 {
+		changePercent = (predictedLatest - actualLatest) / actualLatest * 100
+	}
+
+	return outDates, outPreds, predictedLatest, actualLatest, changePercent, nil
 }
 
 // 保存验证集分块的预测与实际值（UPSERT by unique_key+chunk_index）
