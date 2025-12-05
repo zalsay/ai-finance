@@ -3,13 +3,14 @@ package main
 import "time"
 
 type StockData struct {
-	ID               int       `json:"id" gorm:"column:id;primaryKey"`
-	Datetime         time.Time `json:"datetime" gorm:"column:datetime"`
-	Open             float64   `json:"open" gorm:"column:open"`
-	Close            float64   `json:"close" gorm:"column:close"`
-	High             float64   `json:"high" gorm:"column:high"`
-	Low              float64   `json:"low" gorm:"column:low"`
-	Volume           int64     `json:"volume" gorm:"column:volume"`
+    ID               int       `json:"id" gorm:"column:id;primaryKey"`
+    Datetime         time.Time `json:"datetime" gorm:"column:datetime"`
+    DateStr          string    `json:"date_str" gorm:"column:date_str"`
+    Open             float64   `json:"open" gorm:"column:open"`
+    Close            float64   `json:"close" gorm:"column:close"`
+    High             float64   `json:"high" gorm:"column:high"`
+    Low              float64   `json:"low" gorm:"column:low"`
+    Volume           int64     `json:"volume" gorm:"column:volume"`
 	Amount           float64   `json:"amount" gorm:"column:amount"`
 	Amplitude        float64   `json:"amplitude" gorm:"column:amplitude"`
 	PercentageChange float64   `json:"percentage_change" gorm:"column:percentage_change"`

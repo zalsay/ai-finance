@@ -233,15 +233,15 @@ type TimesfmBacktestRequest struct {
 }
 
 type BatchSymbolsRequest struct {
-    Symbols []string `json:"symbols" binding:"required"`
+	Symbols []string `json:"symbols" binding:"required"`
 }
 
 type LatestQuote struct {
-    Symbol       string   `json:"symbol"`
-    LatestPrice  *float64 `json:"latest_price"`
-    ChangePercent *float64 `json:"change_percent"`
-    TradingDate  *string  `json:"trading_date"`
-    TurnoverRate *float64 `json:"turnover_rate"`
+	Symbol        string   `json:"symbol"`
+	LatestPrice   *float64 `json:"latest_price"`
+	ChangePercent *float64 `json:"change_percent"`
+	TradingDate   *string  `json:"trading_date"`
+	TurnoverRate  *float64 `json:"turnover_rate"`
 }
 
 type StrategyParams struct {

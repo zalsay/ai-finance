@@ -706,7 +706,8 @@ def convert_dataframe_to_api_format(df, symbol, stock_type=1):
                 "amount_change": float(row.get('amount_change', 0.0)) if pd.notna(row.get('amount_change', 0.0)) else 0.0,
                 "turnover_rate": float(row.get('turnover_rate', 0.0)) if pd.notna(row.get('turnover_rate', 0.0)) else 0.0,
                 "type": stock_type,
-                "symbol": symbol
+                "symbol": symbol,
+                "date_str": datetime_str[:10],
             }
             api_data_list.append(api_data)
         

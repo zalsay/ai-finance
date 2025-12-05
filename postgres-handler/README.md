@@ -183,6 +183,7 @@ Content-Type: application/json
 
 {
     "datetime": "2024-01-15T00:00:00Z",
+    "date_str": "2024-01-15",
     "open": 10.50,
     "close": 10.80,
     "high": 11.00,
@@ -206,6 +207,7 @@ Content-Type: application/json
 [
     {
         "datetime": "2024-01-15T00:00:00Z",
+        "date_str": "2024-01-15",
         "open": 10.50,
         "close": 10.80,
         // ... 其他字段
@@ -214,6 +216,7 @@ Content-Type: application/json
     },
     {
         "datetime": "2024-01-16T00:00:00Z",
+        "date_str": "2024-01-16",
         "open": 10.80,
         "close": 11.00,
         // ... 其他字段

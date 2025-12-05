@@ -41,6 +41,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     CREATE TABLE IF NOT EXISTS stock_data (
         id SERIAL,
         datetime TIMESTAMP NOT NULL,
+        date_str VARCHAR(10) NOT NULL,
         open DECIMAL(10,4) NOT NULL,
         close DECIMAL(10,4) NOT NULL,
         high DECIMAL(10,4) NOT NULL,
@@ -80,6 +81,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
         }
         createIndexSQL := fmt.Sprintf(`
         CREATE INDEX IF NOT EXISTS idx_%s_datetime ON %s (datetime);
+        CREATE INDEX IF NOT EXISTS idx_%s_date_str ON %s (date_str);
         CREATE INDEX IF NOT EXISTS idx_%s_symbol ON %s (symbol);
         CREATE INDEX IF NOT EXISTS idx_%s_symbol_datetime ON %s (symbol, datetime);`, p.name, p.name, p.name, p.name, p.name, p.name)
         if err := h.db.Exec(createIndexSQL).Error; err != nil {
