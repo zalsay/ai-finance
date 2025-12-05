@@ -42,6 +42,7 @@ sys.path.append(akshare_dir)
 
 from postgres import PostgresHandler
 base_url = "http://localhost:58004"
+base_url = os.getenv("POSTGRES_URL", base_url)
 pg_client = PostgresHandler(base_url=base_url)
 
 def to_symbol(stock_code: str, stock_type: int = 1) -> str:

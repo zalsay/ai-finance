@@ -6,12 +6,12 @@ services:
     container_name: pos-handler
     working_dir: /app
     
-    # 启动命令：运行挂载进来的二进制文件
-    command: ["./postgres-handler"]
+    # 启动命令：复制挂载的二进制到容器可执行目录后运行（规避noexec）
+    command: ["/bin/sh", "-c", "cp /app/run /tmp/run && chmod +x /tmp/run && exec /tmp/run"]
 
     # 挂载宿主机文件和目录
     volumes:
-      - ./postgres-handler:/app/postgres-handler:ro          # 可执行文件（只读）
+      - ../postgres-handler/run:/app/run:ro          # 可执行文件（只读）
 
     # 环境变量（可从 .env 文件加载，也可在这里覆盖）
     environment:

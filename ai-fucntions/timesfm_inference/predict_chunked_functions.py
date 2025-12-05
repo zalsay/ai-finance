@@ -129,7 +129,7 @@ async def predict_next_chunk_by_unique_key(
         next_date = None
         chunks_num = 0
         try:
-            # base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+            base_url = os.environ.get('POSTGRES_URL', 'http://go-api.meetlife.com.cn:8000')
             base_url = os.environ.get('POSTGRES_API', 'http://localhost:58004')
             pg_tmp = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
             await pg_tmp.open()
@@ -227,7 +227,7 @@ async def predict_next_chunk_by_unique_key(
             user_id=user_id,
         )
         df_test = pd.DataFrame()
-
+        result = None
         for i in range(chunks_num):
             # 基于 chunks_num 逐步扩展训练集长度；避免 ":-0" 导致空切片
             k = (chunks_num - i - 1) * horizon_len
@@ -1395,7 +1395,7 @@ def test_next_chunked_prediction():
     print(res)
 
 if __name__ == "__main__":
-    main()
-    # test_next_chunked_prediction()
+    # main()
+    test_next_chunked_prediction()
 
     

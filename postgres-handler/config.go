@@ -83,7 +83,11 @@ func (h *DatabaseHandler) initializeDatabase() error {
         CREATE INDEX IF NOT EXISTS idx_%s_datetime ON %s (datetime);
         CREATE INDEX IF NOT EXISTS idx_%s_date_str ON %s (date_str);
         CREATE INDEX IF NOT EXISTS idx_%s_symbol ON %s (symbol);
-        CREATE INDEX IF NOT EXISTS idx_%s_symbol_datetime ON %s (symbol, datetime);`, p.name, p.name, p.name, p.name, p.name, p.name)
+        CREATE INDEX IF NOT EXISTS idx_%s_symbol_datetime ON %s (symbol, datetime);`,
+            p.name, p.name,
+            p.name, p.name,
+            p.name, p.name,
+            p.name, p.name)
         if err := h.db.Exec(createIndexSQL).Error; err != nil {
             log.Printf("Warning: failed to create index for %s: %v", p.name, err)
         }
@@ -211,7 +215,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     createStrategyParamsSQL := `
     CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
         id SERIAL PRIMARY KEY,
-        unique_key VARCHAR(255) NOT NULL UNIQUE,
+        unique_key VARCHAR(255) NOT NULL,
         user_id INTEGER,
         buy_threshold_pct DOUBLE PRECISION,
         sell_threshold_pct DOUBLE PRECISION,
@@ -225,7 +229,8 @@ func (h *DatabaseHandler) initializeDatabase() error {
         take_profit_threshold_pct DOUBLE PRECISION,
         take_profit_sell_frac DOUBLE PRECISION,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uni_timesfm_strategy_params_unique_key UNIQUE (unique_key)
     );
     CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(user_id);
     `

@@ -120,11 +120,11 @@ type ApiResponse struct {
 }
 
 type StrategyParams struct {
-	UniqueKey              string    `json:"unique_key" gorm:"column:unique_key;uniqueIndex;size:255"`
-	UserID                 *int      `json:"user_id" gorm:"column:user_id"`
-	BuyThresholdPct        float64   `json:"buy_threshold_pct" db:"buy_threshold_pct"`
-	SellThresholdPct       float64   `json:"sell_threshold_pct" gorm:"column:sell_threshold_pct"`
-	InitialCash            float64   `json:"initial_cash" gorm:"column:initial_cash"`
+    UniqueKey              string    `json:"unique_key" gorm:"column:unique_key;size:255"`
+    UserID                 *int      `json:"user_id" gorm:"column:user_id"`
+    BuyThresholdPct        float64   `json:"buy_threshold_pct" db:"buy_threshold_pct"`
+    SellThresholdPct       float64   `json:"sell_threshold_pct" gorm:"column:sell_threshold_pct"`
+    InitialCash            float64   `json:"initial_cash" gorm:"column:initial_cash"`
 	EnableRebalance        bool      `json:"enable_rebalance" gorm:"column:enable_rebalance"`
 	MaxPositionPct         float64   `json:"max_position_pct" gorm:"column:max_position_pct"`
 	MinPositionPct         float64   `json:"min_position_pct" gorm:"column:min_position_pct"`
