@@ -193,7 +193,7 @@ def get_trading_date_range(start_date, days):
         china_calendar = xcals.get_calendar('XSHG')  # 上海证券交易所
         
         # 为了确保能获取到足够的交易日，我们向后推算更多的自然日
-        lookforward_days = max(days * 2, 60)  # 至少推算60天
+        lookforward_days = max(days * 2, 15)  # 至少推算60天
         end_date = start_date + timedelta(days=lookforward_days)
         
         # 获取这个时间段内的所有交易日
@@ -237,3 +237,8 @@ def get_trading_date_range(start_date, days):
         
         logger.info(f"回退方案找到的工作日: {result}")
         return result
+
+if __name__ == "__main__":
+    # 测试示例
+    test_date = datetime.now()
+    print(get_trading_date_range(test_date, 5))

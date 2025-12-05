@@ -24,7 +24,7 @@ weights_path = os.path.join(model_dir, "model.safetensors")
 if not os.path.exists(weights_path):
     raise SystemExit(f"missing local model weights: {weights_path}")
 
-initial_model = None
+initial_model_dict = {}
 def init_model(
         max_context: int = 2048,
         max_horizon: int = 7,
@@ -32,9 +32,9 @@ def init_model(
         normalize_inputs: bool = False,
         return_backcast: bool = False,
     ):
-    global initial_model
-    if initial_model is not None:
-        return initial_model
+    global initial_model_dict
+    if max_horizon in initial_model_dict:
+        return initial_model_dict[max_horizon]
     model = TimesFM_2p5_200M_torch.from_pretrained(model_dir, local_files_only=True, force_download=False, token=None, torch_compile=True)
     fc = ForecastConfig(
         max_context=max_context,
@@ -44,8 +44,8 @@ def init_model(
         return_backcast=return_backcast,
     )
     model.compile(fc)
-    initial_model = model
-    return initial_model
+    initial_model_dict[max_horizon] = model
+    return initial_model_dict[max_horizon]
 
 def predict_2p5(
         df_train: pd.DataFrame,
