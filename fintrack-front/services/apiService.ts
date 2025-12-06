@@ -227,6 +227,25 @@ export const strategyAPI = {
   },
 };
 
+const PYTHON_API_BASE = (import.meta.env as any).VITE_PYTHON_API_BASE || 'http://localhost:8000';
+
+export const backtestAPI = {
+  runBacktest: async (params: any): Promise<any> => {
+     const response = await fetch(`${PYTHON_API_BASE}/backtest/run`, {
+         method: 'POST',
+         headers: {
+             'Content-Type': 'application/json',
+         },
+         body: JSON.stringify(params),
+     });
+     if (!response.ok) {
+         const errorData = await response.json().catch(() => ({}));
+         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+     }
+     return response.json();
+  }
+};
+
 export const quotesAPI = {
   batchLatest: async (symbols: string[]): Promise<{ quotes: Array<{ symbol: string; latest_price?: number; change_percent?: number; trading_date?: string; turnover_rate?: number }> }> => {
     return apiRequest('/quotes/batch-latest', {

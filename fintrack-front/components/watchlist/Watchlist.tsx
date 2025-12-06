@@ -34,7 +34,7 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
     const [isLoading, setIsLoading] = useState(false);
     const [isChartLoading, setIsChartLoading] = useState(false);
     const [showLatest, setShowLatest] = useState(false);
-    const [periodDays, setPeriodDays] = useState<3 | 7>(7);
+    const [periodDays, setPeriodDays] = useState<3 | 7>(3);
     const [error, setError] = useState<string | null>(null);
     const [latestQuotes, setLatestQuotes] = useState<Record<string, { latest_price?: number; change_percent?: number; trading_date?: string; turnover_rate?: number }>>({});
 
@@ -156,23 +156,24 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                     const horizonLen = found.best.horizon_len;
                     const sortedChunks = (found.chunks || []).sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
                     
+                    // Build chart data from last 3 chunks only (for history view)
+                    const last3Chunks = sortedChunks.slice(-3);
+                    
                     let allDates: string[] = [];
                     let allActuals: number[] = [];
                     let allPreds: number[] = [];
 
-                    let latestDates: string[] = [];
-                    let latestPreds: number[] = [];
-
-                    sortedChunks.forEach(chunk => {
+                    last3Chunks.forEach(chunk => {
                         if (chunk.dates && chunk.dates.length > 0) {
                             allDates = allDates.concat(chunk.dates);
                             allActuals = allActuals.concat(chunk.actual_values || []);
                             const chunkPreds = chunk.predictions[bestItemKey] || [];
                             allPreds = allPreds.concat(chunkPreds as number[]);
                         }
-
-                        
                     });
+
+                    let latestDates: string[] = [];
+                    let latestPreds: number[] = [];
 
                     let futurePredictedChangePercent: number | undefined = undefined;
                     try {
@@ -214,6 +215,16 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                              }
                          } catch (e) { }
 
+                         // Build latest chart data with last 3 chunks (same as history) + future
+                         let combinedLatestDates: string[] = [...allDates];
+                         let combinedLatestPreds: number[] = [...allPreds];
+                         let combinedLatestActuals: number[] = [...allActuals];
+
+                         // Add future data
+                         combinedLatestDates = combinedLatestDates.concat(latestDates);
+                         combinedLatestPreds = combinedLatestPreds.concat(latestPreds);
+                         // actuals for future are not available, so we don't append to combinedLatestActuals
+
                         setSelectedStock({
                             symbol: found.best.symbol,
                             companyName: found.best.short_name || found.best.symbol,
@@ -237,9 +248,9 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                      predictions: allPreds
                                  },
                                  latestChartData: {
-                                     dates: latestDates,
-                                     actuals: [],
-                                     predictions: latestPreds
+                                     dates: combinedLatestDates,
+                                     actuals: combinedLatestActuals,
+                                     predictions: combinedLatestPreds
                                  }
                             }
                         } as StockData);
@@ -350,16 +361,54 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                     <div className="w-full max-w-5xl bg-card-dark border border-white/10 rounded-xl overflow-hidden flex flex-col max-h-[90vh]">
                          <div className="flex items-center justify-between p-6 border-b border-white/10">
-                             <div>
-                                 <h3 className="text-xl font-bold text-white">{selectedStock.companyName}</h3>
-                                 <p className="text-sm text-white/60">{selectedStock.symbol}</p>
+                             <div className="flex items-center gap-4">
+                                 <div>
+                                     <h3 className="text-xl font-bold text-white">{selectedStock.companyName}</h3>
+                                     <p className="text-sm text-white/60">{selectedStock.symbol}</p>
+                                 </div>
+                                 {(() => {
+                                    const displayPredChg = showLatest ? selectedStock.futurePredictedChangePercent : selectedStock.predictedChangePercent;
+                                    if (displayPredChg === undefined) return null;
+                                    
+                                    const isPredPositive = displayPredChg >= 0;
+                                    const { hexColor } = getChangeColors(isPredPositive, language);
+                                    
+                                    return (
+                                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
+                                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
+                                                <span className="material-symbols-outlined text-xs text-white/80">online_prediction</span>
+                                                <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.predChg')}</span>
+                                            </div>
+                                            <div className="bg-white/5 px-2 py-1 flex justify-center">
+                                                <span className={`text-sm font-bold leading-tight ${isPredPositive ? 'text-primary' : 'text-red-500'}`}>
+                                                    {(isPredPositive ? '+' : '')}{displayPredChg.toFixed(2)}%
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                              </div>
-                             <button 
-                                 onClick={() => setChartOpen(false)}
-                                 className="p-2 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors"
-                             >
-                                 <span className="material-symbols-outlined">close</span>
-                             </button>
+                             <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => setShowLatest(!showLatest)}
+                                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all border ${
+                                        showLatest 
+                                            ? 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10' 
+                                            : 'bg-primary/10 border-primary/20 text-primary hover:bg-primary/20'
+                                    }`}
+                                >
+                                    {showLatest 
+                                        ? '显示历史验证' 
+                                        : '查看最新预测'
+                                    }
+                                </button>
+                                <button 
+                                    onClick={() => setChartOpen(false)}
+                                    className="p-2 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                                >
+                                    <span className="material-symbols-outlined">close</span>
+                                </button>
+                             </div>
                          </div>
                          <div className="p-6 overflow-y-auto flex-1 min-h-[300px] flex flex-col bg-card-dark">
                              {isChartLoading ? (
@@ -441,35 +490,7 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                                             </div>
                                                         </div>
 
-                                                        <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
-                                                            <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
-                                                                <span className="material-symbols-outlined text-xs text-white/80">trending_up</span>
-                                                                <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.actChg')}</span>
-                                                            </div>
-                                                            <div className="bg-white/5 px-2 py-1 flex justify-center">
-                                                                <span className={`text-xs font-bold leading-tight ${textClass}`}>
-                                                                    {isPositive ? '+' : ''}{Math.abs(selectedStock.changePercent).toFixed(2)}%
-                                                                </span>
-                                                            </div>
-                                                        </div>
 
-                                                        {(() => {
-                                                            const displayPredChg = showLatest ? selectedStock.futurePredictedChangePercent : selectedStock.predictedChangePercent;
-                                                            const isPredPositive = (displayPredChg || 0) >= 0;
-                                                            return (displayPredChg !== undefined && displayPredChg !== 0) ? (
-                                                            <div className="flex flex-col rounded-lg border border-white/10 overflow-hidden h-fit w-[100px] shrink-0">
-                                                                <div className="px-2 py-1 flex items-center gap-1.5 justify-center" style={{ backgroundColor: `${hexColor}33` }}>
-                                                                    <span className="material-symbols-outlined text-xs text-white/80">online_prediction</span>
-                                                                    <span className="text-xs font-medium text-white/80 leading-none">{t('prediction.predChg')}</span>
-                                                                </div>
-                                                                <div className="bg-white/5 px-2 py-1 flex justify-center">
-                                                                    <span className="text-xs font-bold leading-tight text-primary">
-                                                                        {isPredPositive ? '+' : ''}{Math.abs(displayPredChg!).toFixed(2)}%
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                            ) : null;
-                                                        })()}
                                                     </>
                                                 );
                                             })()}
@@ -478,53 +499,14 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
 
                                      {/* Chart Section */}
                                      <div className="flex flex-1 min-h-[350px] flex-col gap-2 py-4">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="flex space-x-1 bg-white/5 rounded-lg p-1">
-                                                <button
-                                                    onClick={() => setPeriodDays(3)}
-                                                    className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${periodDays === 3 ? 'bg-primary text-black shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
-                                                >
-                                                    P-3
-                                                </button>
-                                                <button
-                                                    onClick={() => setPeriodDays(7)}
-                                                    className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${periodDays === 7 ? 'bg-primary text-black shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
-                                                >
-                                                    P-7
-                                                </button>
-                                            </div>
-                                            <button
-                                                onClick={() => setShowLatest(!showLatest)}
-                                                className={`px-3 py-1.5 rounded-md text-xs font-medium border border-white/10 ${showLatest ? 'bg-primary text-black' : 'bg-white/5 text-white/80 hover:bg-white/10'}`}
-                                            >
-                                                {showLatest ? '显示历史验证' : '查看最新预测'}
-                                            </button>
-                                        </div>
+
                                         {(() => {
                                             const denom = 1 + selectedStock.changePercent / 100;
                                             const sp = denom > 0 ? selectedStock.currentPrice / denom : undefined;
                                             const safeStartPrice = (sp !== undefined && Number.isFinite(sp)) ? sp : undefined;
                                             const src = showLatest ? selectedStock.prediction?.latestChartData : selectedStock.prediction?.chartData;
-                                            const data = (() => {
-                                                if (!src || !src.dates || src.dates.length === 0) return src;
-                                                const latestIdx = src.dates.length - 1;
-                                                const latestDateStr = src.dates[latestIdx];
-                                                const latestDate = new Date(latestDateStr);
-                                                const threshold = new Date(latestDate);
-                                                threshold.setDate(threshold.getDate() - (periodDays - 1));
-                                                const idxs: number[] = [];
-                                                for (let i = 0; i < src.dates.length; i++) {
-                                                    const d = new Date(src.dates[i]);
-                                                    if (d.getTime() >= threshold.getTime()) idxs.push(i);
-                                                }
-                                                const pick = (arr?: number[]) => (arr || []).filter((_, i) => idxs.includes(i));
-                                                const pickDates = src.dates.filter((_, i) => idxs.includes(i));
-                                                return {
-                                                    dates: pickDates,
-                                                    actuals: pick(src.actuals),
-                                                    predictions: pick(src.predictions),
-                                                };
-                                            })();
+                                            // Use src data directly without periodDays filtering to show all available chunks (3 chunks)
+                                            const data = src;
                                             return (
                                                 <PredictionChart 
                                                     change={selectedStock.changePercent} 
@@ -539,14 +521,7 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                             if (!src || (src.predictions?.length || 0) === 0) {
                                                 return showLatest ? (<div className="text-xs text-white/60 mt-2">暂无未来预测分块</div>) : null;
                                             }
-                                            const latestIdx = (src.dates?.length || 0) - 1;
-                                            if (latestIdx < 0) return null;
-                                            const latestDateStr = src.dates![latestIdx];
-                                            const latestDate = new Date(latestDateStr);
-                                            const threshold = new Date(latestDate);
-                                            threshold.setDate(threshold.getDate() - (periodDays - 1));
-                                            const hasInPeriod = (src.dates || []).some(d => new Date(d).getTime() >= threshold.getTime());
-                                            return hasInPeriod ? null : (<div className="text-xs text-white/60 mt-2">当前周期无数据</div>);
+                                            return null;
                                         })()}
                                      </div>
 

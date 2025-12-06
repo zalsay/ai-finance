@@ -114,7 +114,7 @@ const PredictionChart: React.FC<ChartProps> = ({ change, chartData, currentPrice
                      const x = idx * stepX;
                      let anchor = "middle";
                      if (i === 0) anchor = "start";
-                     else if (i === labelCount - 1) anchor = "end";
+                     else if (idx === dates.length - 1) anchor = "end";
 
                      dateLabels.push(
                         <text key={i} x={x} y={height - 2} fill="#9CA3AF" fontSize="6" textAnchor={anchor}>{dates[idx]}</text>

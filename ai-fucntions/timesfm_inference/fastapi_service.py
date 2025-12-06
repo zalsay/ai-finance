@@ -233,22 +233,22 @@ async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
 
 
 @app.post("/backtest/run")
-async def run_backtest_api(data: Dict):
+async def run_backtest_api(req: RunBacktestRequest):
     """交易策略回测接口：基于 TimesFM 分块预测并执行策略回测"""
     try:
         # 构造 exchange_server 需要的 dataclass 请求体
         from req_res_types import ChunkedPredictionRequest as TfmRequest
         tfm_req = TfmRequest(
-            stock_code=data.get("stock_code", ""),
-            years=data.get("years", 10),
-            horizon_len=data.get("horizon_len", 7),
-            start_date=data.get("start_date", None),
-            end_date=data.get("end_date", None),
-            context_len=data.get("context_len", 2048),
-            time_step=data.get("time_step", 0),
-            stock_type=data.get("stock_type", 1),
-            timesfm_version=data.get("timesfm_version", "2.5"),
-            user_id=data.get("user_id", None),
+            stock_code=req.stock_code,
+            years=req.years,
+            horizon_len=req.horizon_len,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            context_len=req.context_len,
+            time_step=req.time_step,
+            stock_type=req.stock_type,
+            timesfm_version=req.timesfm_version,
+            user_id=req.user_id,
         )
 
         result = await run_backtest(
