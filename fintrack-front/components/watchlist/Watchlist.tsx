@@ -34,6 +34,7 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
     const [isLoading, setIsLoading] = useState(false);
     const [isChartLoading, setIsChartLoading] = useState(false);
     const [showLatest, setShowLatest] = useState(false);
+    const [periodDays, setPeriodDays] = useState<3 | 7>(7);
     const [error, setError] = useState<string | null>(null);
     const [latestQuotes, setLatestQuotes] = useState<Record<string, { latest_price?: number; change_percent?: number; trading_date?: string; turnover_rate?: number }>>({});
 
@@ -477,7 +478,21 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
 
                                      {/* Chart Section */}
                                      <div className="flex flex-1 min-h-[350px] flex-col gap-2 py-4">
-                                        <div className="flex items-center justify-end mb-2">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex space-x-1 bg-white/5 rounded-lg p-1">
+                                                <button
+                                                    onClick={() => setPeriodDays(3)}
+                                                    className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${periodDays === 3 ? 'bg-primary text-black shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                                                >
+                                                    P-3
+                                                </button>
+                                                <button
+                                                    onClick={() => setPeriodDays(7)}
+                                                    className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${periodDays === 7 ? 'bg-primary text-black shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                                                >
+                                                    P-7
+                                                </button>
+                                            </div>
                                             <button
                                                 onClick={() => setShowLatest(!showLatest)}
                                                 className={`px-3 py-1.5 rounded-md text-xs font-medium border border-white/10 ${showLatest ? 'bg-primary text-black' : 'bg-white/5 text-white/80 hover:bg-white/10'}`}
@@ -489,7 +504,27 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                             const denom = 1 + selectedStock.changePercent / 100;
                                             const sp = denom > 0 ? selectedStock.currentPrice / denom : undefined;
                                             const safeStartPrice = (sp !== undefined && Number.isFinite(sp)) ? sp : undefined;
-                                            const data = showLatest ? selectedStock.prediction?.latestChartData : selectedStock.prediction?.chartData;
+                                            const src = showLatest ? selectedStock.prediction?.latestChartData : selectedStock.prediction?.chartData;
+                                            const data = (() => {
+                                                if (!src || !src.dates || src.dates.length === 0) return src;
+                                                const latestIdx = src.dates.length - 1;
+                                                const latestDateStr = src.dates[latestIdx];
+                                                const latestDate = new Date(latestDateStr);
+                                                const threshold = new Date(latestDate);
+                                                threshold.setDate(threshold.getDate() - (periodDays - 1));
+                                                const idxs: number[] = [];
+                                                for (let i = 0; i < src.dates.length; i++) {
+                                                    const d = new Date(src.dates[i]);
+                                                    if (d.getTime() >= threshold.getTime()) idxs.push(i);
+                                                }
+                                                const pick = (arr?: number[]) => (arr || []).filter((_, i) => idxs.includes(i));
+                                                const pickDates = src.dates.filter((_, i) => idxs.includes(i));
+                                                return {
+                                                    dates: pickDates,
+                                                    actuals: pick(src.actuals),
+                                                    predictions: pick(src.predictions),
+                                                };
+                                            })();
                                             return (
                                                 <PredictionChart 
                                                     change={selectedStock.changePercent} 
@@ -499,9 +534,20 @@ const Watchlist: React.FC<WatchlistProps> = ({ initialStocks, onAuthError }) => 
                                                 />
                                             );
                                         })()}
-                                        {showLatest && ((selectedStock.prediction?.latestChartData?.predictions?.length || 0) === 0) && (
-                                            <div className="text-xs text-white/60 mt-2">暂无未来预测分块</div>
-                                        )}
+                                        {(() => {
+                                            const src = showLatest ? selectedStock.prediction?.latestChartData : selectedStock.prediction?.chartData;
+                                            if (!src || (src.predictions?.length || 0) === 0) {
+                                                return showLatest ? (<div className="text-xs text-white/60 mt-2">暂无未来预测分块</div>) : null;
+                                            }
+                                            const latestIdx = (src.dates?.length || 0) - 1;
+                                            if (latestIdx < 0) return null;
+                                            const latestDateStr = src.dates![latestIdx];
+                                            const latestDate = new Date(latestDateStr);
+                                            const threshold = new Date(latestDate);
+                                            threshold.setDate(threshold.getDate() - (periodDays - 1));
+                                            const hasInPeriod = (src.dates || []).some(d => new Date(d).getTime() >= threshold.getTime());
+                                            return hasInPeriod ? null : (<div className="text-xs text-white/60 mt-2">当前周期无数据</div>);
+                                        })()}
                                      </div>
 
                                      {/* Fallback/Empty State */}

@@ -18,6 +18,7 @@ export interface User {
   first_name?: string;
   last_name?: string;
   is_premium: boolean;
+  membership_level?: number;
   created_at: string;
   updated_at?: string;
 }
@@ -140,6 +141,12 @@ export const authAPI = {
   getProfile: async (): Promise<User> => {
     return apiRequest('/auth/profile');
   },
+  updateMembership: async (level: number): Promise<{ message: string; membership_level: number }> => {
+    return apiRequest('/auth/membership', {
+      method: 'PUT',
+      body: JSON.stringify({ membership_level: level }),
+    });
+  },
 
   // 用户注销
   logout: async (): Promise<void> => {
@@ -170,8 +177,12 @@ export const watchlistAPI = {
   },
 };
 
-export const getPublicPredictions = async (): Promise<PublicPredictionResponse> => {
-  return apiRequest<PublicPredictionResponse>('/get-predictions/mtf-best/public', { method: 'GET' });
+export const getPublicPredictions = async (horizonLen?: number): Promise<PublicPredictionResponse> => {
+  let url = '/get-predictions/mtf-best/public';
+  if (horizonLen) {
+    url += `?horizon_len=${horizonLen}`;
+  }
+  return apiRequest<PublicPredictionResponse>(url, { method: 'GET' });
 };
 
 export interface FuturePredictionsResponse {

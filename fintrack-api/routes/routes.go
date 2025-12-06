@@ -79,6 +79,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 			auth.POST("/login", authHandler.Login)
 			auth.GET("/profile", authHandler.AuthMiddleware(), authHandler.GetProfile)
 			auth.POST("/logout", authHandler.AuthMiddleware(), authHandler.Logout)
+			auth.PUT("/membership", authHandler.AuthMiddleware(), authHandler.UpdateMembership)
 		}
 
 		// Watchlist路由

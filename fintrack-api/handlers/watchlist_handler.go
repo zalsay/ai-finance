@@ -302,7 +302,14 @@ func (h *WatchlistHandler) GetStrategyParamsByUniqueKey(c *gin.Context) {
 
 // 公开查询：返回 is_public = 1 的 timesfm-best，并联查对应的验证分块数据
 func (h *WatchlistHandler) ListPublicTimesfmBestWithValidation(c *gin.Context) {
-	items, err := h.watchlistService.ListPublicTimesfmBest()
+	horizonLen := 0
+	if hStr := c.Query("horizon_len"); hStr != "" {
+		if val, err := strconv.Atoi(hStr); err == nil {
+			horizonLen = val
+		}
+	}
+
+	items, err := h.watchlistService.ListPublicTimesfmBest(horizonLen)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

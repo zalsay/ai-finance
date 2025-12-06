@@ -16,6 +16,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout, isDemoMode = false }) => {
     const { t } = useLanguage();
     const [userEmail, setUserEmail] = useState<string>('');
+    const [membershipLevel, setMembershipLevel] = useState<number>(0);
 
     useEffect(() => {
         if (isDemoMode) {
@@ -27,6 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout
             try {
                 const user = await authAPI.getProfile();
                 setUserEmail(user.email);
+                setMembershipLevel(user.membership_level ?? 0);
             } catch (error) {
                 console.error('Failed to fetch user profile', error);
             }
@@ -41,13 +43,26 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout
                     <span className="material-symbols-outlined text-primary text-3xl">trending_up</span>
                     <h1 className="text-white text-xl font-bold">{t('sidebar.title')}</h1>
                 </div>
-                <div className="flex flex-col gap-4">
-                    <div className="flex gap-3 px-2">
-                        <div className="flex flex-col">
-                            <h2 className="text-white text-base font-medium leading-normal">{t('sidebar.hello')}</h2>
-                            <p className="text-white/60 text-sm font-normal leading-normal">{userEmail || t('sidebar.loading')}</p>
+                    <div className="flex flex-col gap-4">
+                        <div className="flex gap-3 px-2">
+                            <div className="flex flex-col">
+                                <h2 className="text-white text-base font-medium leading-normal">{t('sidebar.hello')}</h2>
+                                <p className="text-white/60 text-sm font-normal leading-normal">{userEmail || t('sidebar.loading')}</p>
+                                <div className="mt-1">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold"
+                                          style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                        {(() => {
+                                            switch (membershipLevel) {
+                                                case 3: return 'UVIP';
+                                                case 2: return 'SVIP';
+                                                case 1: return 'VIP';
+                                                default: return '普通会员';
+                                            }
+                                        })()}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                    </div>
                     
                     {/* Language Switcher */}
                     <div className="px-2">

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_name VARCHAR(50),
     is_active BOOLEAN DEFAULT TRUE,
     is_premium BOOLEAN DEFAULT FALSE,
+    membership_level INT DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -122,3 +123,6 @@ CREATE TABLE IF NOT EXISTS timesfm_best_validation_chunks (
 CREATE INDEX IF NOT EXISTS idx_timesfm_best_validation_chunks_user_id ON timesfm_best_validation_chunks(user_id);
 -- 索引：验证分块按股票代码查询
 CREATE INDEX IF NOT EXISTS idx_timesfm_best_validation_chunks_symbol ON timesfm_best_validation_chunks(symbol);
+
+-- 如果缺列则添加 membership_level
+ALTER TABLE users ADD COLUMN IF NOT EXISTS membership_level INT DEFAULT 0;

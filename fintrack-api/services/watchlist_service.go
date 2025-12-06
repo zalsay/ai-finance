@@ -729,9 +729,9 @@ func (s *WatchlistService) ListTimesfmBestByUserID(userID int) ([]models.Timesfm
 	return results, nil
 }
 
-// 列出公开的 timesfm-best（is_public = 1）
-func (s *WatchlistService) ListPublicTimesfmBest() ([]models.TimesfmBestPrediction, error) {
-	rows, err := s.db.Conn.Query(`
+// 列出公开的 timesfm-best（is_public = 1），支持按 horizon_len 筛选
+func (s *WatchlistService) ListPublicTimesfmBest(horizonLen int) ([]models.TimesfmBestPrediction, error) {
+	query := `
         SELECT 
             id, unique_key, symbol, timesfm_version, best_prediction_item, best_metrics,
             is_public,
@@ -742,8 +742,15 @@ func (s *WatchlistService) ListPublicTimesfmBest() ([]models.TimesfmBestPredicti
             created_at, updated_at, COALESCE(short_name, '') AS short_name
         FROM timesfm_best_predictions
         WHERE is_public = 1
-        ORDER BY updated_at DESC
-    `)
+    `
+	var args []interface{}
+	if horizonLen > 0 {
+		query += ` AND horizon_len = $1`
+		args = append(args, horizonLen)
+	}
+	query += ` ORDER BY updated_at DESC`
+
+	rows, err := s.db.Conn.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query public timesfm_best_predictions: %v", err)
 	}
