@@ -1,11 +1,12 @@
 import { PublicPredictionResponse } from '../types';
 
 // API服务 - 连接fintrack-api后端
-const DEV_BASE = (import.meta.env as any).VITE_API_BASE_URL_DEV as string | undefined;
-const PROD_BASE = (import.meta.env as any).VITE_API_BASE_URL_PROD as string | undefined;
-const API_BASE_URL = (import.meta.env as any).DEV
+const DEV_BASE = (import.meta as any).env.VITE_API_BASE_URL_DEV as string | undefined;
+const PROD_BASE = (import.meta as any).env.VITE_API_BASE_URL_PROD as string | undefined;
+const API_BASE_URL = (import.meta as any).env.DEV
   ? (DEV_BASE || 'http://localhost:59000/api/v1')
   : (PROD_BASE || 'http://go-api.meetlife.com.cn:9000/api/v1');
+const PYTHON_API_BASE = (import.meta as any).env.VITE_PYTHON_API_BASE || 'http://localhost:8000';
 
 // 存储认证token
 let authToken: string | null = null;
@@ -227,7 +228,6 @@ export const strategyAPI = {
   },
 };
 
-const PYTHON_API_BASE = (import.meta.env as any).VITE_PYTHON_API_BASE || 'http://localhost:8000';
 
 export const backtestAPI = {
   runBacktest: async (params: any): Promise<any> => {

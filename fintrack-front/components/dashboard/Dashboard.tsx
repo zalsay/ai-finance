@@ -36,16 +36,34 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
+        let isMounted = true;
+        console.log(`[Dashboard] Effect triggered. ActiveHorizon: ${activeHorizon}`);
+        setPublicStocks([]); // Clear current list before fetching new data
+        
         const fetchPublic = async () => {
+            console.log(`[Dashboard] Fetching public predictions for horizon: ${activeHorizon}`);
             setIsFetching(true);
             setFetchError(null);
             try {
                 const res = await getPublicPredictions(activeHorizon);
+                if (!isMounted) {
+                    console.log(`[Dashboard] Component unmounted or effect cleanup, ignoring result for horizon: ${activeHorizon}`);
+                    return;
+                }
+                
+                console.log(`[Dashboard] Received response for horizon ${activeHorizon}:`, res.items?.length, "items");
+
                 if (res && res.items) {
                      const mapped = res.items.map(item => {
                         const bestItemKey = item.best.best_prediction_item;
                         const contextLen = item.best.context_len;
                         const horizonLen = item.best.horizon_len;
+                        
+                        // Debug log for item horizon
+                        if (horizonLen !== activeHorizon) {
+                             console.warn(`[Dashboard] Mismatch! Received item with horizon ${horizonLen} but requested ${activeHorizon}`, item.best.symbol);
+                        }
+
                         // Sort chunks by date ascending (oldest first)
                         const sortedChunks = (item.chunks || []).sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
                         
@@ -125,16 +143,34 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                             }
                         } as StockData;
                     }).filter((item): item is StockData => item !== null);
-                    setPublicStocks(mapped);
+                    
+                    // Client-side filtering to ensure data consistency
+                    const strictlyFiltered = mapped.filter(s => s.prediction && s.prediction.horizonLen === activeHorizon);
+                    
+                    // Deduplicate by symbol to prevent list growth from duplicates
+                    const uniqueStocks = Array.from(new Map(strictlyFiltered.map(item => [item.symbol, item])).values());
+
+                    if (isMounted) {
+                        console.log(`[Dashboard] Setting public stocks for horizon ${activeHorizon}:`, uniqueStocks.length, "(Original:", mapped.length, ")");
+                        setPublicStocks(uniqueStocks);
+                    }
                 }
             } catch (e: any) {
-                console.error("Fetch error", e);
-                setFetchError(e.message || "Failed to load public predictions");
+                if (isMounted) {
+                    console.error("Fetch error", e);
+                    setFetchError(e.message || "Failed to load public predictions");
+                }
             } finally {
-                setIsFetching(false);
+                if (isMounted) {
+                    setIsFetching(false);
+                }
             }
         };
         fetchPublic();
+
+        return () => {
+            isMounted = false;
+        };
     }, [language, activeHorizon]);
 
     const handleAddStock = async (symbol: string, type: 1 | 2 = 1) => {
