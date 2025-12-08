@@ -884,6 +884,7 @@ async def save_backtest_result_to_pg(request, response, result):
 
         payload = {
             "unique_key": unique_key,
+            "strategy_params_id": request.strategy_params_id,
             "symbol": request.stock_code,
             "timesfm_version": str(request.timesfm_version),
             "context_len": int(request.context_len),

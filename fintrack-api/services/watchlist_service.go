@@ -1249,7 +1249,7 @@ func (s *WatchlistService) SaveStrategyParams(req *models.SaveStrategyParamsRequ
 
 func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*models.StrategyParams, error) {
 	row := s.db.Conn.QueryRow(`
-        SELECT unique_key, user_id, name, is_public,
+        SELECT id, unique_key, user_id, name, is_public,
                buy_threshold_pct, sell_threshold_pct, initial_cash,
                enable_rebalance, max_position_pct, min_position_pct,
                slope_position_per_pct, rebalance_tolerance_pct,
@@ -1261,7 +1261,7 @@ func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*mode
 	var item models.StrategyParams
 	var uid sql.NullInt64
 	err := row.Scan(
-		&item.UniqueKey, &uid, &item.Name, &item.IsPublic,
+		&item.ID, &item.UniqueKey, &uid, &item.Name, &item.IsPublic,
 		&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
 		&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
 		&item.SlopePositionPerPct, &item.RebalanceTolerancePct,
@@ -1285,7 +1285,7 @@ func (s *WatchlistService) GetStrategyParamsByUniqueKey(uniqueKey string) (*mode
 // 获取用户的所有策略（包括系统预设策略）
 func (s *WatchlistService) GetUserStrategies(userID int) ([]models.StrategyParams, error) {
 	rows, err := s.db.Conn.Query(`
-        SELECT unique_key, user_id, name, is_public,
+        SELECT id, unique_key, user_id, name, is_public,
                buy_threshold_pct, sell_threshold_pct, initial_cash,
                enable_rebalance, max_position_pct, min_position_pct,
                slope_position_per_pct, rebalance_tolerance_pct,
@@ -1304,7 +1304,7 @@ func (s *WatchlistService) GetUserStrategies(userID int) ([]models.StrategyParam
 		var item models.StrategyParams
 		var uid sql.NullInt64
 		err := rows.Scan(
-			&item.UniqueKey, &uid, &item.Name, &item.IsPublic,
+			&item.ID, &item.UniqueKey, &uid, &item.Name, &item.IsPublic,
 			&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
 			&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
 			&item.SlopePositionPerPct, &item.RebalanceTolerancePct,

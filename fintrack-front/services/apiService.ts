@@ -231,12 +231,21 @@ export const strategyAPI = {
 
 export const backtestAPI = {
   runBacktest: async (params: any): Promise<any> => {
+     let enriched = params;
+     try {
+       if (params && params.unique_key) {
+         const info = await strategyAPI.getParams(params.unique_key);
+         if (info && typeof info.id === 'number') {
+           enriched = { ...params, strategy_params_id: info.id };
+         }
+       }
+     } catch {}
      const response = await fetch(`${PYTHON_API_BASE}/backtest/run`, {
          method: 'POST',
          headers: {
              'Content-Type': 'application/json',
          },
-         body: JSON.stringify(params),
+         body: JSON.stringify(enriched),
      });
      if (!response.ok) {
          const errorData = await response.json().catch(() => ({}));

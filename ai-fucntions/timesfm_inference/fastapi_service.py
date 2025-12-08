@@ -92,6 +92,7 @@ class BatchPredictionResponse(BaseModel):
 class RunBacktestRequest(BaseModel):
     """运行回测的请求模型（基于 unique_key 与策略参数）"""
     unique_key: str
+    strategy_params_id: Optional[int] = None
     user_id: Optional[int] = None
     buy_threshold_pct: float = 3.0
     sell_threshold_pct: float = -1.0
@@ -222,6 +223,7 @@ async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
 async def run_backtest_api(req: RunBacktestRequest):
     """交易策略回测接口：入参 unique_key + user_id，查询DB验证分块并直接回测"""
     try:
+        logger.info(f"run_backtest_api received: {req}")
         from req_res_types import ChunkedPredictionRequest as TfmRequest
         from predict_chunked_functions import _parse_unique_key
         info = _parse_unique_key(req.unique_key)
@@ -229,7 +231,7 @@ async def run_backtest_api(req: RunBacktestRequest):
             raise ValueError("invalid unique_key format")
         tfm_req = TfmRequest(
             stock_code=info["symbol"],
-            years=10,
+            years=15,
             horizon_len=int(info["horizon_len"]),
             start_date=None,
             end_date=None,
@@ -238,6 +240,7 @@ async def run_backtest_api(req: RunBacktestRequest):
             stock_type=2,
             timesfm_version=str(info["timesfm_version"]),
             user_id=req.user_id,
+            strategy_params_id=req.strategy_params_id,
         )
         result = await run_backtest(
             tfm_req,

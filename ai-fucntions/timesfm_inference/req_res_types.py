@@ -16,6 +16,7 @@ class ChunkedPredictionRequest:
     stock_type: str = 1
     timesfm_version: str = "2.5"
     user_id: Optional[int] = None
+    strategy_params_id: Optional[int] = None
 
 
 @dataclass
