@@ -20,18 +20,23 @@ func (h *DatabaseHandler) Close() error {
 }
 
 func (h *DatabaseHandler) InsertStockData(data *StockData) error {
-	query := `
+    // Ensure date_str is populated (YYYY-MM-DD)
+    dateStr := data.DateStr
+    if dateStr == "" {
+        dateStr = data.Datetime.Format("2006-01-02")
+    }
+    query := `
     INSERT INTO stock_data (
-        datetime, open, close, high, low, volume, amount, amplitude,
+        datetime, date_str, open, close, high, low, volume, amount, amplitude,
         percentage_change, amount_change, turnover_rate, type, symbol
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     RETURNING id, created_at, updated_at`
-	row := h.db.Raw(query,
-		data.Datetime, data.Open, data.Close, data.High, data.Low,
-		data.Volume, data.Amount, data.Amplitude, data.PercentageChange,
-		data.AmountChange, data.TurnoverRate, data.Type, data.Symbol,
-	).Row()
-	return row.Scan(&data.ID, &data.CreatedAt, &data.UpdatedAt)
+    row := h.db.Raw(query,
+        data.Datetime, dateStr, data.Open, data.Close, data.High, data.Low,
+        data.Volume, data.Amount, data.Amplitude, data.PercentageChange,
+        data.AmountChange, data.TurnoverRate, data.Type, data.Symbol,
+    ).Row()
+    return row.Scan(&data.ID, &data.CreatedAt, &data.UpdatedAt)
 }
 
 func (h *DatabaseHandler) BatchInsertStockData(dataList []StockData) error {
@@ -39,21 +44,26 @@ func (h *DatabaseHandler) BatchInsertStockData(dataList []StockData) error {
 	if tx.Error != nil {
 		return fmt.Errorf("failed to begin transaction: %v", tx.Error)
 	}
-	insertSQL := `
+    insertSQL := `
     INSERT INTO stock_data (
-        datetime, open, close, high, low, volume, amount, amplitude,
+        datetime, date_str, open, close, high, low, volume, amount, amplitude,
         percentage_change, amount_change, turnover_rate, type, symbol
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
-	for _, data := range dataList {
-		if err := tx.Exec(insertSQL,
-			data.Datetime, data.Open, data.Close, data.High, data.Low,
-			data.Volume, data.Amount, data.Amplitude, data.PercentageChange,
-			data.AmountChange, data.TurnoverRate, data.Type, data.Symbol,
-		).Error; err != nil {
-			tx.Rollback()
-			return fmt.Errorf("failed to execute batch insert: %v", err)
-		}
-	}
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
+    for _, data := range dataList {
+        // Ensure date_str is populated (YYYY-MM-DD)
+        dateStr := data.DateStr
+        if dateStr == "" {
+            dateStr = data.Datetime.Format("2006-01-02")
+        }
+        if err := tx.Exec(insertSQL,
+            data.Datetime, dateStr, data.Open, data.Close, data.High, data.Low,
+            data.Volume, data.Amount, data.Amplitude, data.PercentageChange,
+            data.AmountChange, data.TurnoverRate, data.Type, data.Symbol,
+        ).Error; err != nil {
+            tx.Rollback()
+            return fmt.Errorf("failed to execute batch insert: %v", err)
+        }
+    }
 	if err := tx.Commit().Error; err != nil {
 		return fmt.Errorf("failed to commit transaction: %v", err)
 	}
@@ -357,9 +367,9 @@ func (h *DatabaseHandler) GetAStockCommentDailyByName(name string, limit int, of
 }
 
 func (h *DatabaseHandler) GetStockData(symbol string, stockType int, limit int, offset int) ([]StockData, error) {
-	rows, err := h.db.Raw(`
+    rows, err := h.db.Raw(`
     SELECT id, datetime, open, close, high, low, volume, amount, amplitude,
-           percentage_change, amount_change, turnover_rate, type, symbol,
+           percentage_change, amount_change, turnover_rate, type, symbol, date_str,
            created_at, updated_at
     FROM stock_data
     WHERE symbol = $1 AND type = $2
@@ -372,23 +382,23 @@ func (h *DatabaseHandler) GetStockData(symbol string, stockType int, limit int, 
 	var results []StockData
 	for rows.Next() {
 		var data StockData
-		if err := rows.Scan(
-			&data.ID, &data.Datetime, &data.Open, &data.Close, &data.High, &data.Low,
-			&data.Volume, &data.Amount, &data.Amplitude, &data.PercentageChange,
-			&data.AmountChange, &data.TurnoverRate, &data.Type, &data.Symbol,
-			&data.CreatedAt, &data.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan row: %v", err)
-		}
-		results = append(results, data)
-	}
-	return results, nil
+        if err := rows.Scan(
+            &data.ID, &data.Datetime, &data.Open, &data.Close, &data.High, &data.Low,
+            &data.Volume, &data.Amount, &data.Amplitude, &data.PercentageChange,
+            &data.AmountChange, &data.TurnoverRate, &data.Type, &data.Symbol, &data.DateStr,
+            &data.CreatedAt, &data.UpdatedAt,
+        ); err != nil {
+            return nil, fmt.Errorf("failed to scan row: %v", err)
+        }
+        results = append(results, data)
+    }
+    return results, nil
 }
 
 func (h *DatabaseHandler) GetStockDataByDateRange(symbol string, stockType int, startDate, endDate time.Time) ([]StockData, error) {
-	rows, err := h.db.Raw(`
+    rows, err := h.db.Raw(`
     SELECT id, datetime, open, close, high, low, volume, amount, amplitude,
-           percentage_change, amount_change, turnover_rate, type, symbol,
+           percentage_change, amount_change, turnover_rate, type, symbol, date_str,
            created_at, updated_at
     FROM stock_data
     WHERE symbol = $1 AND type = $2 AND datetime >= $3 AND datetime <= $4
@@ -400,15 +410,15 @@ func (h *DatabaseHandler) GetStockDataByDateRange(symbol string, stockType int, 
 	var results []StockData
 	for rows.Next() {
 		var data StockData
-		if err := rows.Scan(
-			&data.ID, &data.Datetime, &data.Open, &data.Close, &data.High, &data.Low,
-			&data.Volume, &data.Amount, &data.Amplitude, &data.PercentageChange,
-			&data.AmountChange, &data.TurnoverRate, &data.Type, &data.Symbol,
-			&data.CreatedAt, &data.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan row: %v", err)
-		}
-		results = append(results, data)
+        if err := rows.Scan(
+            &data.ID, &data.Datetime, &data.Open, &data.Close, &data.High, &data.Low,
+            &data.Volume, &data.Amount, &data.Amplitude, &data.PercentageChange,
+            &data.AmountChange, &data.TurnoverRate, &data.Type, &data.Symbol, &data.DateStr,
+            &data.CreatedAt, &data.UpdatedAt,
+        ); err != nil {
+            return nil, fmt.Errorf("failed to scan row: %v", err)
+        }
+        results = append(results, data)
 	}
 	return results, nil
 }

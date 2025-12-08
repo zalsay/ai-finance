@@ -15,6 +15,11 @@ export interface StockPrediction {
     actuals: number[];
     predictions: number[];
   };
+  latestChartData?: {
+    dates: string[];
+    actuals: number[];
+    predictions: number[];
+  };
   maxDeviationPercent?: number;
 }
 
@@ -24,6 +29,7 @@ export interface StockData {
   currentPrice: number;
   changePercent: number;
   predictedChangePercent?: number;
+  futurePredictedChangePercent?: number;
   prediction?: StockPrediction;
 }
 

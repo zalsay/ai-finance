@@ -40,14 +40,14 @@ func (s *AuthService) Register(req *models.RegisterRequest) (*models.AuthRespons
 
 	// Create user
 	var user models.User
-	query := `
-		INSERT INTO users (email, password_hash, username)
-		VALUES ($1, $2, $3)
-		RETURNING id, email, username, is_premium, created_at, updated_at
-	`
-	err = s.db.Conn.QueryRow(query, req.Email, string(hashedPassword), req.Username).Scan(
-		&user.ID, &user.Email, &user.Username, &user.IsPremium, &user.CreatedAt, &user.UpdatedAt,
-	)
+    query := `
+        INSERT INTO users (email, password_hash, username, membership_level)
+        VALUES ($1, $2, $3, 0)
+        RETURNING id, email, username, is_premium, membership_level, created_at, updated_at
+    `
+    err = s.db.Conn.QueryRow(query, req.Email, string(hashedPassword), req.Username).Scan(
+        &user.ID, &user.Email, &user.Username, &user.IsPremium, &user.MembershipLevel, &user.CreatedAt, &user.UpdatedAt,
+    )
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
@@ -73,14 +73,14 @@ func (s *AuthService) Login(req *models.LoginRequest) (*models.AuthResponse, err
 	var user models.User
 	var passwordHash string
 
-	query := `
-		SELECT id, email, password_hash, username, is_premium, created_at, updated_at
-		FROM users 
-		WHERE email = $1
-	`
-	err := s.db.Conn.QueryRow(query, req.Email).Scan(
-		&user.ID, &user.Email, &passwordHash, &user.Username, &user.IsPremium, &user.CreatedAt, &user.UpdatedAt,
-	)
+    query := `
+        SELECT id, email, password_hash, username, is_premium, membership_level, created_at, updated_at
+        FROM users 
+        WHERE email = $1
+    `
+    err := s.db.Conn.QueryRow(query, req.Email).Scan(
+        &user.ID, &user.Email, &passwordHash, &user.Username, &user.IsPremium, &user.MembershipLevel, &user.CreatedAt, &user.UpdatedAt,
+    )
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("invalid email or password")
@@ -112,14 +112,14 @@ func (s *AuthService) Login(req *models.LoginRequest) (*models.AuthResponse, err
 
 func (s *AuthService) GetUserProfile(userID int) (*models.UserProfile, error) {
 	var profile models.UserProfile
-	query := `
-		SELECT id, email, username, is_premium, created_at
-		FROM users 
-		WHERE id = $1
-	`
-	err := s.db.Conn.QueryRow(query, userID).Scan(
-		&profile.ID, &profile.Email, &profile.Username, &profile.IsPremium, &profile.CreatedAt,
-	)
+    query := `
+        SELECT id, email, username, is_premium, membership_level, created_at
+        FROM users 
+        WHERE id = $1
+    `
+    err := s.db.Conn.QueryRow(query, userID).Scan(
+        &profile.ID, &profile.Email, &profile.Username, &profile.IsPremium, &profile.MembershipLevel, &profile.CreatedAt,
+    )
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("user not found")
@@ -155,14 +155,14 @@ func (s *AuthService) ValidateSession(token string) (*models.User, error) {
 
 	// Get user details
 	var user models.User
-	query := `
-		SELECT id, email, username, is_premium, created_at, updated_at
-		FROM users 
-		WHERE id = $1
-	`
-	err = s.db.Conn.QueryRow(query, claims.UserID).Scan(
-		&user.ID, &user.Email, &user.Username, &user.IsPremium, &user.CreatedAt, &user.UpdatedAt,
-	)
+    query := `
+        SELECT id, email, username, is_premium, membership_level, created_at, updated_at
+        FROM users 
+        WHERE id = $1
+    `
+    err = s.db.Conn.QueryRow(query, claims.UserID).Scan(
+        &user.ID, &user.Email, &user.Username, &user.IsPremium, &user.MembershipLevel, &user.CreatedAt, &user.UpdatedAt,
+    )
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -204,13 +204,21 @@ func (s *AuthService) hashToken(token string) string {
 }
 
 func (s *AuthService) CleanupExpiredSessions() error {
-	_, err := s.db.Conn.Exec("DELETE FROM user_sessions WHERE expires_at < NOW()")
-	return err
+    _, err := s.db.Conn.Exec("DELETE FROM user_sessions WHERE expires_at < NOW()")
+    return err
 }
 
 func nullString(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
+    if s == "" {
+        return nil
+    }
+    return &s
+}
+
+func (s *AuthService) UpdateMembershipLevel(userID int, level int) error {
+    if level < 0 || level > 3 {
+        return fmt.Errorf("invalid membership level")
+    }
+    _, err := s.db.Conn.Exec(`UPDATE users SET membership_level = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, level, userID)
+    return err
 }

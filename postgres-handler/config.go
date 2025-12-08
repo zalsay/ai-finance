@@ -41,6 +41,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     CREATE TABLE IF NOT EXISTS stock_data (
         id SERIAL,
         datetime TIMESTAMP NOT NULL,
+        date_str VARCHAR(10) NOT NULL,
         open DECIMAL(10,4) NOT NULL,
         close DECIMAL(10,4) NOT NULL,
         high DECIMAL(10,4) NOT NULL,
@@ -80,8 +81,13 @@ func (h *DatabaseHandler) initializeDatabase() error {
         }
         createIndexSQL := fmt.Sprintf(`
         CREATE INDEX IF NOT EXISTS idx_%s_datetime ON %s (datetime);
+        CREATE INDEX IF NOT EXISTS idx_%s_date_str ON %s (date_str);
         CREATE INDEX IF NOT EXISTS idx_%s_symbol ON %s (symbol);
-        CREATE INDEX IF NOT EXISTS idx_%s_symbol_datetime ON %s (symbol, datetime);`, p.name, p.name, p.name, p.name, p.name, p.name)
+        CREATE INDEX IF NOT EXISTS idx_%s_symbol_datetime ON %s (symbol, datetime);`,
+            p.name, p.name,
+            p.name, p.name,
+            p.name, p.name,
+            p.name, p.name)
         if err := h.db.Exec(createIndexSQL).Error; err != nil {
             log.Printf("Warning: failed to create index for %s: %v", p.name, err)
         }
@@ -209,7 +215,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     createStrategyParamsSQL := `
     CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
         id SERIAL PRIMARY KEY,
-        unique_key VARCHAR(255) NOT NULL UNIQUE,
+        unique_key VARCHAR(255) NOT NULL,
         user_id INTEGER,
         buy_threshold_pct DOUBLE PRECISION,
         sell_threshold_pct DOUBLE PRECISION,
@@ -223,13 +229,27 @@ func (h *DatabaseHandler) initializeDatabase() error {
         take_profit_threshold_pct DOUBLE PRECISION,
         take_profit_sell_frac DOUBLE PRECISION,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uni_timesfm_strategy_params_unique_key UNIQUE (unique_key)
     );
     CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(user_id);
     `
     if err := h.db.Exec(createStrategyParamsSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_strategy_params table: %v", err)
     }
+    // 为已存在的表补充唯一约束（如果缺失）
+    ensureUniqueConstraintSQL := `
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'uni_timesfm_strategy_params_unique_key'
+        ) THEN
+            ALTER TABLE timesfm_strategy_params
+            ADD CONSTRAINT uni_timesfm_strategy_params_unique_key UNIQUE (unique_key);
+        END IF;
+    END
+    $$;`
+    _ = h.db.Exec(ensureUniqueConstraintSQL).Error
     _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_symbol_ds ON timesfm_forecast (symbol, ds);`).Error
     _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_forecast_svhl_ds ON timesfm_forecast (symbol, version, horizon_len, ds);`).Error
 
@@ -251,6 +271,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
         context_len INTEGER NOT NULL,
         horizon_len INTEGER NOT NULL,
         short_name TEXT,
+        stock_type INTEGER,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
@@ -259,6 +280,8 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if err := h.db.Exec(createTimesfmBestSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_best_predictions table: %v", err)
     }
+    // 为已存在的表补充缺失列（如果缺失）
+    _ = h.db.Exec(`ALTER TABLE timesfm_best_predictions ADD COLUMN IF NOT EXISTS stock_type INTEGER`).Error
 
     createTimesfmValChunksSQL := `
     CREATE TABLE IF NOT EXISTS timesfm_best_validation_chunks (
@@ -272,6 +295,8 @@ func (h *DatabaseHandler) initializeDatabase() error {
         predictions JSONB NOT NULL,
         actual_values JSONB NOT NULL,
         dates JSONB NOT NULL,
+        stock_name TEXT,
+        stock_type INTEGER,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_timesfm_best FOREIGN KEY (unique_key)
@@ -284,6 +309,9 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if err := h.db.Exec(createTimesfmValChunksSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_best_validation_chunks table: %v", err)
     }
+    // 为已存在的表补充缺失列（如果缺失）
+    _ = h.db.Exec(`ALTER TABLE timesfm_best_validation_chunks ADD COLUMN IF NOT EXISTS stock_name TEXT`).Error
+    _ = h.db.Exec(`ALTER TABLE timesfm_best_validation_chunks ADD COLUMN IF NOT EXISTS stock_type INTEGER`).Error
 
     createTimesfmBacktestsSQL := `
     CREATE TABLE IF NOT EXISTS timesfm_backtests (
@@ -324,7 +352,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if err := h.db.Exec(createTimesfmBacktestsSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_backtests table: %v", err)
     }
-    if err := h.db.AutoMigrate(&EtfDailyData{}, &IndexInfo{}, &IndexDailyData{}, &StockCommentDaily{}, &TimesfmForecast{}, &StrategyParams{}); err != nil {
+    if err := h.db.AutoMigrate(&EtfDailyData{}, &IndexInfo{}, &IndexDailyData{}, &StockCommentDaily{}, &TimesfmForecast{}); err != nil {
         log.Printf("AutoMigrate warning: %v", err)
     }
     return nil

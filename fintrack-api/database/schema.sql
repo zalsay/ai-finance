@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_name VARCHAR(50),
     is_active BOOLEAN DEFAULT TRUE,
     is_premium BOOLEAN DEFAULT FALSE,
+    membership_level INT DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -114,3 +115,6 @@ CREATE INDEX IF NOT EXISTS idx_strategy_params_user ON timesfm_strategy_params(u
 
 -- Add strategy_unique_key to existing user_watchlist table if it doesn't exist
 ALTER TABLE user_watchlist ADD COLUMN IF NOT EXISTS strategy_unique_key VARCHAR(255);
+
+-- Add membership_level to users if it doesn't exist
+ALTER TABLE users ADD COLUMN IF NOT EXISTS membership_level INT DEFAULT 0;

@@ -27,6 +27,7 @@ const FilterChip: React.FC<{ label: string; active?: boolean; onClick: () => voi
 const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: propIsLoading, error: propError, onRefresh }) => {
     const { t, language } = useLanguage();
     const [activeFilter, setActiveFilter] = useState('All');
+    const [activeHorizon, setActiveHorizon] = useState<3 | 7>(3);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const filters = ['All', 'Highest Confidence', 'Potential Growth', 'Bullish', 'Bearish'];
     
@@ -35,16 +36,34 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
+        let isMounted = true;
+        console.log(`[Dashboard] Effect triggered. ActiveHorizon: ${activeHorizon}`);
+        setPublicStocks([]); // Clear current list before fetching new data
+        
         const fetchPublic = async () => {
+            console.log(`[Dashboard] Fetching public predictions for horizon: ${activeHorizon}`);
             setIsFetching(true);
             setFetchError(null);
             try {
-                const res = await getPublicPredictions();
+                const res = await getPublicPredictions(activeHorizon);
+                if (!isMounted) {
+                    console.log(`[Dashboard] Component unmounted or effect cleanup, ignoring result for horizon: ${activeHorizon}`);
+                    return;
+                }
+                
+                console.log(`[Dashboard] Received response for horizon ${activeHorizon}:`, res.items?.length, "items");
+
                 if (res && res.items) {
                      const mapped = res.items.map(item => {
                         const bestItemKey = item.best.best_prediction_item;
                         const contextLen = item.best.context_len;
                         const horizonLen = item.best.horizon_len;
+                        
+                        // Debug log for item horizon
+                        if (horizonLen !== activeHorizon) {
+                             console.warn(`[Dashboard] Mismatch! Received item with horizon ${horizonLen} but requested ${activeHorizon}`, item.best.symbol);
+                        }
+
                         // Sort chunks by date ascending (oldest first)
                         const sortedChunks = (item.chunks || []).sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
                         
@@ -124,17 +143,35 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
                             }
                         } as StockData;
                     }).filter((item): item is StockData => item !== null);
-                    setPublicStocks(mapped);
+                    
+                    // Client-side filtering to ensure data consistency
+                    const strictlyFiltered = mapped.filter(s => s.prediction && s.prediction.horizonLen === activeHorizon);
+                    
+                    // Deduplicate by symbol to prevent list growth from duplicates
+                    const uniqueStocks = Array.from(new Map(strictlyFiltered.map(item => [item.symbol, item])).values());
+
+                    if (isMounted) {
+                        console.log(`[Dashboard] Setting public stocks for horizon ${activeHorizon}:`, uniqueStocks.length, "(Original:", mapped.length, ")");
+                        setPublicStocks(uniqueStocks);
+                    }
                 }
             } catch (e: any) {
-                console.error("Fetch error", e);
-                setFetchError(e.message || "Failed to load public predictions");
+                if (isMounted) {
+                    console.error("Fetch error", e);
+                    setFetchError(e.message || "Failed to load public predictions");
+                }
             } finally {
-                setIsFetching(false);
+                if (isMounted) {
+                    setIsFetching(false);
+                }
             }
         };
         fetchPublic();
-    }, [language]);
+
+        return () => {
+            isMounted = false;
+        };
+    }, [language, activeHorizon]);
 
     const handleAddStock = async (symbol: string, type: 1 | 2 = 1) => {
         await watchlistAPI.addToWatchlist({ symbol, stock_type: type });
@@ -174,12 +211,18 @@ const Dashboard: React.FC<DashboardProps> = ({ stocks: propStocks, isLoading: pr
             </header>
             <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap justify-between gap-2 items-center">
-                    <div className="flex gap-2">
-                        <button className="flex items-center justify-center p-2 rounded-lg text-white/80 bg-white/5 hover:bg-white/10 transition-colors">
-                            <span className="material-symbols-outlined text-xl">calendar_today</span>
+                    <div className="flex space-x-1 bg-white/5 rounded-lg p-1">
+                        <button
+                            onClick={() => setActiveHorizon(3)}
+                            className={`px-6 py-2 rounded-md text-sm font-bold transition-all ${activeHorizon === 3 ? 'bg-primary text-black shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                        >
+                            P-3
                         </button>
-                        <button className="flex items-center justify-center p-2 rounded-lg text-white/80 bg-white/5 hover:bg-white/10 transition-colors">
-                            <span className="material-symbols-outlined text-xl">sort</span>
+                        <button
+                            onClick={() => setActiveHorizon(7)}
+                            className={`px-6 py-2 rounded-md text-sm font-bold transition-all ${activeHorizon === 7 ? 'bg-primary text-black shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                        >
+                            P-7
                         </button>
                     </div>
                     <button

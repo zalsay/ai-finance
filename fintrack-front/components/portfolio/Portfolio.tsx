@@ -4,7 +4,7 @@ import StrategyCard from '../dashboard/StrategyCard';
 import CreateStrategyModal from '../dashboard/CreateStrategyModal';
 import BindStrategyModal from './BindStrategyModal';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { watchlistAPI, strategyAPI } from '../../services/apiService';
+import { watchlistAPI, strategyAPI, backtestAPI } from '../../services/apiService';
 
 interface PortfolioProps {
     onAuthError?: () => void;
@@ -20,6 +20,7 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [bindingLoading, setBindingLoading] = useState<string | null>(null); // symbol being bound
+    const [backtestLoading, setBacktestLoading] = useState<string | null>(null); // symbol being backtested
     const [bindModalData, setBindModalData] = useState<{symbol: string, currentKey: string | null} | null>(null);
 
     const fetchWatchlist = useCallback(async () => {
@@ -87,6 +88,45 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
             // Optional: Show toast error
         } finally {
             setBindingLoading(null);
+        }
+    };
+
+    const handleBacktest = async (stockSymbol: string, strategy: any) => {
+        if (!stockSymbol || !strategy) return;
+        setBacktestLoading(stockSymbol);
+        try {
+            const req = {
+                stock_code: stockSymbol,
+                buy_threshold_pct: strategy.buy_threshold_pct,
+                sell_threshold_pct: strategy.sell_threshold_pct,
+                initial_cash: strategy.initial_cash,
+                enable_rebalance: strategy.enable_rebalance,
+                max_position_pct: strategy.max_position_pct,
+                min_position_pct: strategy.min_position_pct,
+                slope_position_per_pct: strategy.slope_position_per_pct,
+                rebalance_tolerance_pct: strategy.rebalance_tolerance_pct,
+                trade_fee_rate: strategy.trade_fee_rate,
+                take_profit_threshold_pct: strategy.take_profit_threshold_pct,
+                take_profit_sell_frac: strategy.take_profit_sell_frac,
+                years: 10,
+                horizon_len: 7,
+                context_len: 2048
+            };
+            const res = await backtestAPI.runBacktest(req);
+            if (res.success) {
+                 const totalReturn = res.backtest.total_return_pct;
+                 alert(language === 'zh' ? 
+                    `回测完成!\n总收益率: ${totalReturn.toFixed(2)}%\n交易次数: ${res.backtest.trades.length}` : 
+                    `Backtest Finished!\nTotal Return: ${totalReturn.toFixed(2)}%\nTrades: ${res.backtest.trades.length}`);
+                 console.log(res.backtest);
+            } else {
+                 alert((language === 'zh' ? '回测失败: ' : 'Backtest failed: ') + res.error);
+            }
+        } catch (e: any) {
+            console.error(e);
+            alert((language === 'zh' ? '回测错误: ' : 'Backtest error: ') + e.message);
+        } finally {
+            setBacktestLoading(null);
         }
     };
 
@@ -213,7 +253,7 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                                                         </span>
                                                     )}
                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary/80 font-mono">
-                                                        {currentStrategy.buy_threshold_pct}% | {currentStrategy.sell_threshold_pct}%
+                                                        {currentStrategy.buy_threshold_pct}%|{currentStrategy.sell_threshold_pct}%
                                                     </span>
                                                 </div>
                                             ) : (
@@ -223,6 +263,16 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                                         <td className="px-6 py-4">
                                             {item.unique_key ? (
                                                 <div className="flex items-center gap-2">
+                                                    {currentStrategy && (
+                                                        <button
+                                                            onClick={() => handleBacktest(item.stock.symbol, currentStrategy)}
+                                                            disabled={backtestLoading === item.stock.symbol}
+                                                            className="px-3 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-medium hover:bg-purple-500/20 hover:border-purple-500/30 transition-all text-center flex items-center gap-1"
+                                                        >
+                                                            {backtestLoading === item.stock.symbol && <span className="material-symbols-outlined animate-spin text-[10px]">progress_activity</span>}
+                                                            {language === 'zh' ? '回测' : 'Backtest'}
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => setBindModalData({
                                                             symbol: item.stock.symbol,

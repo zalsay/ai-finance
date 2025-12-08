@@ -84,4 +84,4 @@ fintrack-ai-front/node_modules
 ai-fucntions/timesfm_inference/timesfm-2p5-functions/timesfm-2.5
 *.txt
 run
-postgres-handler/run
+ai-fucntions/timesfm_inference/forecast-results

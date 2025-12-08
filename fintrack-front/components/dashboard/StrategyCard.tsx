@@ -85,7 +85,7 @@ const StrategyCard: React.FC<StrategyCardProps> = ({ uniqueKey, symbol, onUpdate
                         <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                             <div className="flex flex-col">
                                 <span className="text-white/40 text-xs">{language === 'zh' ? '初始资金' : 'Initial Cash'}</span>
-                                <span className="text-white font-mono font-medium">${strategy.initial_cash.toLocaleString()}</span>
+                                <span className="text-white font-mono font-medium">{strategy.initial_cash.toLocaleString()}</span>
                             </div>
                             <div className="flex flex-col">
                                 <span className="text-white/40 text-xs">{language === 'zh' ? '动态平衡' : 'Rebalance'}</span>
@@ -96,13 +96,13 @@ const StrategyCard: React.FC<StrategyCardProps> = ({ uniqueKey, symbol, onUpdate
                             <div className="flex flex-col">
                                 <span className="text-white/40 text-xs">{language === 'zh' ? '买/卖阈值' : 'Buy/Sell Threshold'}</span>
                                 <span className="text-white font-mono font-medium">
-                                    {strategy.buy_threshold_pct}% | {strategy.sell_threshold_pct}%
+                                    {strategy.buy_threshold_pct}%|{strategy.sell_threshold_pct}%
                                 </span>
                             </div>
                             <div className="flex flex-col">
                                 <span className="text-white/40 text-xs">{language === 'zh' ? '仓位范围' : 'Position Range'}</span>
                                 <span className="text-white font-mono font-medium">
-                                    {Math.round(strategy.min_position_pct * 100)}% - {Math.round(strategy.max_position_pct * 100)}%
+                                    {Math.round(strategy.min_position_pct * 100)}%-{Math.round(strategy.max_position_pct * 100)}%
                                 </span>
                             </div>
                         </div>

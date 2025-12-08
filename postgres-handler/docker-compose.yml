@@ -2,16 +2,11 @@ version: '3.8'
 
 services:
   pos-handler:
-    image: 192.168.9.20:8500/go-runtime:alpine 
+    build: .
     container_name: pos-handler
     working_dir: /app
-    
-    # 启动命令：运行挂载进来的二进制文件
-    command: ["./run"]
-
-    # 挂载宿主机文件和目录
-    volumes:
-      - ./run:/app/run:ro          # 可执行文件（只读）
+    # 启动命令：运行镜像内构建的二进制文件
+    command: ["./postgres-handler"]
 
     # 环境变量（可从 .env 文件加载，也可在这里覆盖）
     environment:

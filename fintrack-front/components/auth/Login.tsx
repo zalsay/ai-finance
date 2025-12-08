@@ -20,25 +20,44 @@ interface InputFieldProps {
     value: string;
     onChange: (value: string) => void;
     disabled?: boolean;
+    isPassword?: boolean;
 }
 
-const InputField: React.FC<InputFieldProps> = ({ id, label, type, placeholder, value, onChange, disabled }) => (
-    <div className="flex flex-col gap-1.5">
-        <label htmlFor={id} className="text-sm font-medium text-white">
-            {label}
-        </label>
-        <input
-            id={id}
-            type={type}
-            className="flex h-12 w-full rounded-lg border border-[#444] bg-[#2a2a2a] px-3 py-2 text-sm text-white placeholder:text-[#666] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 transition-all"
-            placeholder={placeholder}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            disabled={disabled}
-            required
-        />
-    </div>
-);
+const InputField: React.FC<InputFieldProps> = ({ id, label, type, placeholder, value, onChange, disabled, isPassword }) => {
+    const [showPassword, setShowPassword] = useState(false);
+    const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
+
+    return (
+        <div className="flex flex-col gap-1.5">
+            <label htmlFor={id} className="text-sm font-medium text-white">
+                {label}
+            </label>
+            <div className="relative">
+                <input
+                    id={id}
+                    type={inputType}
+                    className="flex h-12 w-full rounded-lg border border-[#444] bg-[#2a2a2a] px-3 py-2 text-sm text-white placeholder:text-[#666] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 transition-all pr-10"
+                    placeholder={placeholder}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    disabled={disabled}
+                    required
+                />
+                {isPassword && (
+                    <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#666] hover:text-white transition-colors flex items-center justify-center"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">
+                            {showPassword ? 'visibility_off' : 'visibility'}
+                        </span>
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
 
 interface CheckboxFieldProps {
     id: string;
@@ -186,6 +205,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onBack }) => {
                                 value={password}
                                 onChange={setPassword}
                                 disabled={isLoading}
+                                isPassword={true}
                             />
 
                             {formType === 'login' && (

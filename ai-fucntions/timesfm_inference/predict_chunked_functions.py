@@ -1,5 +1,4 @@
 
-import chunk
 from req_res_types import *
 from typing import List, Optional, Dict, Any
 import os
@@ -16,6 +15,9 @@ sys.path.append(pre_data_dir)
 ak_tools_dir = os.path.join(parent_dir, 'akshare-tools')
 sys.path.append(ak_tools_dir)
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def _round_obj(o):
     import numpy as _np
@@ -130,13 +132,15 @@ async def predict_next_chunk_by_unique_key(
         next_date = None
         chunks_num = 0
         try:
-            base_url = os.environ.get('POSTGRES_API', 'http://localhost:58004')
+            base_url = os.environ.get('POSTGRES_URL', 'http://go-api.meetlife.com.cn:8000')
+            base_url = 'http://localhost:58004'
             pg_tmp = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
             await pg_tmp.open()
             sc_latest, data_latest, _ = await pg_tmp.get_latest_val_chunk(unique_key)
             if sc_latest == 200 and isinstance(data_latest, dict):
                 d = data_latest.get('data') if 'data' in data_latest else data_latest
                 if isinstance(d, dict):
+                    print(f"✅ 最新验证分块数据: {d}")
                     stock_name = d.get('stock_name', "")
                     stock_type = d.get('stock_type', 1)
                     last_start = d.get('start_date')
@@ -226,9 +230,23 @@ async def predict_next_chunk_by_unique_key(
             user_id=user_id,
         )
         df_test = pd.DataFrame()
-
+        result = None
         for i in range(chunks_num):
-            df_train_chunk = df_train.iloc[i * horizon_len: (i + 1) * horizon_len, :]
+            # 基于 chunks_num 逐步扩展训练集长度；避免 ":-0" 导致空切片
+            k = (chunks_num - i - 1) * horizon_len
+            end_idx = df_train.shape[0] - k
+            # 边界保护：确保 end_idx 至少为 1，至多为训练集长度
+            if end_idx <= 0:
+                print(f"⚠️ 第{i}个分块训练集长度不足（end_idx={end_idx}），跳过该分块")
+                continue
+            if end_idx > df_train.shape[0]:
+                end_idx = df_train.shape[0]
+            df_train_chunk = df_train.iloc[: end_idx, :]
+            # 打印训练集日期时做空集保护
+            if df_train_chunk.empty:
+                print(f"⚠️ 第{i}个分块训练集为空，跳过该分块")
+                continue
+            print(f"✅ 训练集日期: {df_train_chunk['ds'].iloc[0]} - {df_train_chunk['ds'].iloc[-1]}")
             trading_dates_chunk = trading_dates[i * horizon_len: (i + 1) * horizon_len]
             result = predict_single_chunk_mode1(
                 df_train=df_train_chunk,
@@ -251,13 +269,13 @@ async def predict_next_chunk_by_unique_key(
                         "end_date": dates_str[-1],
                         # 服务端期望 predictions 为对象（map），不能是数组
                         "predictions": {str(best_prediction_item): final_result},
-                        "actual_values": [],
                         "dates": dates_str,
                         "symbol": symbol,
                         "is_public": 0,
                         "user_id": user_id,
                         "stock_name": stock_name,
                         "stock_type": stock_type,
+                        "horizon_len": horizon_len,
                     }
                     # print(f"✅ 下一分块数据: {payload}")
                     status_code, data, body_text = await pg_tmp.save_best_val_chunk(payload)
@@ -1220,6 +1238,7 @@ async def predict_validation_chunks_only(
                             "symbol": request.stock_code,
                             "is_public": 1 if getattr(request, 'user_id', None) == 1 else 0,
                             "user_id": getattr(request, 'user_id', None),
+                            "stock_type": request.stock_type,
                         }
 
                         status_code, data, body_text = await pg.save_best_val_chunk(_round_obj(chunk_payload))

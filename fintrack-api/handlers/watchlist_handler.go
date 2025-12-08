@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"math"
 	"net/http"
 	"strconv"
@@ -33,19 +34,19 @@ func (h *WatchlistHandler) AddToWatchlist(c *gin.Context) {
 		return
 	}
 
-    err := h.watchlistService.AddToWatchlist(userID.(int), &req)
-    if err != nil {
-        if err.Error() == services.ErrSymbolNotFound.Error() {
-            c.JSON(http.StatusBadRequest, gin.H{"error": "symbol not found"})
-            return
-        }
-        if err.Error() == services.ErrDuplicateSymbol.Error() {
-            c.JSON(http.StatusBadRequest, gin.H{"error": "duplicate symbol"})
-            return
-        }
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+	err := h.watchlistService.AddToWatchlist(userID.(int), &req)
+	if err != nil {
+		if err.Error() == services.ErrSymbolNotFound.Error() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "symbol not found"})
+			return
+		}
+		if err.Error() == services.ErrDuplicateSymbol.Error() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "duplicate symbol"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Trigger stock data sync asynchronously (non-blocking)
 	go h.watchlistService.SyncStockData(req.Symbol)
@@ -175,56 +176,56 @@ func (h *WatchlistHandler) GetUserStrategies(c *gin.Context) {
 }
 
 func (h *WatchlistHandler) GetBatchLatestQuotes(c *gin.Context) {
-    userID, exists := c.Get("user_id")
-    if !exists {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-        return
-    }
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 
-    var req models.BatchSymbolsRequest
-    if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-    if len(req.Symbols) == 0 {
-        c.JSON(http.StatusOK, gin.H{"quotes": []models.LatestQuote{}})
-        return
-    }
+	var req models.BatchSymbolsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.Symbols) == 0 {
+		c.JSON(http.StatusOK, gin.H{"quotes": []models.LatestQuote{}})
+		return
+	}
 
-    quotes, err := h.watchlistService.GetLatestQuotesBySymbols(req.Symbols)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+	quotes, err := h.watchlistService.GetLatestQuotesBySymbols(req.Symbols)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    _ = userID
-    c.JSON(http.StatusOK, gin.H{"quotes": quotes})
+	_ = userID
+	c.JSON(http.StatusOK, gin.H{"quotes": quotes})
 }
 
 func (h *WatchlistHandler) LookupStockName(c *gin.Context) {
-    symbol := c.Query("symbol")
-    if symbol == "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "symbol is required"})
-        return
-    }
-    stockTypeStr := c.Query("stock_type")
-    stockType := 1
-    if stockTypeStr != "" {
-        if v, err := strconv.Atoi(stockTypeStr); err == nil {
-            stockType = v
-        }
-    }
+	symbol := c.Query("symbol")
+	if symbol == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "symbol is required"})
+		return
+	}
+	stockTypeStr := c.Query("stock_type")
+	stockType := 1
+	if stockTypeStr != "" {
+		if v, err := strconv.Atoi(stockTypeStr); err == nil {
+			stockType = v
+		}
+	}
 
-    name, err := h.watchlistService.LookupStockName(symbol, stockType)
-    if err != nil {
-        if err.Error() == services.ErrSymbolNotFound.Error() {
-            c.JSON(http.StatusNotFound, gin.H{"error": "symbol not found"})
-            return
-        }
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"symbol": symbol, "name": name})
+	name, err := h.watchlistService.LookupStockName(symbol, stockType)
+	if err != nil {
+		if err.Error() == services.ErrSymbolNotFound.Error() {
+			c.JSON(http.StatusNotFound, gin.H{"error": "symbol not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"symbol": symbol, "name": name})
 }
 
 // 查询某用户的TimesFM最佳分位预测列表
@@ -301,7 +302,14 @@ func (h *WatchlistHandler) GetStrategyParamsByUniqueKey(c *gin.Context) {
 
 // 公开查询：返回 is_public = 1 的 timesfm-best，并联查对应的验证分块数据
 func (h *WatchlistHandler) ListPublicTimesfmBestWithValidation(c *gin.Context) {
-	items, err := h.watchlistService.ListPublicTimesfmBest()
+	horizonLen := 0
+	if hStr := c.Query("horizon_len"); hStr != "" {
+		if val, err := strconv.Atoi(hStr); err == nil {
+			horizonLen = val
+		}
+	}
+
+	items, err := h.watchlistService.ListPublicTimesfmBest(horizonLen)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -317,32 +325,78 @@ func (h *WatchlistHandler) ListPublicTimesfmBestWithValidation(c *gin.Context) {
 		}
 
 		var maxDevPercent float64 = 0
-		for _, chunk := range chunks {
-			// chunk.Predictions is map[string]interface{}
-			// We need to find the prediction array corresponding to it.BestPredictionItem
-			if val, ok := chunk.Predictions[it.BestPredictionItem]; ok {
-				if predArr, ok := val.([]interface{}); ok {
-					for i, p := range predArr {
-						if i < len(chunk.Actual) {
-							actual := chunk.Actual[i]
-							var predicted float64
-							// JSON numbers are float64
-							switch v := p.(type) {
-							case float64:
-								predicted = v
-							case float32:
-								predicted = float64(v)
-							case int:
-								predicted = float64(v)
-							}
+		for idx := range chunks {
+			chunk := &chunks[idx]
 
-							if actual != 0 {
-								dev := math.Abs((predicted-actual)/actual) * 100
-								if dev > maxDevPercent {
-									maxDevPercent = dev
-								}
+			// helper: convert interface slice to []float64
+			toFloatSlice := func(val interface{}) []float64 {
+				res := []float64{}
+				if arr, ok := val.([]interface{}); ok {
+					for _, p := range arr {
+						switch v := p.(type) {
+						case float64:
+							res = append(res, v)
+						case float32:
+							res = append(res, float64(v))
+						case int:
+							res = append(res, float64(v))
+						case int64:
+							res = append(res, float64(v))
+						case json.Number:
+							if f, err := v.Float64(); err == nil {
+								res = append(res, f)
 							}
 						}
+					}
+				}
+				return res
+			}
+
+			// best predictions series
+			var bestPred []float64
+			if val, ok := chunk.Predictions[it.BestPredictionItem]; ok {
+				bestPred = toFloatSlice(val)
+			}
+
+			// align-filter: remove points where actual==0 or predicted==0 or invalid, keeping indices consistent across actual/pred/dates
+			filteredActual := make([]float64, 0, len(chunk.Actual))
+			filteredPred := make([]float64, 0, len(bestPred))
+			filteredDates := make([]string, 0, len(chunk.Dates))
+
+			maxLen := len(chunk.Actual)
+			if len(bestPred) < maxLen {
+				maxLen = len(bestPred)
+			}
+			if len(chunk.Dates) < maxLen {
+				maxLen = len(chunk.Dates)
+			}
+			for i := 0; i < maxLen; i++ {
+				a := chunk.Actual[i]
+				p := bestPred[i]
+				if a == 0 || p == 0 || math.IsNaN(a) || math.IsNaN(p) || math.IsInf(a, 0) || math.IsInf(p, 0) {
+					continue
+				}
+				filteredActual = append(filteredActual, a)
+				filteredPred = append(filteredPred, p)
+				filteredDates = append(filteredDates, chunk.Dates[i])
+			}
+
+			// overwrite chunk with filtered aligned data
+			chunk.Actual = filteredActual
+			if _, ok := chunk.Predictions[it.BestPredictionItem]; ok {
+				// store back as []float64 so JSON renders as array of numbers
+				chunk.Predictions[it.BestPredictionItem] = filteredPred
+			}
+			chunk.Dates = filteredDates
+
+			// update max deviation percent from filtered series
+			for i := 0; i < len(filteredActual) && i < len(filteredPred); i++ {
+				a := filteredActual[i]
+				p := filteredPred[i]
+				if a != 0 { // redundant but safe
+					dev := math.Abs((p-a)/a) * 100
+					if dev > maxDevPercent {
+						maxDevPercent = dev
 					}
 				}
 			}
@@ -356,6 +410,32 @@ func (h *WatchlistHandler) ListPublicTimesfmBestWithValidation(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"items": result, "count": len(result)})
+}
+
+func (h *WatchlistHandler) GetFuturePredictions(c *gin.Context) {
+	uniqueKey := c.Query("unique_key")
+	if uniqueKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+		return
+	}
+	dates, preds, predLatest, actualLatest, changePct, err := h.watchlistService.ListFuturePredictionsByUniqueKey(uniqueKey)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"unique_key":               uniqueKey,
+		"dates":                    dates,
+		"predictions":              preds,
+		"count":                    len(dates),
+		"predicted_latest":         predLatest,
+		"actual_latest":            actualLatest,
+		"predicted_change_percent": changePct,
+	})
 }
 
 // 保存 TimesFM 回测结果

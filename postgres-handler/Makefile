@@ -9,7 +9,7 @@ all: build
 build:
 	@echo "构建 PostgreSQL 股票数据处理服务（Linux 静态可执行文件）..."
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-extldflags "-static"' -o run .
-	@chmod +x run
+	@chmod 755 run
 	@echo "构建完成！生成的二进制文件可在 Alpine 容器中直接运行。"
 
 # 安装依赖

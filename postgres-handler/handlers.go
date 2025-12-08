@@ -174,7 +174,7 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		if req.StockType == 2 {
 			// Try getting ETF data to fill ShortName. Use offset 0 to get the latest record.
 			etfData, errEtf := h.GetEtfDaily(req.Symbol, 1, 0)
-			slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
+			// slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
 			if errEtf == nil {
 				if len(etfData) > 0 {
 					req.ShortName = etfData[0].Name
@@ -184,7 +184,7 @@ func (h *DatabaseHandler) saveTimesfmBestHandler(c *gin.Context) {
 		if req.StockType == 1 {
 			code := strings.TrimLeft(req.Symbol, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 			stockData, errStock := h.GetAStockCommentDailyByCode(code, 1, 0)
-			slog.Info("GetAStockCommentDailyByCode", "symbol", req.Symbol, "data", stockData, "err", errStock)
+			// slog.Info("GetAStockCommentDailyByCode", "symbol", req.Symbol, "data", stockData, "err", errStock)
 			if errStock == nil {
 				if len(stockData) > 0 {
 					req.ShortName = stockData[0].Name
@@ -252,6 +252,7 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 		Dates       []string               `json:"dates"`
 		StockName   string                 `json:"stock_name"`
 		StockType   int                    `json:"stock_type"`
+		HorizonLen  int                    `json:"horizon_len"` // 预测长度，不保存
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
@@ -262,7 +263,28 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key and non-negative chunk_index are required"})
 		return
 	}
-
+	if req.StockName == "" {
+		if req.StockType == 2 {
+			// Try getting ETF data to fill ShortName. Use offset 0 to get the latest record.
+			etfData, errEtf := h.GetEtfDaily(req.Symbol, 1, 0)
+			slog.Info("GetEtfDaily", "symbol", req.Symbol, "data", etfData, "err", errEtf)
+			if errEtf == nil {
+				if len(etfData) > 0 {
+					req.StockName = etfData[0].Name
+				}
+			}
+		}
+		if req.StockType == 1 {
+			code := strings.TrimLeft(req.Symbol, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+			stockData, errStock := h.GetAStockCommentDailyByCode(code, 1, 0)
+			slog.Info("GetAStockCommentDailyByCode", "symbol", req.Symbol, "data", stockData, "err", errStock)
+			if errStock == nil {
+				if len(stockData) > 0 {
+					req.StockName = stockData[0].Name
+				}
+			}
+		}
+	}
 	// 查询是否存在记录
 	var existingID int
 	row := h.db.Raw(`SELECT id FROM timesfm_best_validation_chunks WHERE unique_key = $1 AND chunk_index = $2 LIMIT 1`, req.UniqueKey, req.ChunkIndex).Row()
@@ -299,7 +321,62 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 			setParts = append(setParts, fmt.Sprintf("predictions = $%d::jsonb", len(args)+1))
 			args = append(args, string(predsJSON))
 		}
-		if req.Actual != nil && len(req.Actual) > 0 {
+		// actual_values 允许为空：若提供则更新（包括空数组 []），若未提供则不动
+		if req.Actual != nil {
+			actualJSON, _ := json.Marshal(req.Actual)
+			setParts = append(setParts, fmt.Sprintf("actual_values = $%d::jsonb", len(args)+1))
+			args = append(args, string(actualJSON))
+		} else {
+			// 未提供 actual_values，则尝试用数据库中对应日期的收盘价填充。
+			// 日期来源优先使用 req.Dates；否则使用 req.StartDate 和 req.EndDate。
+			var datesForActual []string
+			if req.Dates != nil && len(req.Dates) > 0 {
+				datesForActual = req.Dates
+			}
+			startDateStr := strings.TrimSpace(req.StartDate)
+			endDateStr := strings.TrimSpace(req.EndDate)
+			if (startDateStr == "" || endDateStr == "") && len(datesForActual) > 0 {
+				startDateStr = datesForActual[0]
+				endDateStr = datesForActual[len(datesForActual)-1]
+			}
+			if startDateStr == "" || endDateStr == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "cannot infer date range to build actual_values"})
+				return
+			}
+			sd, err := time.Parse("2006-01-02", startDateStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start_date format (YYYY-MM-DD)"})
+				return
+			}
+			ed, err := time.Parse("2006-01-02", endDateStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid end_date format (YYYY-MM-DD)"})
+				return
+			}
+			slog.Info("query stock data by date range", "symbol", req.Symbol, "stock_type", req.StockType, "start_date", startDateStr, "end_date", endDateStr)
+			actualVals := make([]float64, 0)
+			// 统一使用 stock_data 表查询（ETF 也走此路径）
+			rows, err := h.GetStockDataByDateRange(req.Symbol, req.StockType, sd, ed)
+			if err != nil {
+				slog.Error("failed to query stock data by date range", "error", err)
+			}
+			slog.Info( "rows", rows)
+			closeByDate := make(map[string]float64, len(rows))
+			for _, r := range rows {
+				d := r.Datetime.Format("2006-01-02")
+				closeByDate[d] = r.Close
+			}
+			// 按 dates 逐日匹配，不依赖 horizon_len
+			if len(datesForActual) > 0 {
+				for _, d := range datesForActual {
+					v, ok := closeByDate[d]
+					if !ok {
+						slog.Error("missing close value for date", "date", d)
+					}
+					actualVals = append(actualVals, v)
+				}
+			} 
+			req.Actual = actualVals
 			actualJSON, _ := json.Marshal(req.Actual)
 			setParts = append(setParts, fmt.Sprintf("actual_values = $%d::jsonb", len(args)+1))
 			args = append(args, string(actualJSON))
@@ -330,6 +407,7 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 		updateSQL := fmt.Sprintf("UPDATE timesfm_best_validation_chunks SET %s, updated_at = CURRENT_TIMESTAMP WHERE unique_key = $%d AND chunk_index = $%d",
 			strings.Join(setParts, ", "), len(args)+1, len(args)+2,
 		)
+		// slog.Info("updateSQL", updateSQL)
 		args = append(args, req.UniqueKey, req.ChunkIndex)
 		if err := h.db.Exec(updateSQL, args...).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to update timesfm_best_validation_chunks: %v", err)})
@@ -339,9 +417,9 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 		return
 	}
 
-	// 不存在：执行插入，要求提供所有 NOT NULL 字段
-	if strings.TrimSpace(req.StartDate) == "" || strings.TrimSpace(req.EndDate) == "" || req.Predictions == nil || len(req.Predictions) == 0 || req.Actual == nil || len(req.Actual) == 0 || req.Dates == nil || len(req.Dates) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing required fields for insert (start_date, end_date, predictions, actual_values, dates)"})
+	// 不存在：执行插入，要求提供所有 NOT NULL 字段（actual_values 允许为空，默认插入 [] 或从数据库计算）
+	if strings.TrimSpace(req.StartDate) == "" || strings.TrimSpace(req.EndDate) == "" || req.Predictions == nil || len(req.Predictions) == 0 || req.Dates == nil || len(req.Dates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing required fields for insert (start_date, end_date, predictions, dates)"})
 		return
 	}
 	predsJSON, err := json.Marshal(req.Predictions)
@@ -349,7 +427,51 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "predictions must be JSON object"})
 		return
 	}
-	actualJSON, _ := json.Marshal(req.Actual)
+	// actual_values 允许为空：当未提供或为 nil 时，严格按 HorizonLen 从 stock_data 补齐
+	var actualJSON string
+	if req.Actual != nil {
+		b, _ := json.Marshal(req.Actual)
+		actualJSON = string(b)
+	} else {
+		// 构造日期区间与收盘价序列
+		sd, err := time.Parse("2006-01-02", req.StartDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start_date format (YYYY-MM-DD)"})
+			return
+		}
+		ed, err := time.Parse("2006-01-02", req.EndDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid end_date format (YYYY-MM-DD)"})
+			return
+		}
+		// 改为仅基于 dates 匹配，不依赖 horizon_len
+		if req.Dates == nil || len(req.Dates) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "dates are required when actual_values is empty"})
+			return
+		}
+
+		// 统一使用 stock_data 表查询（A股与ETF均走此路径）
+		rows, e := h.GetStockDataByDateRange(req.Symbol, req.StockType, sd, ed)
+		if e != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to query stock data by date range: %v", e)})
+			return
+		}
+		closeByDate := make(map[string]float64, len(rows))
+		for _, r := range rows {
+			d := r.Datetime.Format("2006-01-02")
+			closeByDate[d] = r.Close
+		}
+		actualVals := make([]float64, 0, len(req.Dates))
+		for _, d := range req.Dates {
+			v, ok := closeByDate[d]
+			if !ok {
+				slog.Error("missing close value for date", "date", d)
+			}
+			actualVals = append(actualVals, v)
+		}
+		b, _ := json.Marshal(actualVals)
+		actualJSON = string(b)
+	}
 	datesJSON, _ := json.Marshal(req.Dates)
 	var uidArg interface{}
 	if req.UserID != nil {
@@ -359,11 +481,11 @@ func (h *DatabaseHandler) saveTimesfmValChunkHandler(c *gin.Context) {
 	}
 	if err := h.db.Exec(`
         INSERT INTO timesfm_best_validation_chunks (
-            unique_key, chunk_index, user_id, symbol, start_date, end_date, predictions, actual_values, dates
+            unique_key, chunk_index, user_id, symbol, start_date, end_date, predictions, actual_values, dates, stock_name, stock_type
         ) VALUES (
-            $1, $2, $3, $4, $5::date, $6::date, $7::jsonb, $8::jsonb, $9::jsonb
+            $1, $2, $3, $4, $5::date, $6::date, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11
         )`,
-		req.UniqueKey, req.ChunkIndex, uidArg, req.Symbol, req.StartDate, req.EndDate, string(predsJSON), string(actualJSON), string(datesJSON),
+		req.UniqueKey, req.ChunkIndex, uidArg, req.Symbol, req.StartDate, req.EndDate, string(predsJSON), actualJSON, string(datesJSON), req.StockName, req.StockType,
 	).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to insert timesfm_best_validation_chunks: %v", err)})
 		return
@@ -434,10 +556,18 @@ func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
 		return
 	}
 
-	row := h.db.Raw(`
+    row := h.db.Raw(`
         SELECT 
-            unique_key, chunk_index, start_date::text, end_date::text, symbol,
-            predictions, actual_values, dates
+            unique_key,
+            chunk_index,
+            start_date::text,
+            end_date::text,
+            symbol,
+            predictions,
+            COALESCE(actual_values, '[]'::jsonb) AS actual_values,
+            COALESCE(dates, '[]'::jsonb) AS dates,
+            COALESCE(stock_name, '') AS stock_name,
+            COALESCE(stock_type, 1) AS stock_type
         FROM timesfm_best_validation_chunks
         WHERE unique_key = $1
         ORDER BY chunk_index DESC
@@ -452,9 +582,11 @@ func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
 		predsJSON  []byte
 		actualJSON []byte
 		datesJSON  []byte
+		stockName  string
+		stockType  int
 	)
 
-	if err := row.Scan(&uk, &chunkIndex, &startDate, &endDate, &symbol, &predsJSON, &actualJSON, &datesJSON); err != nil {
+	if err := row.Scan(&uk, &chunkIndex, &startDate, &endDate, &symbol, &predsJSON, &actualJSON, &datesJSON, &stockName, &stockType); err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
@@ -488,6 +620,8 @@ func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
 		"predictions":   preds,
 		"actual_values": actual,
 		"dates":         dates,
+		"stock_name":    stockName,
+		"stock_type":    stockType,
 	}})
 }
 

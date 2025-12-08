@@ -1,11 +1,12 @@
 import { PublicPredictionResponse } from '../types';
 
 // API服务 - 连接fintrack-api后端
-const DEV_BASE = (import.meta.env as any).VITE_API_BASE_URL_DEV as string | undefined;
-const PROD_BASE = (import.meta.env as any).VITE_API_BASE_URL_PROD as string | undefined;
-const API_BASE_URL = (import.meta.env as any).DEV
+const DEV_BASE = (import.meta as any).env.VITE_API_BASE_URL_DEV as string | undefined;
+const PROD_BASE = (import.meta as any).env.VITE_API_BASE_URL_PROD as string | undefined;
+const API_BASE_URL = (import.meta as any).env.DEV
   ? (DEV_BASE || 'http://localhost:59000/api/v1')
   : (PROD_BASE || 'http://go-api.meetlife.com.cn:9000/api/v1');
+const PYTHON_API_BASE = (import.meta as any).env.VITE_PYTHON_API_BASE || 'http://localhost:8000';
 
 // 存储认证token
 let authToken: string | null = null;
@@ -18,6 +19,7 @@ export interface User {
   first_name?: string;
   last_name?: string;
   is_premium: boolean;
+  membership_level?: number;
   created_at: string;
   updated_at?: string;
 }
@@ -140,6 +142,12 @@ export const authAPI = {
   getProfile: async (): Promise<User> => {
     return apiRequest('/auth/profile');
   },
+  updateMembership: async (level: number): Promise<{ message: string; membership_level: number }> => {
+    return apiRequest('/auth/membership', {
+      method: 'PUT',
+      body: JSON.stringify({ membership_level: level }),
+    });
+  },
 
   // 用户注销
   logout: async (): Promise<void> => {
@@ -170,8 +178,27 @@ export const watchlistAPI = {
   },
 };
 
-export const getPublicPredictions = async (): Promise<PublicPredictionResponse> => {
-  return apiRequest<PublicPredictionResponse>('/get-predictions/mtf-best/public', { method: 'GET' });
+export const getPublicPredictions = async (horizonLen?: number): Promise<PublicPredictionResponse> => {
+  let url = '/get-predictions/mtf-best/public';
+  if (horizonLen) {
+    url += `?horizon_len=${horizonLen}`;
+  }
+  return apiRequest<PublicPredictionResponse>(url, { method: 'GET' });
+};
+
+export interface FuturePredictionsResponse {
+  unique_key: string;
+  dates: string[];
+  predictions: number[];
+  count: number;
+  predicted_latest?: number;
+  actual_latest?: number;
+  predicted_change_percent?: number;
+}
+
+export const getFuturePredictions = async (uniqueKey: string): Promise<FuturePredictionsResponse> => {
+  const params = new URLSearchParams({ unique_key: uniqueKey });
+  return apiRequest<FuturePredictionsResponse>(`/get-predictions/mtf-best/future?${params.toString()}`, { method: 'GET' });
 };
 
 export const getMarketStatus = async () => {
@@ -199,6 +226,24 @@ export const strategyAPI = {
   getUserStrategies: async (): Promise<{ strategies: any[] }> => {
     return apiRequest('/strategy/list');
   },
+};
+
+
+export const backtestAPI = {
+  runBacktest: async (params: any): Promise<any> => {
+     const response = await fetch(`${PYTHON_API_BASE}/backtest/run`, {
+         method: 'POST',
+         headers: {
+             'Content-Type': 'application/json',
+         },
+         body: JSON.stringify(params),
+     });
+     if (!response.ok) {
+         const errorData = await response.json().catch(() => ({}));
+         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+     }
+     return response.json();
+  }
 };
 
 export const quotesAPI = {

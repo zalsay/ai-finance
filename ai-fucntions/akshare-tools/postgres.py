@@ -19,7 +19,7 @@ PostgresHandler: 使用后端Go API读取PG历史数据、通过SCF拉取最新�
 import asyncio, os, sys
 import httpx, time, random
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import pandas as pd
 
@@ -162,7 +162,7 @@ class PostgresHandler:
         try:
             data = await self._get("/health")
             ok = data.get("status") == "ok"
-            logger.info(f"API服务健康检查: {'正常' if ok else '异常'}")
+            # logger.info(f"API服务健康检查: {'正常' if ok else '异常'}")
             return ok
         except Exception as e:
             logger.error(f"API健康检查失败: {e}")
@@ -494,7 +494,6 @@ class PostgresHandler:
 
             # 第一次尝试读取区间数据
             df = await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
-
             # 若为空或无 datetime 列，则直接同步并重读
             if df is None or df.empty or ("datetime" not in df.columns):
                 logger.info(f"区间数据为空或缺少datetime列，触发增量同步: {symbol} {start_compact}~{end_compact}")
@@ -503,9 +502,11 @@ class PostgresHandler:
                     return await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
                 return self._records_to_df([])
 
-            dt_series = pd.to_datetime(df["datetime"], errors="coerce", utc=True).dt.tz_localize(None)
-            earliest_dt = dt_series.min()
-            latest_dt = dt_series.max()
+            print(f"df shape: {df.shape}")
+            # dt_series = pd.to_datetime(df["datetime"], errors="coerce", utc=True).dt.tz_localize(None)
+            # earliest_dt = dt_series.min()
+            latest_dt = df.iloc[-1]["datetime"]
+            # latest_dt = pd.Timestamp(latest_dt).date()
             trading_days = get_trading_days(start_compact, end_compact, need_=False)
             if not trading_days:
                 return df
@@ -514,16 +515,27 @@ class PostgresHandler:
 
             # 不再判断最早日期是否覆盖到目标起始交易日
 
-            if pd.isna(latest_dt) or pd.Timestamp(latest_dt).date() < target_end_date:
-                if pd.isna(latest_dt):
+            # 统一比较到“日期”层级，安全处理 tz-aware/naive
+            latest_dt_ts = pd.NaT if pd.isna(latest_dt) else pd.Timestamp(latest_dt)
+            latest_date = None
+            if not pd.isna(latest_dt_ts):
+                try:
+                    latest_date = latest_dt_ts.tz_convert("UTC").date()
+                except Exception:
+                    # 若为 tz-naive 或不可转换，直接取日期
+                    latest_date = latest_dt_ts.date()
+
+            if latest_date is None or latest_date < target_end_date:
+                if latest_date is None:
                     incr_start_compact = start_compact
                 else:
-                    incr_start_compact = self._to_yyyymmdd(pd.Timestamp(latest_dt).to_pydatetime() + timedelta(days=1))
-                    given_start_compact = start_compact
-                    if pd.Timestamp(given_start_compact) > pd.Timestamp(incr_start_compact):
-                        incr_start_compact = given_start_compact
+                    next_date = latest_date + timedelta(days=1)
+                    incr_start_compact = pd.Timestamp(next_date).strftime("%Y%m%d")
+                given_start_compact = start_compact
+                if pd.Timestamp(given_start_compact) > pd.Timestamp(incr_start_compact):
+                    incr_start_compact = given_start_compact
 
-                logger.info(f"最新日期 {pd.Timestamp(latest_dt).date() if not pd.isna(latest_dt) else 'NaT'} 未覆盖到 {target_end_date}，增量同步: {symbol} {incr_start_compact}~{end_compact}")
+                logger.info(f"最新日期 {latest_date if latest_date is not None else 'NaT'} 未覆盖到 {target_end_date}，增量同步: {symbol} {incr_start_compact}~{end_compact}")
                 await self.sync_stock(symbol, stock_type=stock_type, batch_size=batch_size)
                 if requery:
                     return await self.get_by_date_range_df(symbol, start_dash, end_dash, stock_type=stock_type)
@@ -592,57 +604,60 @@ class PostgresHandler:
                 logger.info(f"最新PG日期: {latest_dt}, 增量开始: {start_date}")
 
 
-        # 结束日期默认取昨天
-        end_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-        trading_days = get_trading_days(start_date, end_date, need_=False)
-        if not trading_days:
-            result["error"] = "未获取到交易日历"
-            return result
-        start_date = trading_days[0]
-        end_date = trading_days[-1]
-        try:
-            # 使用SCF获取该区间数据（同步函数放入线程，避免阻塞事件循环）
-            logger.info(f"从SCF获取数据: symbol={symbol}, start_date={start_date}, end_date={end_date}")
-            sync_handler = SyncDataHanlder()
-            df = await asyncio.to_thread(sync_handler.get_stock_data_from_local, symbol, stock_type, start_date, end_date)
-            if df is None or df.empty:
-                result["error"] = "SCF未返回数据"
+        # 结束日期默认取昨天（统一使用UTC，避免时区比较问题）
+        yesterday_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+        start_date_date = pd.Timestamp(start_date).date()
+        if yesterday_date > start_date_date:
+            end_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d")
+            trading_days = get_trading_days(start_date, end_date, need_=False)
+            if not trading_days:
+                result["error"] = "未获取到交易日历"
                 return result
+            start_date = trading_days[0]
+            end_date = trading_days[-1]
+            try:
+                # 使用SCF获取该区间数据（同步函数放入线程，避免阻塞事件循环）
+                logger.info(f"从SCF获取数据: symbol={symbol}, start_date={start_date}, end_date={end_date}")
+                sync_handler = SyncDataHanlder()
+                df = await asyncio.to_thread(sync_handler.get_stock_data_from_local, symbol, stock_type, start_date, end_date)
+                if df is None or df.empty:
+                    result["error"] = "SCF未返回数据"
+                    return result
 
-            result["fetched_records"] = len(df)
+                result["fetched_records"] = len(df)
 
-            # 转换为PG API需要的列结构
-            api_records = convert_dataframe_to_api_format(df, symbol=symbol, stock_type=stock_type)
-            if not api_records:
-                result["error"] = "数据转换失败或为空"
+                # 转换为PG API需要的列结构
+                api_records = convert_dataframe_to_api_format(df, symbol=symbol, stock_type=stock_type)
+                if not api_records:
+                    result["error"] = "数据转换失败或为空"
+                    return result
+
+                # 按批次写入
+                total = len(api_records)
+                stored = 0
+                batches = 0
+                for i in range(0, total, batch_size):
+                    batch = api_records[i:i + batch_size]
+                    try:
+                        await self.batch_insert(batch)
+                        stored += len(batch)
+                        batches += 1
+                        logger.info(f"批量写入成功: 第 {batches} 批, 记录数={len(batch)}")
+                    except Exception as e:
+                        logger.error(f"第 {batches + 1} 批写入失败: {e}")
+                        # 失败批次可选择继续或中断，这里继续尝试后续批次
+                        continue
+
+                result.update({
+                    "stored_records": stored,
+                    "batches": batches,
+                    "success": stored > 0,
+                })
                 return result
-
-            # 按批次写入
-            total = len(api_records)
-            stored = 0
-            batches = 0
-            for i in range(0, total, batch_size):
-                batch = api_records[i:i + batch_size]
-                try:
-                    await self.batch_insert(batch)
-                    stored += len(batch)
-                    batches += 1
-                    logger.info(f"批量写入成功: 第 {batches} 批, 记录数={len(batch)}")
-                except Exception as e:
-                    logger.error(f"第 {batches + 1} 批写入失败: {e}")
-                    # 失败批次可选择继续或中断，这里继续尝试后续批次
-                    continue
-
-            result.update({
-                "stored_records": stored,
-                "batches": batches,
-                "success": stored > 0,
-            })
-            return result
-        except Exception as e:
-            logger.error(f"同步失败: {e}")
-            result["error"] = str(e)
-            return result
+            except Exception as e:
+                logger.error(f"同步失败: {e}")
+                result["error"] = str(e)
+                return result
 
 class SyncDataHanlder:
     def __init__(self, base_url: str = "http://8.163.5.7:8000", api_token: str = "fintrack-dev-token"):

@@ -5,16 +5,17 @@ import (
 )
 
 type User struct {
-	ID           int       `json:"id" db:"id"`
-	Email        string    `json:"email" db:"email"`
-	PasswordHash string    `json:"-" db:"password_hash"`
-	Username     string    `json:"username" db:"username"`
-	FirstName    *string   `json:"first_name" db:"first_name"`
-	LastName     *string   `json:"last_name" db:"last_name"`
-	IsActive     bool      `json:"is_active" db:"is_active"`
-	IsPremium    bool      `json:"is_premium" db:"is_premium"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+    ID           int       `json:"id" db:"id"`
+    Email        string    `json:"email" db:"email"`
+    PasswordHash string    `json:"-" db:"password_hash"`
+    Username     string    `json:"username" db:"username"`
+    FirstName    *string   `json:"first_name" db:"first_name"`
+    LastName     *string   `json:"last_name" db:"last_name"`
+    IsActive     bool      `json:"is_active" db:"is_active"`
+    IsPremium    bool      `json:"is_premium" db:"is_premium"`
+    MembershipLevel int    `json:"membership_level" db:"membership_level"`
+    CreatedAt    time.Time `json:"created_at" db:"created_at"`
+    UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type UserSession struct {
@@ -45,11 +46,12 @@ type AuthResponse struct {
 }
 
 type UserProfile struct {
-	ID        int       `json:"id"`
-	Email     string    `json:"email"`
-	Username  string    `json:"username"`
-	FirstName *string   `json:"first_name"`
-	LastName  *string   `json:"last_name"`
-	IsPremium bool      `json:"is_premium"`
-	CreatedAt time.Time `json:"created_at"`
+    ID        int       `json:"id"`
+    Email     string    `json:"email"`
+    Username  string    `json:"username"`
+    FirstName *string   `json:"first_name"`
+    LastName  *string   `json:"last_name"`
+    IsPremium bool      `json:"is_premium"`
+    MembershipLevel int `json:"membership_level"`
+    CreatedAt time.Time `json:"created_at"`
 }
