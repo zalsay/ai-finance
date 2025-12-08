@@ -6,7 +6,7 @@ const PROD_BASE = (import.meta as any).env.VITE_API_BASE_URL_PROD as string | un
 const API_BASE_URL = (import.meta as any).env.DEV
   ? (DEV_BASE || 'http://localhost:59000/api/v1')
   : (PROD_BASE || 'http://go-api.meetlife.com.cn:9000/api/v1');
-const PYTHON_API_BASE = (import.meta as any).env.VITE_PYTHON_API_BASE || 'http://localhost:8000';
+const PYTHON_API_BASE = (import.meta as any).env.VITE_PYTHON_API_BASE || 'http://office.pardmind.top:58888';
 
 // 存储认证token
 let authToken: string | null = null;
