@@ -133,17 +133,17 @@ async def predict_next_chunk_by_unique_key(
         chunks_num = 0
         try:
             base_url = os.environ.get('POSTGRES_URL', 'http://go-api.meetlife.com.cn:8000')
-            base_url = 'http://localhost:58004'
+            # base_url = 'http://localhost:58004'
             pg_tmp = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
             await pg_tmp.open()
             sc_latest, data_latest, _ = await pg_tmp.get_latest_val_chunk(unique_key)
             if sc_latest == 200 and isinstance(data_latest, dict):
                 d = data_latest.get('data') if 'data' in data_latest else data_latest
                 if isinstance(d, dict):
-                    print(f"✅ 最新验证分块数据: {d}")
                     stock_name = d.get('stock_name', "")
                     stock_type = d.get('stock_type', 1)
                     last_start = d.get('start_date')
+                    print(f"name, {stock_name}, type, {stock_type}")
                     # 保持为 Timestamp 类型，后续与 today 做差不会类型冲突
                     next_date = pd.Timestamp(last_start) + pd.DateOffset(days=1)
                     # 根据需要的预测周期分块处理
@@ -277,7 +277,7 @@ async def predict_next_chunk_by_unique_key(
                         "stock_type": stock_type,
                         "horizon_len": horizon_len,
                     }
-                    # print(f"✅ 下一分块数据: {payload}")
+                    print(f"✅ 下一分块数据: {payload}")
                     status_code, data, body_text = await pg_tmp.save_best_val_chunk(payload)
                     if status_code == 200:
                         print(f"✅ 下一分块已保存: unique_key={unique_key}")
@@ -301,6 +301,7 @@ async def predict_next_chunk_by_unique_key(
         except Exception:
             pass
         return 1
+
 def predict_single_chunk_mode1(
         df_train: pd.DataFrame,
         df_test: pd.DataFrame, 
@@ -614,6 +615,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             else:
                 df_train_current = df_train
             df_train_last_one = df_train_current.iloc[-1, :]
+            print(f"当前分块 {i+1}/{len(active_chunks)} 最后日期: {df_train_last_one['ds'].strftime('%Y-%m-%d')}")
             result = predict_single_chunk_mode1(
                 df_train=df_train_current,
                 df_test=chunk,
@@ -758,7 +760,7 @@ async def predict_chunked_mode_for_best(request: ChunkedPredictionRequest) -> Ch
             'validation_results': validation_results
         }
 
-        base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+        base_url = os.environ.get('POSTGRES_URL', 'http://go-api.meetlife.com.cn:8000')
         pg = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
         await pg.open()
 
@@ -1003,7 +1005,8 @@ async def predict_validation_chunks_only(
                 cumulative_train_data = pd.concat([df_train, df_test, df_val.iloc[:history_len, :]], axis=0)
             else:
                 cumulative_train_data = pd.concat([df_train, df_test], axis=0)
-
+            cumulative_last_one = cumulative_train_data.iloc[-1, :]
+            print(f"当前分块 {i+1}/{len(val_chunks)} 最后日期: {cumulative_last_one['ds'].strftime('%Y-%m-%d')}")
             val_result = predict_single_chunk_mode1(
                 df_train=cumulative_train_data,
                 df_test=val_chunk,
@@ -1074,7 +1077,7 @@ async def predict_validation_chunks_only(
         pg = None
         saved_best_ok = False
         try:
-            base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+            base_url = os.environ.get('POSTGRES_URL', 'http://go-api.meetlife.com.cn:8000')
             pg = PostgresHandler(base_url=base_url, api_token="fintrack-dev-token")
             await pg.open()
             if fixed_best_prediction_item and persist_best:
@@ -1128,7 +1131,7 @@ async def predict_validation_chunks_only(
         # 将验证集分块逐块写入后端（仅验证模式也持久化）
         try:
             if val_results and persist_val_chunks and pg is not None:
-                base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+                base_url = os.environ.get('POSTGRES_URL', 'http://go-api.meetlife.com.cn:8000')
                 timesfm_version_str = timesfm_version
                 unique_key_val = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{timesfm_version_str}"
 
@@ -1351,21 +1354,8 @@ async def predict_validation_chunks_only(
             processing_time=processing_time
         )
 
-def main():
+def main(test_request):
     import asyncio
-    # from timesfm_init import init_timesfm
-    test_request = ChunkedPredictionRequest(
-        stock_code="sz000001",
-        years=15,
-        horizon_len=3,
-        start_date="",
-        end_date="20251201",
-        context_len=2048,
-        time_step=0,
-        stock_type=1,
-        timesfm_version="2.5",
-        user_id=1
-    )
     if test_request.timesfm_version == "2.0":
         # tfm = init_timesfm(horizon_len=test_request.horizon_len, context_len=test_request.context_len)
         response = asyncio.run(predict_chunked_mode_for_best(test_request))
@@ -1388,17 +1378,30 @@ def main():
     except Exception as plot_error:
         print(f"⚠️ 绘图失败: {str(plot_error)}")
     
-def test_next_chunked_prediction():
+def test_next_chunked_prediction(unique_key: str, best_prediction_item: str):
     import asyncio
     res = asyncio.run(predict_next_chunk_by_unique_key(
-        unique_key="sz000001_best_hlen_3_clen_2048_v_2.5",
+        unique_key=unique_key,
         user_id=1,
-        best_prediction_item="mtf-0.5",
+        best_prediction_item=best_prediction_item,
     ))
     print(res)
 
 if __name__ == "__main__":
-    # main()
-    test_next_chunked_prediction()
+    # from timesfm_init import init_timesfm
+    test_request = ChunkedPredictionRequest(
+        stock_code="sh510300",
+        years=15,
+        horizon_len=7,
+        start_date="",
+        end_date="20251201",
+        context_len=2048,
+        time_step=0,
+        stock_type=2,
+        timesfm_version="2.5",
+        user_id=1
+    )
+    main(test_request)
+    test_next_chunked_prediction("sh510300_best_hlen_7_clen_256_v_2.5", "mtf-0.4")
 
     

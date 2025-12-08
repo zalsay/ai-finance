@@ -61000,7 +61000,7 @@
       "successful_validation_chunks": 121
     }
   },
-  "processing_time": 243.5292,
+  "processing_time": 143.9591,
   "concatenated_predictions": {
     "mtf-0.0": [
       20.3895,
