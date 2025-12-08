@@ -363,33 +363,33 @@ def backtest_from_chunked_response(
         arr = np.array(predicted_changes)
         stats = {
             "count_chunks": int(arr.size),
-            "mean": float(np.mean(arr)),
-            "median": float(np.median(arr)),
-            "p75": float(np.percentile(arr, 75)),
-            "p90": float(np.percentile(arr, 90)),
-            "above_buy_count": int(np.sum(arr >= buy_threshold_pct)),
-            "below_sell_count": int(np.sum(arr <= sell_threshold_pct)),
+            "mean": round(float(np.mean(arr)), 4),
+            "median": round(float(np.median(arr)), 4),
+            "p75": round(float(np.percentile(arr, 75)), 4),
+            "p90": round(float(np.percentile(arr, 90)), 4),
+            "above_buy_count": int(np.sum(arr >= buy_threshold_pct)), # 超过买入阈值的分块数
+            "below_sell_count": int(np.sum(arr <= sell_threshold_pct)), # 低于卖出阈值的分块数
         }
 
     result = {
         "initial_cash": initial_cash,
-        "final_value": final_value,
-        "total_return_pct": total_return,
-        "annualized_return_pct": annualized,
-        "final_value_gross": gross_final_value,
-        "total_return_pct_gross": gross_total_return,
-        "annualized_return_pct_gross": gross_annualized,
-        "net_profit": net_profit,
-        "gross_profit": gross_profit,
+        "final_value": round(final_value, 2), # 最终价值（元）
+        "total_return_pct": round(total_return, 4), # 总收益率（%）
+        "annualized_return_pct": round(annualized, 4), # 年化收益率（%）
+        "final_value_gross": round(gross_final_value, 2), # 毛最终价值（元）
+        "total_return_pct_gross": round(gross_total_return, 4), # 毛总收益率（%）
+        "annualized_return_pct_gross": round(gross_annualized, 4), # 毛年化收益率（%）
+        "net_profit": round(net_profit, 2), # 净利润（元）
+        "gross_profit": round(gross_profit, 2), # 毛利润（元）
         "trades": [trade.__dict__ for trade in trades],
-        "buy_threshold_pct": buy_threshold_pct,
-        "sell_threshold_pct": sell_threshold_pct,
+        "buy_threshold_pct": round(buy_threshold_pct, 4), # 买入阈值（%）
+        "sell_threshold_pct": round(sell_threshold_pct, 4), # 卖出阈值（%）
         "used_quantile": fixed_quantile_key if fixed_quantile_key else "auto",
         "predicted_change_stats": stats,
         "per_chunk_signals": per_chunk_signals[:50],  # 仅保留前50条，避免输出过大
-        "benchmark_return_pct": benchmark_return if benchmark_return is not None else 0.0,
-        "benchmark_annualized_return_pct": benchmark_annualized if benchmark_annualized is not None else 0.0,
-        "period_days": days,
+        "benchmark_return_pct": benchmark_return if benchmark_return is not None else 0.0, # 基准收益率（%）
+        "benchmark_annualized_return_pct": benchmark_annualized if benchmark_annualized is not None else 0.0, # 基准年化收益率（%）
+        "period_days": days, # 交易时长（天）
         "position_control": {
             "enable_rebalance": enable_rebalance,
             "max_position_pct": max_position_pct,
@@ -400,8 +400,8 @@ def backtest_from_chunked_response(
             "take_profit_sell_frac": take_profit_sell_frac,
         },
         "trade_fee_rate": trade_fee_rate,
-        "total_fees_paid": float(total_fees_paid),
-        "actual_total_return_pct": actual_total_return_pct_val,
+        "total_fees_paid": round(total_fees_paid, 2), # 总手续费（元）
+        "actual_total_return_pct": round(actual_total_return_pct_val, 4), # 实际收益率（%）
         # 曲线数据（用于绘图）
         "equity_curve_values": equity_curve_values,
         "equity_curve_pct": equity_curve_pct,
@@ -897,15 +897,15 @@ async def save_backtest_result_to_pg(request, response, result):
             "total_fees_paid": _round4(result.get("total_fees_paid", 0.0)),
             "actual_total_return_pct": _round4(result.get("actual_total_return_pct", 0.0)),
 
-            "benchmark_return_pct": _round4(result.get("benchmark_return_pct", 0.0)),
-            "benchmark_annualized_return_pct": _round4(result.get("benchmark_annualized_return_pct", 0.0)),
-            "period_days": int(result.get("period_days", 0)),
+            "benchmark_return_pct": _round4(result.get("benchmark_return_pct", 0.0)), # 基准收益率（%）
+            "benchmark_annualized_return_pct": _round4(result.get("benchmark_annualized_return_pct", 0.0)), # 基准年化收益率（%）
+            "period_days": int(result.get("period_days", 0)), # 交易时长（天）
 
             "validation_start_date": result.get("validation_start_date"),
             "validation_end_date": result.get("validation_end_date"),
-            "validation_benchmark_return_pct": _round4(result.get("validation_benchmark_return_pct")),
-            "validation_benchmark_annualized_return_pct": _round4(result.get("validation_benchmark_annualized_return_pct")),
-            "validation_period_days": int(result.get("validation_period_days", 0)),
+            "validation_benchmark_return_pct": _round4(result.get("validation_benchmark_return_pct", 0.0)), # 验证集基准收益率（%）
+            "validation_benchmark_annualized_return_pct": _round4(result.get("validation_benchmark_annualized_return_pct", 0.0)), # 验证集基准年化收益率（%）
+            "validation_period_days": int(result.get("validation_period_days", 0)), # 验证集交易时长（天）
 
             "position_control": _round_obj(result.get("position_control", {})),
             "predicted_change_stats": _round_obj(result.get("predicted_change_stats", {})),
@@ -918,6 +918,24 @@ async def save_backtest_result_to_pg(request, response, result):
             "actual_end_prices": _round_obj(result.get("actual_end_prices", [])),
             "trades": _round_obj(result.get("trades", [])),
         }
+
+        try:
+            user_id = int(request.user_id) if getattr(request, 'user_id', None) is not None else None
+            if user_id is not None:
+                # 查找策略参数ID，用于建立外键
+                async with PostgresHandler(base_url=os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000'), api_token="fintrack-dev-token") as pg_lookup:
+                    status_code, data, _ = await pg_lookup.get_strategy_params_by_unique(unique_key, user_id)
+                if status_code == 200 and isinstance(data, dict):
+                    data_obj = data.get("data") if "data" in data else data
+                    sp_id = None
+                    try:
+                        sp_id = int(data_obj.get("id")) if isinstance(data_obj, dict) and data_obj.get("id") is not None else None
+                    except Exception:
+                        sp_id = None
+                    if sp_id is not None:
+                        payload["strategy_params_id"] = sp_id
+        except Exception:
+            pass
 
         vs = payload.get("validation_start_date")
         ve = payload.get("validation_end_date")
@@ -954,9 +972,9 @@ if __name__ == "__main__":
     # 测试代码
     test_request = ChunkedPredictionRequest(
         user_id=1,
-        stock_code="sh510050",
-        years=10,
-        horizon_len=7,
+        stock_code="sz000001",
+        years=15,
+        horizon_len=3,
         start_date="20100101",
         end_date="20251114",
         context_len=2048,

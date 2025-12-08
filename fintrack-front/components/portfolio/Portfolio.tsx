@@ -4,7 +4,8 @@ import StrategyCard from '../dashboard/StrategyCard';
 import CreateStrategyModal from '../dashboard/CreateStrategyModal';
 import BindStrategyModal from './BindStrategyModal';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { watchlistAPI, strategyAPI, backtestAPI } from '../../services/apiService';
+import { watchlistAPI, strategyAPI, backtestAPI, authAPI } from '../../services/apiService';
+import PredictionChart from '../common/PredictionChart';
 
 interface PortfolioProps {
     onAuthError?: () => void;
@@ -22,19 +23,28 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
     const [bindingLoading, setBindingLoading] = useState<string | null>(null); // symbol being bound
     const [backtestLoading, setBacktestLoading] = useState<string | null>(null); // symbol being backtested
     const [bindModalData, setBindModalData] = useState<{symbol: string, currentKey: string | null} | null>(null);
+    const [currentUser, setCurrentUser] = useState<any | null>(null);
+    const [backtestResults, setBacktestResults] = useState<any | null>(null);
+    const [showChart, setShowChart] = useState(false);
+    const [selectedUniqueKey, setSelectedUniqueKey] = useState<string | null>(null);
 
     const fetchWatchlist = useCallback(async () => {
         setIsFetching(true);
         setFetchError(null);
         try {
             // Parallel fetch
-            const [watchlistRes, strategiesRes] = await Promise.all([
+            const [watchlistRes, strategiesRes, profile] = await Promise.all([
                 watchlistAPI.getWatchlist(),
-                strategyAPI.getUserStrategies()
+                strategyAPI.getUserStrategies(),
+                authAPI.getProfile()
             ]);
 
             if (strategiesRes && strategiesRes.strategies) {
                 setUserStrategies(strategiesRes.strategies);
+            }
+
+            if (profile && profile.id) {
+                setCurrentUser(profile);
             }
 
             if (watchlistRes && watchlistRes.watchlist) {
@@ -91,12 +101,57 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
         }
     };
 
-    const handleBacktest = async (stockSymbol: string, strategy: any) => {
-        if (!stockSymbol || !strategy) return;
+    const parseJSONB = (val: any) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+            try {
+                if (val.startsWith('[') || val.startsWith('{')) return JSON.parse(val);
+            } catch {}
+            try {
+                const decoded = atob(val);
+                return JSON.parse(decoded);
+            } catch {}
+            return [];
+        }
+        if (typeof val === 'object') return val as any;
+        return [];
+    };
+
+    const normalizeBacktest = (data: any) => {
+        const dates = parseJSONB(data.curve_dates) as string[];
+        const actuals = (parseJSONB(data.actual_end_prices) as any[]).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+        const predictions = (parseJSONB(data.equity_curve_values) as any[]).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+        return {
+            change: Number(data.actual_total_return_pct) || 0,
+            chartData: { dates, actuals, predictions },
+            currentPrice: actuals.length ? actuals[actuals.length - 1] : undefined,
+            startPrice: actuals.length ? actuals[0] : undefined,
+        };
+    };
+
+    const checkBacktestResults = async (uniqueKey: string) => {
+        try {
+            const res = await backtestAPI.getByUniqueKey(uniqueKey);
+            if (res) {
+                setSelectedUniqueKey(uniqueKey);
+                const norm = normalizeBacktest(res);
+                setBacktestResults(norm);
+                return true;
+            }
+            return false;
+        } catch {
+            return false;
+        }
+    };
+
+    const handleBacktest = async (uniqueKey: string, strategy: any, stockSymbol: string) => {
+        if (!uniqueKey || !strategy) return;
         setBacktestLoading(stockSymbol);
         try {
             const req = {
-                stock_code: stockSymbol,
+                unique_key: uniqueKey,
+                user_id: currentUser?.id,
                 buy_threshold_pct: strategy.buy_threshold_pct,
                 sell_threshold_pct: strategy.sell_threshold_pct,
                 initial_cash: strategy.initial_cash,
@@ -108,9 +163,6 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                 trade_fee_rate: strategy.trade_fee_rate,
                 take_profit_threshold_pct: strategy.take_profit_threshold_pct,
                 take_profit_sell_frac: strategy.take_profit_sell_frac,
-                years: 10,
-                horizon_len: 7,
-                context_len: 2048
             };
             const res = await backtestAPI.runBacktest(req);
             if (res.success) {
@@ -118,7 +170,10 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                  alert(language === 'zh' ? 
                     `回测完成!\n总收益率: ${totalReturn.toFixed(2)}%\n交易次数: ${res.backtest.trades.length}` : 
                     `Backtest Finished!\nTotal Return: ${totalReturn.toFixed(2)}%\nTrades: ${res.backtest.trades.length}`);
-                 console.log(res.backtest);
+                 const norm = normalizeBacktest(res.backtest || {});
+                 setSelectedUniqueKey(uniqueKey);
+                 setBacktestResults(norm);
+                 setShowChart(true);
             } else {
                  alert((language === 'zh' ? '回测失败: ' : 'Backtest failed: ') + res.error);
             }
@@ -127,6 +182,22 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
             alert((language === 'zh' ? '回测错误: ' : 'Backtest error: ') + e.message);
         } finally {
             setBacktestLoading(null);
+        }
+    };
+
+    const handleBacktestOrChart = async (uniqueKey: string, strategy: any, stockSymbol: string) => {
+        const has = await checkBacktestResults(uniqueKey);
+        if (has) {
+            setShowChart(true);
+            return;
+        }
+        await handleBacktest(uniqueKey, strategy, stockSymbol);
+    };
+
+    const viewChart = async (uniqueKey: string) => {
+        const has = await checkBacktestResults(uniqueKey);
+        if (has) {
+            setShowChart(true);
         }
     };
 
@@ -265,12 +336,12 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                                                 <div className="flex items-center gap-2">
                                                     {currentStrategy && (
                                                         <button
-                                                            onClick={() => handleBacktest(item.stock.symbol, currentStrategy)}
+                                                            onClick={() => (backtestResults && selectedUniqueKey === item.unique_key) ? viewChart(item.unique_key) : handleBacktestOrChart(item.unique_key, currentStrategy, item.stock.symbol)}
                                                             disabled={backtestLoading === item.stock.symbol}
                                                             className="px-3 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-medium hover:bg-purple-500/20 hover:border-purple-500/30 transition-all text-center flex items-center gap-1"
                                                         >
                                                             {backtestLoading === item.stock.symbol && <span className="material-symbols-outlined animate-spin text-[10px]">progress_activity</span>}
-                                                            {language === 'zh' ? '回测' : 'Backtest'}
+                                                            {backtestResults && selectedUniqueKey === item.unique_key ? (language === 'zh' ? '查看回测图表' : 'View Backtest Chart') : (language === 'zh' ? '回测' : 'Backtest')}
                                                         </button>
                                                     )}
                                                     <button
@@ -322,6 +393,17 @@ const Portfolio: React.FC<PortfolioProps> = ({ onAuthError }) => {
                 onClose={() => setIsModalOpen(false)}
                 onSuccess={handleSuccess}
             />
+
+            {showChart && backtestResults && (
+                <div className="mt-4 p-4 border border-white/10 rounded-lg">
+                    <PredictionChart
+                        change={backtestResults.change}
+                        chartData={backtestResults.chartData}
+                        currentPrice={backtestResults.currentPrice}
+                        startPrice={backtestResults.startPrice}
+                    />
+                </div>
+            )}
         </div>
     );
 };

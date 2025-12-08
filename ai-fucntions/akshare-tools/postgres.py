@@ -158,6 +158,18 @@ class PostgresHandler:
             data = None
         return resp.status_code, data, resp.text
 
+    async def get_strategy_params_by_unique(self, unique_key: str, user_id: int) -> tuple:
+        await self.open()
+        assert self._client is not None
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        params = {"unique_key": unique_key, "user_id": user_id}
+        resp = await self._client.get("/api/v1/strategy/params/by-user-unique", params=params, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        return resp.status_code, data, resp.text
+
     async def save_backtest_result(self, payload: Dict) -> tuple:
         await self.open()
         assert self._client is not None

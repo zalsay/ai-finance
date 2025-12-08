@@ -269,6 +269,27 @@ func (h *WatchlistHandler) GetTimesfmBestByUniqueKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"prediction": item})
 }
 
+// 按 unique_key 查询单条 TimesFM 回测结果
+func (h *WatchlistHandler) GetTimesfmBacktestByUniqueKey(c *gin.Context) {
+    uniqueKey := c.Query("unique_key")
+    if uniqueKey == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+        return
+    }
+
+    item, err := h.watchlistService.GetTimesfmBacktestByUniqueKey(uniqueKey)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, item)
+}
+
 func (h *WatchlistHandler) SaveStrategyParams(c *gin.Context) {
 	var req models.SaveStrategyParamsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

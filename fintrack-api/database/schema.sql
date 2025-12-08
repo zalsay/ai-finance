@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS timesfm_backtests (
     id SERIAL PRIMARY KEY,
     unique_key VARCHAR(255) NOT NULL UNIQUE,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    strategy_params_id INTEGER REFERENCES timesfm_strategy_params(id) ON DELETE SET NULL,
     symbol VARCHAR(20) NOT NULL,
     timesfm_version VARCHAR(20) NOT NULL,
     context_len INTEGER NOT NULL,
@@ -91,6 +92,8 @@ CREATE TABLE IF NOT EXISTS timesfm_backtests (
 );
 
 CREATE INDEX IF NOT EXISTS idx_timesfm_backtests_symbol ON timesfm_backtests(symbol);
+CREATE INDEX IF NOT EXISTS idx_timesfm_backtests_strategy_params_id ON timesfm_backtests(strategy_params_id);
+CREATE INDEX IF NOT EXISTS idx_timesfm_backtests_strategy_params_unique ON timesfm_backtests(strategy_params_id, unique_key);
 
 CREATE TABLE IF NOT EXISTS timesfm_strategy_params (
     id SERIAL PRIMARY KEY,

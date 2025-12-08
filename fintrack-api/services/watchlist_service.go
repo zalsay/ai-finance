@@ -686,6 +686,92 @@ func (s *WatchlistService) GetTimesfmBestByUniqueKey(uniqueKey string) (*models.
 	return &item, nil
 }
 
+// 按 unique_key 查询单条 TimesFM 回测结果
+func (s *WatchlistService) GetTimesfmBacktestByUniqueKey(uniqueKey string) (map[string]interface{}, error) {
+	row := s.db.Conn.QueryRow(`
+        SELECT 
+            unique_key, symbol, timesfm_version, context_len, horizon_len,
+            used_quantile, buy_threshold_pct, sell_threshold_pct, trade_fee_rate, total_fees_paid, actual_total_return_pct,
+            benchmark_return_pct, benchmark_annualized_return_pct, period_days,
+            validation_start_date, validation_end_date, validation_benchmark_return_pct, validation_benchmark_annualized_return_pct, validation_period_days,
+            position_control, predicted_change_stats, per_chunk_signals,
+            equity_curve_values, equity_curve_pct, equity_curve_pct_gross, curve_dates, actual_end_prices, trades
+        FROM timesfm_backtests
+        WHERE unique_key = $1
+        LIMIT 1
+    `, uniqueKey)
+
+	var (
+		uniqueKeyOut, symbol, timesfmVersion                                                 string
+		contextLen, horizonLen, periodDays, validationPeriodDays                             int
+		usedQuantile                                                                         string
+		buyThresholdPct, sellThresholdPct, tradeFeeRate, totalFeesPaid, actualTotalReturnPct float64
+		benchmarkReturnPct, benchmarkAnnualizedReturnPct                                     float64
+		validationStartDate, validationEndDate                                               sql.NullTime
+		validationBenchmarkReturnPct, validationBenchmarkAnnualizedReturnPct                 float64
+		positionControl, predictedChangeStats, perChunkSignals                               []byte
+		equityCurveValues, equityCurvePct, equityCurvePctGross                               []byte
+		curveDates, actualEndPrices, trades                                                  []byte
+	)
+
+	err := row.Scan(
+		&uniqueKeyOut, &symbol, &timesfmVersion, &contextLen, &horizonLen,
+		&usedQuantile, &buyThresholdPct, &sellThresholdPct, &tradeFeeRate, &totalFeesPaid, &actualTotalReturnPct,
+		&benchmarkReturnPct, &benchmarkAnnualizedReturnPct, &periodDays,
+		&validationStartDate, &validationEndDate, &validationBenchmarkReturnPct, &validationBenchmarkAnnualizedReturnPct, &validationPeriodDays,
+		&positionControl, &predictedChangeStats, &perChunkSignals,
+		&equityCurveValues, &equityCurvePct, &equityCurvePctGross, &curveDates, &actualEndPrices, &trades,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, sql.ErrNoRows
+		}
+		return nil, fmt.Errorf("failed to get timesfm_backtests by unique_key: %v", err)
+	}
+
+	out := map[string]interface{}{
+		"unique_key":                      uniqueKeyOut,
+		"symbol":                          symbol,
+		"timesfm_version":                 timesfmVersion,
+		"context_len":                     contextLen,
+		"horizon_len":                     horizonLen,
+		"used_quantile":                   usedQuantile,
+		"buy_threshold_pct":               buyThresholdPct,
+		"sell_threshold_pct":              sellThresholdPct,
+		"trade_fee_rate":                  tradeFeeRate,
+		"total_fees_paid":                 totalFeesPaid,
+		"actual_total_return_pct":         actualTotalReturnPct,
+		"benchmark_return_pct":            benchmarkReturnPct,
+		"benchmark_annualized_return_pct": benchmarkAnnualizedReturnPct,
+		"period_days":                     periodDays,
+		"validation_start_date": func() interface{} {
+			if validationStartDate.Valid {
+				return validationStartDate.Time.Format("2006-01-02")
+			}
+			return nil
+		}(),
+		"validation_end_date": func() interface{} {
+			if validationEndDate.Valid {
+				return validationEndDate.Time.Format("2006-01-02")
+			}
+			return nil
+		}(),
+		"validation_benchmark_return_pct":            validationBenchmarkReturnPct,
+		"validation_benchmark_annualized_return_pct": validationBenchmarkAnnualizedReturnPct,
+		"validation_period_days":                     validationPeriodDays,
+		"position_control":                           positionControl,
+		"predicted_change_stats":                     predictedChangeStats,
+		"per_chunk_signals":                          perChunkSignals,
+		"equity_curve_values":                        equityCurveValues,
+		"equity_curve_pct":                           equityCurvePct,
+		"equity_curve_pct_gross":                     equityCurvePctGross,
+		"curve_dates":                                curveDates,
+		"actual_end_prices":                          actualEndPrices,
+		"trades":                                     trades,
+	}
+	return out, nil
+}
+
 // 按用户ID查询其所有TimesFM最佳分位预测列表
 func (s *WatchlistService) ListTimesfmBestByUserID(userID int) ([]models.TimesfmBestPrediction, error) {
 	rows, err := s.db.Conn.Query(`
@@ -1029,25 +1115,47 @@ func (s *WatchlistService) SaveTimesfmBacktest(req *models.SaveTimesfmBacktestRe
 	} else {
 		uidArg = nil
 	}
+	var spIDArg interface{}
+	if req.StrategyParamsID != nil {
+		spIDArg = *req.StrategyParamsID
+	} else {
+		var spID int
+		if req.UserID != nil {
+			row := s.db.Conn.QueryRow(`SELECT id FROM timesfm_strategy_params WHERE unique_key = $1 AND user_id = $2 LIMIT 1`, req.UniqueKey, *req.UserID)
+			if err := row.Scan(&spID); err == nil {
+				spIDArg = spID
+			} else {
+				spIDArg = nil
+			}
+		} else {
+			row := s.db.Conn.QueryRow(`SELECT id FROM timesfm_strategy_params WHERE unique_key = $1 LIMIT 1`, req.UniqueKey)
+			if err := row.Scan(&spID); err == nil {
+				spIDArg = spID
+			} else {
+				spIDArg = nil
+			}
+		}
+	}
 
 	_, err = s.db.Conn.Exec(`
         INSERT INTO timesfm_backtests (
-            unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+            unique_key, user_id, strategy_params_id, symbol, timesfm_version, context_len, horizon_len,
             used_quantile, buy_threshold_pct, sell_threshold_pct, trade_fee_rate, total_fees_paid, actual_total_return_pct,
             benchmark_return_pct, benchmark_annualized_return_pct, period_days,
             validation_start_date, validation_end_date, validation_benchmark_return_pct, validation_benchmark_annualized_return_pct, validation_period_days,
             position_control, predicted_change_stats, per_chunk_signals,
             equity_curve_values, equity_curve_pct, equity_curve_pct_gross, curve_dates, actual_end_prices, trades
         ) VALUES (
-            $1, $2, $3, $4, $5, $6,
-            $7, $8, $9, $10, $11, $12,
-            $13, $14, $15,
-            $16::date, $17::date, $18, $19, $20,
-            $21::jsonb, $22::jsonb, $23::jsonb,
-            $24::jsonb, $25::jsonb, $26::jsonb, $27::jsonb, $28::jsonb, $29::jsonb
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, $10, $11, $12, $13,
+            $14, $15, $16,
+            $17::date, $18::date, $19, $20, $21,
+            $22::jsonb, $23::jsonb, $24::jsonb,
+            $25::jsonb, $26::jsonb, $27::jsonb, $28::jsonb, $29::jsonb, $30::jsonb
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             user_id = EXCLUDED.user_id,
+            strategy_params_id = EXCLUDED.strategy_params_id,
             symbol = EXCLUDED.symbol,
             timesfm_version = EXCLUDED.timesfm_version,
             context_len = EXCLUDED.context_len,
@@ -1077,7 +1185,7 @@ func (s *WatchlistService) SaveTimesfmBacktest(req *models.SaveTimesfmBacktestRe
             trades = EXCLUDED.trades,
             updated_at = CURRENT_TIMESTAMP
         `,
-		req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
+		req.UniqueKey, uidArg, spIDArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
 		req.UsedQuantile, req.BuyThresholdPct, req.SellThresholdPct, req.TradeFeeRate, req.TotalFeesPaid, req.ActualTotalReturnPct,
 		req.BenchmarkReturnPct, req.BenchmarkAnnualizedReturnPct, req.PeriodDays,
 		req.ValidationStartDate, req.ValidationEndDate, req.ValidationBenchmarkReturnPct, req.ValidationBenchmarkAnnualizedReturnPct, req.ValidationPeriodDays,

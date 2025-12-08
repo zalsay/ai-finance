@@ -243,6 +243,10 @@ export const backtestAPI = {
          throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
      }
      return response.json();
+  },
+  getByUniqueKey: async (uniqueKey: string): Promise<any> => {
+    const params = new URLSearchParams({ unique_key: uniqueKey });
+    return apiRequest(`/mtf/backtest/by-unique?${params.toString()}`, { method: 'GET' });
   }
 };
 

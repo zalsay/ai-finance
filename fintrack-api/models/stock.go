@@ -161,12 +161,13 @@ type SaveTimesfmValChunkRequest struct {
 
 // 保存 TimesFM 回测结果的请求模型
 type SaveTimesfmBacktestRequest struct {
-	UniqueKey      string `json:"unique_key" binding:"required"`
-	Symbol         string `json:"symbol" binding:"required"`
-	TimesfmVersion string `json:"timesfm_version" binding:"required"`
-	ContextLen     int    `json:"context_len" binding:"required"`
-	HorizonLen     int    `json:"horizon_len" binding:"required"`
-	UserID         *int   `json:"user_id"`
+    UniqueKey      string `json:"unique_key" binding:"required"`
+    Symbol         string `json:"symbol" binding:"required"`
+    TimesfmVersion string `json:"timesfm_version" binding:"required"`
+    ContextLen     int    `json:"context_len" binding:"required"`
+    HorizonLen     int    `json:"horizon_len" binding:"required"`
+    UserID         *int   `json:"user_id"`
+    StrategyParamsID *int  `json:"strategy_params_id"`
 
 	UsedQuantile         string  `json:"used_quantile"`
 	BuyThresholdPct      float64 `json:"buy_threshold_pct"`

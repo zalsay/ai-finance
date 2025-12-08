@@ -720,19 +720,20 @@ func (h *DatabaseHandler) getTimesfmValChunkListHandler(c *gin.Context) {
 }
 
 func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {
-	var req struct {
-		UniqueKey                              string                   `json:"unique_key"`
-		Symbol                                 string                   `json:"symbol"`
-		TimesfmVersion                         string                   `json:"timesfm_version"`
-		ContextLen                             int                      `json:"context_len"`
-		HorizonLen                             int                      `json:"horizon_len"`
-		UserID                                 *int                     `json:"user_id"`
-		UsedQuantile                           string                   `json:"used_quantile"`
-		BuyThresholdPct                        float64                  `json:"buy_threshold_pct"`
-		SellThresholdPct                       float64                  `json:"sell_threshold_pct"`
-		TradeFeeRate                           float64                  `json:"trade_fee_rate"`
-		TotalFeesPaid                          float64                  `json:"total_fees_paid"`
-		ActualTotalReturnPct                   float64                  `json:"actual_total_return_pct"`
+    var req struct {
+        UniqueKey                              string                   `json:"unique_key"`
+        Symbol                                 string                   `json:"symbol"`
+        TimesfmVersion                         string                   `json:"timesfm_version"`
+        ContextLen                             int                      `json:"context_len"`
+        HorizonLen                             int                      `json:"horizon_len"`
+        UserID                                 *int                     `json:"user_id"`
+        StrategyParamsID                        *int                     `json:"strategy_params_id"`
+        UsedQuantile                           string                   `json:"used_quantile"`
+        BuyThresholdPct                        float64                  `json:"buy_threshold_pct"`
+        SellThresholdPct                       float64                  `json:"sell_threshold_pct"`
+        TradeFeeRate                           float64                  `json:"trade_fee_rate"`
+        TotalFeesPaid                          float64                  `json:"total_fees_paid"`
+        ActualTotalReturnPct                   float64                  `json:"actual_total_return_pct"`
 		BenchmarkReturnPct                     float64                  `json:"benchmark_return_pct"`
 		BenchmarkAnnualizedReturnPct           float64                  `json:"benchmark_annualized_return_pct"`
 		PeriodDays                             int                      `json:"period_days"`
@@ -768,30 +769,52 @@ func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {
 	curveDatesJSON, _ := json.Marshal(req.CurveDates)
 	actualEndJSON, _ := json.Marshal(req.ActualEndPrices)
 	tradesJSON, _ := json.Marshal(req.Trades)
-	var uidArg interface{}
-	if req.UserID != nil {
-		uidArg = *req.UserID
-	} else {
-		uidArg = nil
-	}
-	err := h.db.Exec(`
+    var uidArg interface{}
+    if req.UserID != nil {
+        uidArg = *req.UserID
+    } else {
+        uidArg = nil
+    }
+    var spIDArg interface{}
+    if req.StrategyParamsID != nil {
+        spIDArg = *req.StrategyParamsID
+    } else {
+        var spID int
+        if req.UserID != nil {
+            row := h.db.Raw(`SELECT id FROM timesfm_strategy_params WHERE unique_key = $1 AND user_id = $2 LIMIT 1`, req.UniqueKey, *req.UserID).Row()
+            if err := row.Scan(&spID); err == nil {
+                spIDArg = spID
+            } else {
+                spIDArg = nil
+            }
+        } else {
+            row := h.db.Raw(`SELECT id FROM timesfm_strategy_params WHERE unique_key = $1 LIMIT 1`, req.UniqueKey).Row()
+            if err := row.Scan(&spID); err == nil {
+                spIDArg = spID
+            } else {
+                spIDArg = nil
+            }
+        }
+    }
+    err := h.db.Exec(`
         INSERT INTO timesfm_backtests (
-            unique_key, user_id, symbol, timesfm_version, context_len, horizon_len,
+            unique_key, user_id, strategy_params_id, symbol, timesfm_version, context_len, horizon_len,
             used_quantile, buy_threshold_pct, sell_threshold_pct, trade_fee_rate, total_fees_paid, actual_total_return_pct,
             benchmark_return_pct, benchmark_annualized_return_pct, period_days,
             validation_start_date, validation_end_date, validation_benchmark_return_pct, validation_benchmark_annualized_return_pct, validation_period_days,
             position_control, predicted_change_stats, per_chunk_signals,
             equity_curve_values, equity_curve_pct, equity_curve_pct_gross, curve_dates, actual_end_prices, trades
         ) VALUES (
-            $1, $2, $3, $4, $5, $6,
-            $7, $8, $9, $10, $11, $12,
-            $13, $14, $15,
-            $16::date, $17::date, $18, $19, $20,
-            $21::jsonb, $22::jsonb, $23::jsonb,
-            $24::jsonb, $25::jsonb, $26::jsonb, $27::jsonb, $28::jsonb, $29::jsonb
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, $10, $11, $12, $13,
+            $14, $15, $16,
+            $17::date, $18::date, $19, $20, $21,
+            $22::jsonb, $23::jsonb, $24::jsonb,
+            $25::jsonb, $26::jsonb, $27::jsonb, $28::jsonb, $29::jsonb, $30::jsonb
         )
         ON CONFLICT (unique_key) DO UPDATE SET
             user_id = EXCLUDED.user_id,
+            strategy_params_id = EXCLUDED.strategy_params_id,
             symbol = EXCLUDED.symbol,
             timesfm_version = EXCLUDED.timesfm_version,
             context_len = EXCLUDED.context_len,
@@ -820,13 +843,13 @@ func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {
             actual_end_prices = EXCLUDED.actual_end_prices,
             trades = EXCLUDED.trades,
             updated_at = CURRENT_TIMESTAMP`,
-		req.UniqueKey, uidArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
-		req.UsedQuantile, req.BuyThresholdPct, req.SellThresholdPct, req.TradeFeeRate, req.TotalFeesPaid, req.ActualTotalReturnPct,
-		req.BenchmarkReturnPct, req.BenchmarkAnnualizedReturnPct, req.PeriodDays,
-		req.ValidationStartDate, req.ValidationEndDate, req.ValidationBenchmarkReturnPct, req.ValidationBenchmarkAnnualizedReturnPct, req.ValidationPeriodDays,
-		string(posJSON), string(statsJSON), string(signalsJSON),
-		string(eqValsJSON), string(eqPctJSON), string(eqPctGrossJSON), string(curveDatesJSON), string(actualEndJSON), string(tradesJSON),
-	).Error
+        req.UniqueKey, uidArg, spIDArg, req.Symbol, req.TimesfmVersion, req.ContextLen, req.HorizonLen,
+        req.UsedQuantile, req.BuyThresholdPct, req.SellThresholdPct, req.TradeFeeRate, req.TotalFeesPaid, req.ActualTotalReturnPct,
+        req.BenchmarkReturnPct, req.BenchmarkAnnualizedReturnPct, req.PeriodDays,
+        req.ValidationStartDate, req.ValidationEndDate, req.ValidationBenchmarkReturnPct, req.ValidationBenchmarkAnnualizedReturnPct, req.ValidationPeriodDays,
+        string(posJSON), string(statsJSON), string(signalsJSON),
+        string(eqValsJSON), string(eqPctJSON), string(eqPctGrossJSON), string(curveDatesJSON), string(actualEndJSON), string(tradesJSON),
+    ).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upsert timesfm_backtests: %v", err)})
 		return
@@ -906,18 +929,18 @@ func (h *DatabaseHandler) saveStrategyParamsHandler(c *gin.Context) {
 }
 
 func (h *DatabaseHandler) getStrategyParamsByUniqueKeyHandler(c *gin.Context) {
-	uniqueKey := c.Query("unique_key")
-	userId, err := strconv.Atoi(c.Query("user_id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id must be an integer"})
-		return
-	}
-	if strings.TrimSpace(uniqueKey) == "" || userId == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key and user_id are required"})
-		return
-	}
-	row := h.db.Raw(`
-        SELECT unique_key, user_id,
+    uniqueKey := c.Query("unique_key")
+    userId, err := strconv.Atoi(c.Query("user_id"))
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "user_id must be an integer"})
+        return
+    }
+    if strings.TrimSpace(uniqueKey) == "" || userId == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key and user_id are required"})
+        return
+    }
+    row := h.db.Raw(`
+        SELECT id, unique_key, user_id,
                buy_threshold_pct, sell_threshold_pct, initial_cash,
                enable_rebalance, max_position_pct, min_position_pct,
                slope_position_per_pct, rebalance_tolerance_pct,
@@ -926,30 +949,48 @@ func (h *DatabaseHandler) getStrategyParamsByUniqueKeyHandler(c *gin.Context) {
         FROM timesfm_strategy_params
         WHERE unique_key = $1 AND user_id = $2
         LIMIT 1`, uniqueKey, userId).Row()
-	var item StrategyParams
-	var uid sql.NullInt64
-	if err := row.Scan(
-		&item.UniqueKey, &uid,
-		&item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
-		&item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
-		&item.SlopePositionPerPct, &item.RebalanceTolerancePct,
-		&item.TradeFeeRate, &item.TakeProfitThresholdPct, &item.TakeProfitSellFrac,
-		&item.CreatedAt, &item.UpdatedAt,
-	); err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if uid.Valid {
-		v := int(uid.Int64)
-		item.UserID = &v
-	} else {
-		item.UserID = nil
-	}
-	c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: item})
+    var item StrategyParams
+    var spID int
+    var uid sql.NullInt64
+    if err := row.Scan(
+        &spID, &item.UniqueKey, &uid,
+        &item.BuyThresholdPct, &item.SellThresholdPct, &item.InitialCash,
+        &item.EnableRebalance, &item.MaxPositionPct, &item.MinPositionPct,
+        &item.SlopePositionPerPct, &item.RebalanceTolerancePct,
+        &item.TradeFeeRate, &item.TakeProfitThresholdPct, &item.TakeProfitSellFrac,
+        &item.CreatedAt, &item.UpdatedAt,
+    ); err != nil {
+        if err == sql.ErrNoRows {
+            c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    if uid.Valid {
+        v := int(uid.Int64)
+        item.UserID = &v
+    } else {
+        item.UserID = nil
+    }
+    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: gin.H{
+        "id": spID,
+        "unique_key": item.UniqueKey,
+        "user_id": item.UserID,
+        "buy_threshold_pct": item.BuyThresholdPct,
+        "sell_threshold_pct": item.SellThresholdPct,
+        "initial_cash": item.InitialCash,
+        "enable_rebalance": item.EnableRebalance,
+        "max_position_pct": item.MaxPositionPct,
+        "min_position_pct": item.MinPositionPct,
+        "slope_position_per_pct": item.SlopePositionPerPct,
+        "rebalance_tolerance_pct": item.RebalanceTolerancePct,
+        "trade_fee_rate": item.TradeFeeRate,
+        "take_profit_threshold_pct": item.TakeProfitThresholdPct,
+        "take_profit_sell_frac": item.TakeProfitSellFrac,
+        "created_at": item.CreatedAt,
+        "updated_at": item.UpdatedAt,
+    }})
 }
 
 func (h *DatabaseHandler) getStrategyParamsByUserHandler(c *gin.Context) {

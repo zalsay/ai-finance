@@ -52,9 +52,6 @@ CREATE INDEX IF NOT EXISTS idx_llm_token_usage_provider ON llm_token_usage(provi
 CREATE INDEX IF NOT EXISTS idx_llm_token_usage_request_time ON llm_token_usage(request_time);
 CREATE INDEX IF NOT EXISTS idx_llm_token_usage_user_time ON llm_token_usage(user_id, request_time DESC);
 
--- 创建用户和权限（如果需要额外用户）
--- CREATE USER fintrack_user WITH PASSWORD 'fintrack_password';
--- GRANT ALL PRIVILEGES ON DATABASE fintrack TO fintrack_user;
 
 -- 输出初始化完成信息
 DO $$
@@ -64,4 +61,43 @@ BEGIN
     RAISE NOTICE '编码: UTF-8';
     RAISE NOTICE '时区: Asia/Shanghai';
     RAISE NOTICE '股票数据表将由应用程序自动创建和分区';
+END $$;
+
+-- =========================
+-- 为 timesfm_backtests 增加策略参数ID及索引
+-- 目的：使用 timesfm_strategy_params.id 作为联合查询条件，加速回测结果检索
+-- =========================
+DO $$
+BEGIN
+    -- 若回测结果表已存在，则补充列、外键与索引
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_name = 'timesfm_backtests'
+    ) THEN
+        -- 添加列：strategy_params_id（引用 timesfm_strategy_params.id）
+        EXECUTE 'ALTER TABLE timesfm_backtests ADD COLUMN IF NOT EXISTS strategy_params_id INTEGER';
+
+        -- 添加外键约束（若尚不存在）
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.constraint_column_usage ccu
+              ON ccu.constraint_name = tc.constraint_name
+            WHERE tc.table_name = 'timesfm_backtests'
+              AND tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.column_name = 'strategy_params_id'
+        ) THEN
+            EXECUTE 'ALTER TABLE timesfm_backtests
+                     ADD CONSTRAINT fk_backtests_strategy_params
+                     FOREIGN KEY (strategy_params_id)
+                     REFERENCES timesfm_strategy_params(id)
+                     ON DELETE SET NULL';
+        END IF;
+
+        -- 单列索引：按策略参数ID检索
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_timesfm_backtests_strategy_params_id ON timesfm_backtests(strategy_params_id)';
+
+        -- 复合索引：策略参数ID + unique_key 联合查询优化
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_timesfm_backtests_strategy_params_unique ON timesfm_backtests(strategy_params_id, unique_key)';
+    END IF;
 END $$;

@@ -318,6 +318,7 @@ func (h *DatabaseHandler) initializeDatabase() error {
         id SERIAL PRIMARY KEY,
         unique_key VARCHAR(255) NOT NULL UNIQUE,
         user_id INTEGER,
+        strategy_params_id INTEGER,
         symbol VARCHAR(20) NOT NULL,
         timesfm_version VARCHAR(20) NOT NULL,
         context_len INTEGER NOT NULL,
@@ -352,6 +353,26 @@ func (h *DatabaseHandler) initializeDatabase() error {
     if err := h.db.Exec(createTimesfmBacktestsSQL).Error; err != nil {
         return fmt.Errorf("failed to create timesfm_backtests table: %v", err)
     }
+    _ = h.db.Exec(`ALTER TABLE timesfm_backtests ADD COLUMN IF NOT EXISTS strategy_params_id INTEGER`).Error
+    _ = h.db.Exec(`DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.constraint_column_usage ccu
+              ON ccu.constraint_name = tc.constraint_name
+            WHERE tc.table_name = 'timesfm_backtests'
+              AND tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.column_name = 'strategy_params_id'
+        ) THEN
+            ALTER TABLE timesfm_backtests
+            ADD CONSTRAINT fk_backtests_strategy_params
+            FOREIGN KEY (strategy_params_id)
+            REFERENCES timesfm_strategy_params(id)
+            ON DELETE SET NULL;
+        END IF;
+    END $$;`).Error
+    _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_backtests_strategy_params_id ON timesfm_backtests(strategy_params_id)`).Error
+    _ = h.db.Exec(`CREATE INDEX IF NOT EXISTS idx_timesfm_backtests_strategy_params_unique ON timesfm_backtests(strategy_params_id, unique_key)`).Error
     if err := h.db.AutoMigrate(&EtfDailyData{}, &IndexInfo{}, &IndexDailyData{}, &StockCommentDaily{}, &TimesfmForecast{}); err != nil {
         log.Printf("AutoMigrate warning: %v", err)
     }

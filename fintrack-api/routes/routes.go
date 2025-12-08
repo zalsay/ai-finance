@@ -113,6 +113,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) *gin.Engine {
 		{
 			timesfm.POST("/predict", watchlistHandler.TriggerTimesfmPredict)
 			timesfm.POST("/backtest", authHandler.AuthMiddleware(), watchlistHandler.RunTimesfmBacktestProxy)
+			timesfm.GET("/backtest/by-unique", authHandler.AuthMiddleware(), watchlistHandler.GetTimesfmBacktestByUniqueKey)
 		}
 
 		strategy := v1.Group("/strategy")
