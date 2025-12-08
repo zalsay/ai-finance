@@ -146,6 +146,18 @@ class PostgresHandler:
             data = None
         return resp.status_code, data, resp.text
 
+    async def get_val_chunk_list(self, unique_key: str) -> tuple:
+        await self.open()
+        assert self._client is not None
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        params = {"unique_key": unique_key}
+        resp = await self._client.get("/api/v1/save-predictions/mtf-best/val-chunk/list", params=params, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        return resp.status_code, data, resp.text
+
     async def save_backtest_result(self, payload: Dict) -> tuple:
         await self.open()
         assert self._client is not None

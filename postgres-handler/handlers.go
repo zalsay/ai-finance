@@ -625,6 +625,100 @@ func (h *DatabaseHandler) getLatestTimesfmValChunkHandler(c *gin.Context) {
 	}})
 }
 
+// 获取指定 unique_key 的所有验证分块（按 chunk_index ASC 排序）
+func (h *DatabaseHandler) getTimesfmValChunkListHandler(c *gin.Context) {
+    uniqueKey := c.Query("unique_key")
+    if strings.TrimSpace(uniqueKey) == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "unique_key is required"})
+        return
+    }
+
+    rows, err := h.db.Raw(`
+        SELECT 
+            unique_key,
+            chunk_index,
+            start_date::text,
+            end_date::text,
+            symbol,
+            predictions,
+            COALESCE(actual_values, '[]'::jsonb) AS actual_values,
+            COALESCE(dates, '[]'::jsonb) AS dates,
+            COALESCE(stock_name, '') AS stock_name,
+            COALESCE(stock_type, 1) AS stock_type
+        FROM timesfm_best_validation_chunks
+        WHERE unique_key = $1
+        ORDER BY chunk_index ASC`, uniqueKey).Rows()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    defer rows.Close()
+
+    type Item struct {
+        UniqueKey  string                 `json:"unique_key"`
+        ChunkIndex int                    `json:"chunk_index"`
+        StartDate  string                 `json:"start_date"`
+        EndDate    string                 `json:"end_date"`
+        Symbol     string                 `json:"symbol"`
+        Predictions map[string]interface{} `json:"predictions"`
+        Actual     []float64              `json:"actual_values"`
+        Dates      []string               `json:"dates"`
+        StockName  string                 `json:"stock_name"`
+        StockType  int                    `json:"stock_type"`
+    }
+    list := make([]Item, 0, 64)
+    for rows.Next() {
+        var (
+            uk         string
+            chunkIndex int
+            startDate  string
+            endDate    string
+            symbol     string
+            predsJSON  []byte
+            actualJSON []byte
+            datesJSON  []byte
+            stockName  string
+            stockType  int
+        )
+        if err := rows.Scan(&uk, &chunkIndex, &startDate, &endDate, &symbol, &predsJSON, &actualJSON, &datesJSON, &stockName, &stockType); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        var preds map[string]interface{}
+        var actual []float64
+        var dates []string
+        if err := json.Unmarshal(predsJSON, &preds); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal predictions"})
+            return
+        }
+        if err := json.Unmarshal(actualJSON, &actual); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal actual_values"})
+            return
+        }
+        if err := json.Unmarshal(datesJSON, &dates); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmarshal dates"})
+            return
+        }
+        list = append(list, Item{
+            UniqueKey:  uk,
+            ChunkIndex: chunkIndex,
+            StartDate:  startDate,
+            EndDate:    endDate,
+            Symbol:     symbol,
+            Predictions: preds,
+            Actual:     actual,
+            Dates:      dates,
+            StockName:  stockName,
+            StockType:  stockType,
+        })
+    }
+    if len(list) == 0 {
+        c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+        return
+    }
+    c.JSON(http.StatusOK, ApiResponse{Code: 200, Message: "Success", Data: list})
+}
+
 func (h *DatabaseHandler) saveTimesfmBacktestHandler(c *gin.Context) {
 	var req struct {
 		UniqueKey                              string                   `json:"unique_key"`

@@ -543,6 +543,7 @@ def _load_cached_chunked_response(stock_code: str) -> Optional[ChunkedPrediction
             stock_code=data.get("stock_code", stock_code),
             total_chunks=int(data.get("total_chunks", len(chunk_results))),
             horizon_len=int(data.get("horizon_len", 0)),
+            context_len=int(data.get("context_len", 0)),
             chunk_results=chunk_results,
             overall_metrics=data.get("overall_metrics", {}) or {},
             processing_time=float(data.get("processing_time", 0.0)),
@@ -689,36 +690,69 @@ async def run_backtest(
     # 是否强制重新预测（忽略缓存）
     force_repredict = os.getenv("FORCE_REPREDICT", "0").strip().lower() in ("1", "true", "yes", "y")
 
-    # 如果已存在固定分位数，尝试加载缓存的分块响应，避免重复预测
+    # 优先查询数据库验证分块（全部分块），其次尝试加载本地缓存，最后占位
     response: Optional[ChunkedPredictionResponse] = None
     if fixed_quantile_key and not force_repredict:
-        response = _load_cached_chunked_response(request.stock_code)
-        if response is not None:
-            print(f"✅ 已加载缓存分块响应，跳过预测: {request.stock_code}")
-        else:
-            print("ℹ️ 未找到缓存分块响应，将进行预测以生成回测所需数据。")
+        try:
+            unique_key = f"{request.stock_code}_best_hlen_{request.horizon_len}_clen_{request.context_len}_v_{request.timesfm_version}"
+            base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
+            async with PostgresHandler(base_url=base_url, api_token="fintrack-dev-token") as pg:
+                status_code, data, body_text = await pg.get_val_chunk_list(unique_key)
+            if status_code == 200 and data:
+                arr = (data or {}).get('Data') or (data or {}).get('data') or data
+                if isinstance(arr, list) and len(arr) > 0:
+                    vcrs = []
+                    for d in arr:
+                        try:
+                            ci = int(d.get('chunk_index', 0))
+                        except Exception:
+                            ci = 0
+                        vcrs.append(ChunkPredictionResult(
+                            chunk_index=ci,
+                            chunk_start_date=str(d.get('start_date', '')),
+                            chunk_end_date=str(d.get('end_date', '')),
+                            predictions=d.get('predictions') or {},
+                            actual_values=d.get('actual_values') or [],
+                            metrics={},
+                        ))
+                    response = ChunkedPredictionResponse(
+                        stock_code=request.stock_code,
+                        total_chunks=0,
+                        horizon_len=request.horizon_len,
+                        context_len=request.context_len,
+                        chunk_results=[],
+                        overall_metrics={
+                            'best_prediction_item': fixed_quantile_key,
+                            'source': 'pg'
+                        },
+                        processing_time=0.0,
+                        concatenated_predictions=None,
+                        concatenated_actual=None,
+                        concatenated_dates=None,
+                        validation_chunk_results=vcrs,
+                    )
+                    print("✅ 已从数据库读取全部验证分块，跳过推理")
+            else:
+                print(f"ℹ️ 数据库未返回验证分块，HTTP {status_code}: {str(body_text)[:200]}")
+        except Exception as e:
+            print(f"⚠️ 查询数据库验证分块失败: {e}")
+        if response is None:
+            response = _load_cached_chunked_response(request.stock_code)
+            if response is not None:
+                print(f"✅ 已加载缓存分块响应，跳过预测: {request.stock_code}")
+            else:
+                print("ℹ️ 未找到缓存分块响应，将使用占位响应。")
 
-    # 若未能加载缓存响应：
-    # - 如果已有固定分位数，则只预测验证集分块；
-    # - 如果没有固定分位数，则进行完整分块预测以选取最佳分位。
     if response is None:
-        if request.timesfm_version == "2.0":
-            tfm = init_timesfm(horizon_len=request.horizon_len, context_len=request.context_len)
-        else:
-            tfm = None
-        if fixed_quantile_key:
-            print("➡️ 已有固定分位数但无缓存，开始仅预测验证集数据以供回测...")
-            response = await predict_validation_chunks_only(
-                request,
-                tfm,
-                timesfm_version=request.timesfm_version,
-                fixed_best_prediction_item=fixed_quantile_key,
-            )
-        else:
-            print("➡️ 未取得固定分位数，开始完整分块预测（含测试集）以选取最佳分位...")
-            response = await predict_chunked_mode_for_best(
-                request, tfm, timesfm_version=request.timesfm_version
-            )
+        response = ChunkedPredictionResponse(
+            stock_code=request.stock_code,
+            total_chunks=0,
+            horizon_len=request.horizon_len,
+            context_len=request.context_len,
+            chunk_results=[],
+            overall_metrics={'best_prediction_item': fixed_quantile_key or ''},
+            processing_time=0.0,
+        )
 
     # 若未从 JSON 获取固定分位数，则尝试从环境变量；再不行则回退到响应中的测试集最佳分位
     if not fixed_quantile_key:
@@ -854,7 +888,7 @@ async def save_backtest_result_to_pg(request, response, result):
             "timesfm_version": str(request.timesfm_version),
             "context_len": int(request.context_len),
             "horizon_len": int(request.horizon_len),
-            "user_id": int(request.user_id),
+            "user_id": int(request.user_id) if getattr(request, 'user_id', None) is not None else None,
 
             "used_quantile": result.get("used_quantile"),
             "buy_threshold_pct": _round4(result.get("buy_threshold_pct", 0.0)),
@@ -885,6 +919,24 @@ async def save_backtest_result_to_pg(request, response, result):
             "trades": _round_obj(result.get("trades", [])),
         }
 
+        vs = payload.get("validation_start_date")
+        ve = payload.get("validation_end_date")
+        if not vs or not ve:
+            try:
+                if getattr(response, 'validation_chunk_results', None):
+                    vcrs = response.validation_chunk_results
+                    payload["validation_start_date"] = str(vcrs[0].chunk_start_date)
+                    payload["validation_end_date"] = str(vcrs[-1].chunk_end_date)
+                elif getattr(response, 'chunk_results', None):
+                    crs = response.chunk_results
+                    if crs:
+                        payload["validation_start_date"] = str(crs[0].chunk_start_date)
+                        payload["validation_end_date"] = str(crs[-1].chunk_end_date)
+            except Exception:
+                pass
+        if not payload.get("validation_start_date") or not payload.get("validation_end_date"):
+            print("ℹ️ 跳过保存回测结果：缺少有效的验证起止日期")
+            return
         base_url = os.environ.get('POSTGRES_API', 'http://go-api.meetlife.com.cn:8000')
         async with PostgresHandler(base_url=base_url, api_token="fintrack-dev-token") as pg:
             status_code, data, body_text = await pg.save_backtest_result(payload)

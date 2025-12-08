@@ -56,8 +56,8 @@ COPY requirements.txt .
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple
 RUN pip config set install.trusted-host mirrors.aliyun.com
 # 安装Python依赖
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install  --upgrade pip
+RUN pip install  -r requirements.txt
 
 # 复制项目文件
 COPY . .

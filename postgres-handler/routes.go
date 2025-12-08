@@ -49,6 +49,7 @@ func RegisterRoutes(r *gin.Engine, handler *DatabaseHandler, apiToken string) {
 		api.POST("/save-predictions/mtf-best/val-chunk", handler.saveTimesfmValChunkHandler)
 		api.GET("/save-predictions/mtf-best/by-unique", handler.getTimesfmBestByUniqueKeyHandler)
 		api.GET("/save-predictions/mtf-best/val-chunk/latest", handler.getLatestTimesfmValChunkHandler)
+		api.GET("/save-predictions/mtf-best/val-chunk/list", handler.getTimesfmValChunkListHandler)
 
 		api.POST("/save-predictions/backtest", handler.saveTimesfmBacktestHandler)
 

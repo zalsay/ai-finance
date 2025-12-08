@@ -90,23 +90,9 @@ class BatchPredictionResponse(BaseModel):
 
 
 class RunBacktestRequest(BaseModel):
-    """运行回测的请求模型（包含预测与策略参数）"""
-    # 预测基础参数
-    stock_code: str
-    stock_type: str = "stock"
-    time_step: int = 0
-    years: int = 10
-    horizon_len: int = 7
-    context_len: int = 2048
-    include_technical_indicators: bool = True
-    fixed_end_date: Optional[str] = None
-    prediction_mode: int = 1
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    timesfm_version: str = "2.0"
+    """运行回测的请求模型（基于 unique_key 与策略参数）"""
+    unique_key: str
     user_id: Optional[int] = None
-
-    # 回测策略参数
     buy_threshold_pct: float = 3.0
     sell_threshold_pct: float = -1.0
     initial_cash: float = 100000.0
@@ -234,23 +220,25 @@ async def predict_stock(data: Dict, background_tasks: BackgroundTasks):
 
 @app.post("/backtest/run")
 async def run_backtest_api(req: RunBacktestRequest):
-    """交易策略回测接口：基于 TimesFM 分块预测并执行策略回测"""
+    """交易策略回测接口：入参 unique_key + user_id，查询DB验证分块并直接回测"""
     try:
-        # 构造 exchange_server 需要的 dataclass 请求体
         from req_res_types import ChunkedPredictionRequest as TfmRequest
+        from predict_chunked_functions import _parse_unique_key
+        info = _parse_unique_key(req.unique_key)
+        if not info:
+            raise ValueError("invalid unique_key format")
         tfm_req = TfmRequest(
-            stock_code=req.stock_code,
-            years=req.years,
-            horizon_len=req.horizon_len,
-            start_date=req.start_date,
-            end_date=req.end_date,
-            context_len=req.context_len,
-            time_step=req.time_step,
-            stock_type=req.stock_type,
-            timesfm_version=req.timesfm_version,
+            stock_code=info["symbol"],
+            years=10,
+            horizon_len=int(info["horizon_len"]),
+            start_date=None,
+            end_date=None,
+            context_len=int(info["context_len"]),
+            time_step=0,
+            stock_type=2,
+            timesfm_version=str(info["timesfm_version"]),
             user_id=req.user_id,
         )
-
         result = await run_backtest(
             tfm_req,
             buy_threshold_pct=req.buy_threshold_pct,
@@ -265,13 +253,12 @@ async def run_backtest_api(req: RunBacktestRequest):
             take_profit_threshold_pct=req.take_profit_threshold_pct,
             take_profit_sell_frac=req.take_profit_sell_frac,
         )
-
         backtest = result.get("backtest", {})
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
-                "stock_code": req.stock_code,
+                "unique_key": req.unique_key,
                 "gpu_id": GPU_ID,
                 "message": "回测完成",
                 "backtest": backtest,
@@ -283,7 +270,7 @@ async def run_backtest_api(req: RunBacktestRequest):
             status_code=500,
             content={
                 "success": False,
-                "stock_code": req.stock_code,
+                "unique_key": req.unique_key,
                 "gpu_id": GPU_ID,
                 "message": "回测失败",
                 "error": str(e),
