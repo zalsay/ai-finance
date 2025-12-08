@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: 192.168.9.20:8500/timesfm-gpu:latest
+    image: 192.168.9.20:8500/timesfm-gpu:v2.0.1
     container_name: timesfm-gpu0
     environment:
       - CUDA_VISIBLE_DEVICES=0
